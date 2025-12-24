@@ -88,6 +88,7 @@ router.post(
   apiController.resetPassword.bind(apiController)
 );
 
+
 router.post(
   "/job/create",
   authenticate,
@@ -369,11 +370,9 @@ router.get(
 );
 
 
-// Leave APIs (Masters)
 router.post(
   "/create/leave",
   authenticate,
-
   apiController.createLeave.bind(apiController)
 );
 
@@ -486,8 +485,6 @@ router.delete(
   authenticate,
   apiController.deleteHrContractType.bind(apiController)
 );
-
-// getShiftRosters
 router.get(
   "/shift-rosters",
   authenticate,

@@ -1,8 +1,6 @@
 // employee.controller.js
 const {
-  deleteEmployeeService,
   readEmployeeService,
-  updateEmployeeService,
   createBusinessTypeService,
   readBusinessTypeService,
   updateBusinessTypeService,
@@ -17,9 +15,6 @@ const {
   deleteAttendancePolicyService,
 } = require("../service/service.js");
 
-const {
-  validateEmployeeData,
-} = require("../../../middlewares/validateEmployeeData.js");
 const { odooHelpers } = require("../../../config/odoo.js");
 const odooService = require("../../../Module2/services/odoo.service.js");
 const {
@@ -40,7 +35,6 @@ const createBusinessType = async (req, res) => {
     const { client_id } = await getClientFromRequest(req);
     const trimmedName = name.trim();
 
-    // ❌ DUPLICATE CHECK (NAME ONLY)
     const existing = await odooHelpers.searchRead(
       "business.type",
       [["name", "=", trimmedName]],
@@ -91,7 +85,6 @@ const createBusinessLocation = async (req, res) => {
     const { client_id } = await getClientFromRequest(req);
     const trimmedName = name.trim();
 
-    // ❌ DUPLICATE CHECK (NAME ONLY, SAME MODEL)
     const existing = await odooHelpers.searchRead(
       "business.location",
       [["name", "=", trimmedName]],
@@ -111,7 +104,6 @@ const createBusinessLocation = async (req, res) => {
       parent_id: parent_id || null,
     };
 
-    // 🔎 Parent existence check (same as before)
     if (parent_id) {
       const parentExists = await readBusinessLocationService(
         client_id,
@@ -723,6 +715,7 @@ const getEmployeeByCode = async (req, res) => {
 };
 
 
+
 const createEmployee = async (req, res) => {
   try {
     console.log("createEmployee API Called .........");
@@ -859,6 +852,10 @@ const createEmployee = async (req, res) => {
     }
 
     const { client_id } = await getClientFromRequest(req);
+    const userIdFromParams = req.query.user_id ? parseInt(req.query.user_id) : null;
+    
+    console.log("user_id from params:", userIdFromParams);
+    console.log("client_id:", client_id);
 
     const data = {
       name: trimmedName,
@@ -946,17 +943,18 @@ const createEmployee = async (req, res) => {
       name_of_site: name_of_site ? parseInt(name_of_site) : undefined,
     };
 
-    const employeeId = await odooHelpers.create("hr.employee", data);
+    // Use the custom create method with user_id
+    const create_uid_value = userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+    console.log("create_uid will be set to:", create_uid_value);
+
+    const employeeId = await odooHelpers.createWithCustomUid(
+      "hr.employee",
+      data,
+      create_uid_value
+    );
+    
     console.log("Employee created with ID:", employeeId);
-    try {
-      await odooHelpers.write("hr.employee", employeeId, {
-        create_uid: client_id ? parseInt(client_id) : undefined,
-        create_date: new Date().toISOString().slice(0, 19).replace("T", " "),
-      });
-      console.log("Metadata updated: create_uid & create_date");
-    } catch (metaError) {
-      console.error("Failed to update metadata fields:", metaError);
-    }
+    console.log("create_uid successfully set to:", create_uid_value);
 
     let userId = null;
     try {
@@ -1011,7 +1009,7 @@ const createEmployee = async (req, res) => {
         message: "Employee created successfully but user creation failed",
         id: employeeId,
         user_id: userId,
-        created_by: client_id,
+        created_by: create_uid_value,
         created_date: new Date().toISOString(),
         user_creation_error: userError.message,
       });
@@ -1022,7 +1020,7 @@ const createEmployee = async (req, res) => {
       message: "Employee and user created successfully",
       id: employeeId,
       user_id: userId,
-      created_by: client_id,
+      created_by: create_uid_value,
       created_date: new Date().toISOString(),
     });
   } catch (error) {
@@ -1033,9 +1031,6 @@ const createEmployee = async (req, res) => {
     });
   }
 };
-
-
-
 
 const getEmployees = async (req, res) => {
   try {
@@ -1113,6 +1108,7 @@ const getEmployees = async (req, res) => {
         "driving_license",
         "upload_passbook",
         "image_1920",
+        "name_of_site"
       ]
     );
 
@@ -1129,6 +1125,7 @@ const getEmployees = async (req, res) => {
     });
   }
 };
+
 
 const updateEmployee = async (req, res) => {
   try {
@@ -1206,11 +1203,10 @@ const updateEmployee = async (req, res) => {
       employment_type,
       work_phone,
       marital,
+      driving_license,
+      upload_passbook,
+      image_1920,
     } = req.body;
-
-    const driving_license = req.files?.driving_license?.[0];
-    const upload_passbook = req.files?.upload_passbook?.[0];
-    const image_1920 = req.files?.image_1920?.[0];
 
     // Check if employee exists
     const existingEmployee = await odooHelpers.searchRead(
@@ -1294,25 +1290,12 @@ const updateEmployee = async (req, res) => {
       }
     }
 
-    // Get client_id using helper function
+    // Get client_id and user_id from request
     const { client_id } = await getClientFromRequest(req);
-
-    // Handle file uploads
-    let drivingLicenseBase64 = null;
-    let passbookBase64 = null;
-    let image1920Base64 = null;
-
-    if (driving_license) {
-      drivingLicenseBase64 = driving_license.buffer.toString("base64");
-    }
-
-    if (upload_passbook) {
-      passbookBase64 = upload_passbook.buffer.toString("base64");
-    }
-
-    if (image_1920) {
-      image1920Base64 = image_1920.buffer.toString("base64");
-    }
+    const userIdFromParams = req.query.user_id ? parseInt(req.query.user_id) : null;
+    
+    console.log("user_id from params (for write_uid):", userIdFromParams);
+    console.log("client_id:", client_id);
 
     // Build update data object (only include fields that are provided)
     const data = {};
@@ -1415,13 +1398,34 @@ const updateEmployee = async (req, res) => {
       data.notice_period_days = notice_period_days;
     if (joining_date !== undefined) data.joining_date = joining_date;
     if (employment_type !== undefined) data.employment_type = employment_type;
-    if (drivingLicenseBase64) data.driving_license = drivingLicenseBase64;
-    if (passbookBase64) data.upload_passbook = passbookBase64;
-    if (image1920Base64) data.image_1920 = image1920Base64;
+    if (driving_license !== undefined) data.driving_license = driving_license;
+    if (upload_passbook !== undefined) data.upload_passbook = upload_passbook;
+    if (image_1920 !== undefined) data.image_1920 = image_1920;
 
     // Update employee
     await odooHelpers.write("hr.employee", parseInt(id), data);
     console.log("Employee updated with ID:", id);
+
+    // Update write_uid using audit method
+    const write_uid_value = userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+    console.log("write_uid will be set to:", write_uid_value);
+
+    if (write_uid_value) {
+      try {
+        const tableName = "hr_employee";
+        
+        await odooHelpers.updateAuditFields(
+          tableName,
+          [parseInt(id)],
+          null, // We don't want to change create_uid
+          write_uid_value
+        );
+        
+        console.log(`Successfully updated write_uid to ${write_uid_value} for employee ${id}`);
+      } catch (auditError) {
+        console.error("Failed to update write_uid:", auditError.message);
+      }
+    }
 
     // Update user if email changed
     let userUpdateStatus = null;
@@ -1455,6 +1459,7 @@ const updateEmployee = async (req, res) => {
       message: "Employee updated successfully",
       id: parseInt(id),
       user_id: currentEmployee.user_id,
+      updated_by: write_uid_value,
       user_update_status: userUpdateStatus,
     });
   } catch (error) {
@@ -1465,7 +1470,6 @@ const updateEmployee = async (req, res) => {
     });
   }
 };
-
 const deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;

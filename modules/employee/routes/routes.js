@@ -1,5 +1,4 @@
 const express = require("express");
-const multer = require("multer");
 const {
   createEmployee,
   getEmployees,
@@ -63,6 +62,12 @@ router.post(
   "/create/employee",
   authenticate,
   createEmployee
+);
+
+router.put(
+  "/:id",
+  authenticate,
+  updateEmployee
 );
 
 router.get("/employees", authenticate, getEmployees);

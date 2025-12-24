@@ -421,7 +421,6 @@ class ApiController {
       });
     }
   }
-
   async checkGstNumber(req, res) {
     try {
       const { gst_number } = req.body;
@@ -850,11 +849,7 @@ class ApiController {
           message: "Job Position name is required",
         });
       }
-
-      // 🔹 get client from helper
       const { client_id } = await getClientFromRequest(req);
-
-      /* -------------------- DUPLICATE JOB NAME CHECK -------------------- */
       const existingJob = await odooService.searchRead(
         "hr.job",
         [
@@ -871,8 +866,6 @@ class ApiController {
           message: "Job Position with this name already exists",
         });
       }
-
-      /* -------------------- Department Validation (by name) -------------------- */
       let department_id = false;
       if (department_name) {
         const department = await odooService.searchRead(
@@ -891,8 +884,6 @@ class ApiController {
 
         department_id = department[0].id;
       }
-
-      /* -------------------- Skills Validation -------------------- */
       let skill_ids = [];
       if (skill_names?.length) {
         for (const rawName of skill_names) {
@@ -915,8 +906,6 @@ class ApiController {
           skill_ids.push(skill[0].id);
         }
       }
-
-      /* -------------------- Industry Validation -------------------- */
       let industry_id = false;
       if (industry_name) {
         const industry = await odooService.searchRead(
@@ -938,8 +927,6 @@ class ApiController {
 
         industry_id = industry[0].id;
       }
-
-      /* -------------------- Contract Type Validation -------------------- */
       let contract_type_id = false;
       if (contract_type_name) {
         const contractType = await odooService.searchRead(
@@ -961,8 +948,6 @@ class ApiController {
 
         contract_type_id = contractType[0].id;
       }
-
-      /* -------------------- Create Job -------------------- */
       const vals = {
         name,
         client_id,
@@ -1052,11 +1037,8 @@ class ApiController {
         industry_name,
         contract_type_name,
       } = req.body;
-
-      // 🔹 get client from helper
       const { client_id } = await getClientFromRequest(req);
 
-      /* -------------------- Check Job Exists -------------------- */
       const job = await odooService.searchRead(
         "hr.job",
         [
@@ -1074,7 +1056,6 @@ class ApiController {
         });
       }
 
-      /* -------------------- Duplicate Name Check -------------------- */
       if (name) {
         const duplicate = await odooService.searchRead(
           "hr.job",
@@ -1095,7 +1076,6 @@ class ApiController {
         }
       }
 
-      /* -------------------- Department Validation -------------------- */
       let department_id = false;
       if (department_name) {
         const department = await odooService.searchRead(
@@ -1114,8 +1094,6 @@ class ApiController {
 
         department_id = department[0].id;
       }
-
-      /* -------------------- Skills Validation -------------------- */
       let skill_ids;
       if (skill_names) {
         skill_ids = [];
@@ -1139,7 +1117,6 @@ class ApiController {
         }
       }
 
-      /* -------------------- Industry Validation -------------------- */
       let industry_id = false;
       if (industry_name) {
         const industry = await odooService.searchRead(
@@ -1161,8 +1138,6 @@ class ApiController {
 
         industry_id = industry[0].id;
       }
-
-      /* -------------------- Contract Type Validation -------------------- */
       let contract_type_id = false;
       if (contract_type_name) {
         const contractType = await odooService.searchRead(
@@ -1184,10 +1159,7 @@ class ApiController {
 
         contract_type_id = contractType[0].id;
       }
-
-      /* -------------------- Prepare Update Values -------------------- */
       const vals = {};
-
       if (name) vals.name = name;
       if (department_name) vals.department_id = department_id;
       if (no_of_recruitment !== undefined)
@@ -1221,11 +1193,7 @@ class ApiController {
           message: "job_id is required",
         });
       }
-
-      // 🔹 get client from helper
       const { client_id } = await getClientFromRequest(req);
-
-      /* -------------------- Check Job Exists -------------------- */
       const job = await odooService.searchRead(
         "hr.job",
         [
@@ -1269,10 +1237,7 @@ class ApiController {
         });
       }
 
-      // 🔑 CLIENT + PLAN CHECK (same as WorkEntryType)
       const { client_id } = await getClientFromRequest(req);
-
-      // 🔎 DUPLICATE CHECK (name + client_id)
       const existing = await odooService.searchRead(
         "hr.work.location",
         [
@@ -1289,8 +1254,6 @@ class ApiController {
           message: `Work Location with name '${name}' already exists`,
         });
       }
-
-      // ✅ CREATE
       const vals = {
         name: name.trim(),
         location_type: location_type || "office",
@@ -1387,11 +1350,7 @@ class ApiController {
           message: "Nothing to update",
         });
       }
-
-      // 🔑 CLIENT + PLAN CHECK
       const { client_id } = await getClientFromRequest(req);
-
-      // 🔎 CHECK IF LOCATION EXISTS (AND BELONGS TO CLIENT)
       const exists = await odooService.searchRead(
         "hr.work.location",
         [
@@ -1408,8 +1367,6 @@ class ApiController {
           message: "Work location not found",
         });
       }
-
-      // 🔁 DUPLICATE NAME CHECK (only if name is being updated)
       if (name) {
         const duplicate = await odooService.searchRead(
           "hr.work.location",
@@ -1462,11 +1419,7 @@ class ApiController {
           message: "Valid Work Location ID is required",
         });
       }
-
-      // 🔑 CLIENT + PLAN CHECK
       const { client_id } = await getClientFromRequest(req);
-
-      // 🔎 CHECK OWNERSHIP
       const exists = await odooService.searchRead(
         "hr.work.location",
         [
@@ -1476,30 +1429,25 @@ class ApiController {
         ["id"],
         1
       );
-
       if (!exists.length) {
         return res.status(404).json({
           status: "error",
           message: "Work location not found",
         });
       }
-
       await odooService.unlink("hr.work.location", [parseInt(id)]);
-
       return res.status(200).json({
         status: "success",
         message: "Work location deleted successfully",
       });
     } catch (error) {
       console.error("Delete Work Location Error:", error);
-
       return res.status(error.status || 500).json({
         status: "error",
         message: error.message || "Failed to delete work location",
       });
     }
   }
-
   async createDepartment(req, res) {
     try {
       console.log("API Called createDepartment");
@@ -1636,11 +1584,7 @@ class ApiController {
           message: "Department ID is required",
         });
       }
-
-      /* ================= CLIENT + PLAN (HELPER) ================= */
       const { client_id } = await getClientFromRequest(req);
-
-      /* ================= OWNERSHIP CHECK ================= */
       const department = await odooService.searchRead(
         "hr.department",
         [
@@ -1657,11 +1601,7 @@ class ApiController {
           message: "Department not found or does not belong to this client",
         });
       }
-
-      /* ================= CLEAN BODY ================= */
-      // user_id / unique_user_id accidentally write na ho
       const { user_id, unique_user_id, ...updateData } = req.body;
-
       const updated = await odooService.write("hr.department", id, updateData);
 
       if (!updated) {
@@ -1739,7 +1679,6 @@ class ApiController {
       });
     }
   }
-
   async sendTempPassword(req, res) {
     try {
       const { email } = req.body;
@@ -1825,7 +1764,6 @@ class ApiController {
         .json({ status: "error", message: "Something went wrong" });
     }
   }
-
   async resetPassword(req, res) {
     try {
       const { email, temp_password, new_password, confirm_password } = req.body;
@@ -1889,10 +1827,6 @@ class ApiController {
         .json({ status: "error", message: "Something went wrong" });
     }
   }
-
-
-
-
   async kavachUserCreation(req, res) {
     console.log("Kavach Signup API called");
     try {
@@ -3380,10 +3314,8 @@ class ApiController {
   }
   async getWorkEntryTypes(req, res) {
     try {
-      /* ================= CLIENT + PLAN (HELPER) ================= */
       const { client_id } = await getClientFromRequest(req);
 
-      /* ================= FETCH WORK ENTRY TYPES ================= */
       const workEntryTypes = await odooService.searchRead(
         "hr.work.entry.type",
         [["client_id", "=", client_id]],
@@ -3703,7 +3635,6 @@ class ApiController {
     } catch (error) {
       console.error("❌ Get Skills Error:", error);
 
-      // ✅ IMPORTANT FIX
       return res.status(error.status || 401).json({
         status: "error",
         message: error.message || "Unauthorized request",
@@ -3723,10 +3654,8 @@ class ApiController {
         });
       }
 
-      // ✅ FIX 1: helper function (VALIDATES user_id + plan + client)
       const { client_id } = await getClientFromRequest(req);
 
-      // ✅ FIX 2: Ensure skill type belongs to this client
       const skillType = await odooService.searchRead(
         "hr.skill.type",
         [
@@ -3743,8 +3672,6 @@ class ApiController {
           message: "Unauthorized or Skill Type not found for this client",
         });
       }
-
-      /* ---------- UPDATE / ADD SKILLS ---------- */
       const updatedSkills = [];
 
       if (Array.isArray(skill_names)) {
@@ -3769,8 +3696,6 @@ class ApiController {
           }
         }
       }
-
-      /* ---------- UPDATE LEVEL ---------- */
       let updatedLevel = null;
 
       if (skill_level_name) {
@@ -3826,13 +3751,7 @@ class ApiController {
           message: "skill_type_id is required",
         });
       }
-
-      // ✅ helper function (plan + user check)
       await getClientFromRequest(req);
-
-      /* ============================
-         1️⃣ Delete Skills
-      ============================ */
       const skills = await odooService.searchRead(
         "hr.skill",
         [["skill_type_id", "=", parseInt(skill_type_id)]],
@@ -3845,10 +3764,6 @@ class ApiController {
           skills.map((s) => s.id)
         );
       }
-
-      /* ============================
-         2️⃣ Delete Skill Levels
-      ============================ */
       const levels = await odooService.searchRead(
         "hr.skill.level",
         [["skill_type_id", "=", parseInt(skill_type_id)]],
@@ -3861,10 +3776,6 @@ class ApiController {
           levels.map((l) => l.id)
         );
       }
-
-      /* ============================
-         3️⃣ Delete Skill Type
-      ============================ */
       await odooService.unlink("hr.skill.type", [parseInt(skill_type_id)]);
 
       return res.status(200).json({
@@ -3967,8 +3878,6 @@ class ApiController {
       }
 
       const { client_id } = await getClientFromRequest(req);
-
-      // ✅ ensure industry belongs to same client
       const industry = await odooService.searchRead(
         "res.partner.industry",
         [
@@ -4062,11 +3971,9 @@ class ApiController {
         });
       }
 
-      // Get client_id from request if not provided
       const clientData = await getClientFromRequest(req);
       const finalClientId = client_id || clientData.client_id;
 
-      // Convert country name to country_id
       let country_id = null;
       if (country_name) {
         const countries = await odooService.searchRead(
@@ -4084,8 +3991,6 @@ class ApiController {
           });
         }
       }
-
-      // Check for existing contract type for the client
       const existing = await odooService.searchRead(
         "hr.contract.type",
         [
@@ -4103,7 +4008,6 @@ class ApiController {
         });
       }
 
-      // Create the HR Contract Type
       const contractTypeId = await odooService.create("hr.contract.type", {
         name,
         code: code || name,
@@ -4134,12 +4038,11 @@ class ApiController {
         ["id", "name", "code", "country_id"]
       );
 
-      // Map contract types to include only country_name instead of country_id array
       const contractTypesClean = await Promise.all(
         contractTypes.map(async (ct) => {
           let country_name = null;
           if (ct.country_id && ct.country_id[0]) {
-            country_name = ct.country_id[1]; // Odoo returns [id, name]
+            country_name = ct.country_id[1];
           }
           return {
             id: ct.id,
@@ -4176,7 +4079,6 @@ class ApiController {
 
       const { client_id } = await getClientFromRequest(req);
 
-      // Ensure the contract type belongs to the same client
       const contractType = await odooService.searchRead(
         "hr.contract.type",
         [
@@ -4247,7 +4149,6 @@ class ApiController {
 
       const { client_id } = await getClientFromRequest(req);
 
-      // Ensure the contract type belongs to the same client
       const contractType = await odooService.searchRead(
         "hr.contract.type",
         [
@@ -4265,7 +4166,6 @@ class ApiController {
         });
       }
 
-      // Delete the contract type
       await odooService.unlink("hr.contract.type", [
         parseInt(contract_type_id),
       ]);
@@ -4300,10 +4200,7 @@ class ApiController {
         });
       }
 
-      // 🔹 get client from helper
       const { client_id } = await getClientFromRequest(req);
-
-      /* -------------------- Duplicate Check -------------------- */
       const existing = await odooService.searchRead(
         "resource.calendar",
         [
@@ -4360,7 +4257,6 @@ class ApiController {
   }
   async getWorkingSchedules(req, res) {
     try {
-      // 🔹 get client from helper
       const { client_id } = await getClientFromRequest(req);
 
       const calendars = await odooService.searchRead(
@@ -4378,7 +4274,6 @@ class ApiController {
         ]
       );
 
-      /* -------------------- Fetch Attendances -------------------- */
       const calendarData = await Promise.all(
         calendars.map(async (cal) => {
           let attendances = [];
@@ -4399,7 +4294,7 @@ class ApiController {
             full_time_required_hours: cal.full_time_required_hours,
             hours_per_day: cal.flexible_hours ? cal.hours_per_day : null,
             tz: cal.tz,
-            attendance_ids: attendances, // 🔥 detailed attendance data
+            attendance_ids: attendances,
           };
         })
       );
@@ -4546,7 +4441,6 @@ class ApiController {
       });
     }
   }
-
   async createPartner(req, res) {
     try {
       console.log("API Called createPartner (Branches)");
@@ -4646,7 +4540,6 @@ class ApiController {
       });
     }
   }
-
   async getPartners(req, res) {
     try {
       console.log("API Called getPartners Branches .......")
@@ -4691,7 +4584,6 @@ class ApiController {
       });
     }
   }
-
   async updatePartner(req, res) {
     try {
       console.log("API Called updatePartner Branch");
@@ -4765,7 +4657,6 @@ class ApiController {
       });
     }
   }
-
   async deletePartner(req, res) {
     try {
       console.log("API Called deletePartner");
@@ -4788,10 +4679,6 @@ class ApiController {
           message: "Partner not found or unauthorized",
         });
       }
-
-      // -----------------------------
-      // Soft delete (recommended)
-      // -----------------------------
       await odooService.update("res.partner", parseInt(id), {
         active: false
       });
@@ -4809,18 +4696,12 @@ class ApiController {
       });
     }
   }
-
-
-
-
-
-
   async createAttendance(req, res) {
     try {
       const {
         employee_id,
         check_in,
-        check_out,  // ✅ Ab ye bhi accept karenge
+        check_out,
         checkin_lat,
         checkin_lon,
         checkout_lat,
@@ -5060,7 +4941,6 @@ class ApiController {
       });
     }
   }
-
   async getAllAttendances(req, res) {
     try {
       const {
@@ -5174,19 +5054,16 @@ class ApiController {
           success: false,
           status: "error",
           errorMessage: "user_id is required",
-          successMessage: "",
-          statuscode: 400,
         });
       }
 
       console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
+
       const partner = await odooService.searchRead(
         "res.users",
         [["id", "=", parseInt(user_id)]],
         ["id", "partner_id"]
       );
-
-      console.log("Partner:", partner);
 
       if (!partner.length) {
         return res.status(404).json({
@@ -5195,24 +5072,14 @@ class ApiController {
           errorMessage: `Partner not found for user_id: ${user_id}`,
         });
       }
-      const partnerId = partner[0].partner_id?.[0];
-      console.log("👤 Correct Partner ID:", partnerId);
 
-      if (!partnerId) {
-        return res.status(404).json({
-          success: false,
-          status: "error",
-          errorMessage: "partner_id not found in res.users",
-        });
-      }
+      const partnerId = partner[0].partner_id?.[0];
 
       const adminEmployee = await odooService.searchRead(
         "hr.employee",
         [["address_id", "=", partnerId]],
-        ["id", "name", "address_id"]
+        ["id", "address_id"]
       );
-
-      console.log("Admin Employee:", adminEmployee);
 
       if (!adminEmployee.length) {
         return res.status(404).json({
@@ -5223,27 +5090,30 @@ class ApiController {
       }
 
       const addressId = adminEmployee[0].address_id?.[0];
-      console.log("📌 Admin address_id:", addressId);
 
       const allEmployees = await odooService.searchRead(
         "hr.employee",
         [["address_id", "=", addressId]],
-        ["id", "name"]
+        ["id", "name", "job_id"]
       );
-
-      console.log("Employees:", allEmployees);
 
       if (!allEmployees.length) {
         return res.status(404).json({
           success: false,
           status: "error",
           errorMessage: "No employees found for same address_id",
-
         });
       }
 
-      const employeeIds = allEmployees.map((e) => e.id);
-      console.log("👥 Employees under admin:", employeeIds);
+      const employeeMap = {};
+      allEmployees.forEach(emp => {
+        employeeMap[emp.id] = {
+          job_id: emp.job_id || null,
+          job_name: emp.job_id ? emp.job_id[1] : null,
+        };
+      });
+
+      const employeeIds = allEmployees.map(e => e.id);
 
       let domain = [["employee_id", "in", employeeIds]];
       if (date_from) domain.push(["check_in", ">=", date_from]);
@@ -5275,6 +5145,13 @@ class ApiController {
         parseInt(limit),
         "check_in desc"
       );
+      attendances.forEach(att => {
+        const empId = att.employee_id?.[0];
+        const empInfo = employeeMap[empId];
+
+        att.job_id = empInfo?.job_id || null;
+        att.job_name = empInfo?.job_name || null;
+      });
 
       const totalCount = await odooService.search("hr.attendance", domain);
 
@@ -5292,7 +5169,6 @@ class ApiController {
           employee_count: employeeIds.length,
         },
       });
-
     } catch (error) {
       console.error("🔥 Admin Attendance Error:", error);
       return res.status(500).json({
@@ -5302,8 +5178,6 @@ class ApiController {
       });
     }
   }
-
-  
   async updateAttendance(req, res) {
     try {
       const { id } = req.params;
@@ -5316,7 +5190,6 @@ class ApiController {
         });
       }
 
-      // Check if attendance exists
       const existingAttendance = await odooService.searchRead(
         "hr.attendance",
         [["id", "=", parseInt(id)]],
@@ -5337,7 +5210,6 @@ class ApiController {
         });
       }
 
-      // Validate employee_id if provided
       if (updateData.employee_id) {
         const employeeExists = await odooService.searchRead(
           "hr.employee",
@@ -5353,7 +5225,6 @@ class ApiController {
         }
       }
 
-      // Validate check_in datetime if provided
       if (updateData.check_in) {
         const checkInDate = new Date(updateData.check_in);
         if (isNaN(checkInDate.getTime())) {
@@ -5364,7 +5235,6 @@ class ApiController {
         }
       }
 
-      // Validate check_out datetime if provided
       if (updateData.check_out) {
         const checkOutDate = new Date(updateData.check_out);
         if (isNaN(checkOutDate.getTime())) {
@@ -5374,7 +5244,6 @@ class ApiController {
           });
         }
 
-        // Validate check_out is after check_in
         const checkInTime =
           updateData.check_in || existingAttendance[0].check_in;
         if (new Date(updateData.check_out) <= new Date(checkInTime)) {
@@ -5412,7 +5281,6 @@ class ApiController {
         });
       }
 
-      // Check if attendance exists
       const existingAttendance = await odooService.searchRead(
         "hr.attendance",
         [["id", "=", parseInt(id)]],
@@ -5441,6 +5309,245 @@ class ApiController {
       });
     }
   }
+  async createGeoLocation(req, res) {
+    try {
+
+      const {
+        name,
+        latitude,
+        longitude,
+        radius_km,
+        hr_employee_ids,
+      } = req.body;
+      console.log("GEO Location api called with this ", req.body);
+      const { client_id } = await getClientFromRequest(req);
+      const requiredFields = {
+        name,
+        latitude,
+        longitude,
+        hr_employee_ids,
+      };
+
+      for (const [key, value] of Object.entries(requiredFields)) {
+        if (value === undefined || value === null || value === "") {
+          return res.status(400).json({
+            status: "error",
+            message: `${key} is required`,
+          });
+        }
+      }
+      if (!Array.isArray(hr_employee_ids)) {
+        return res.status(400).json({
+          status: "error",
+          message: "hr_employee_ids must be an array of employee IDs",
+        });
+      }
+      const employees = await odooService.searchRead(
+        "hr.employee",
+        [["id", "in", hr_employee_ids]],
+        ["id"]
+      );
+      const validIds = employees.map((e) => e.id);
+      const missingIds = hr_employee_ids.filter(
+        (id) => !validIds.includes(id)
+      );
+      if (missingIds.length > 0) {
+        return res.status(404).json({
+          status: "error",
+          message: `Employee(s) not found: ${missingIds.join(", ")}`,
+        });
+      }
+      const existing = await odooService.searchRead(
+        "geo.config",
+        [
+          ["name", "=", name],
+          ["client_id", "=", client_id],
+        ],
+        ["id"],
+        1
+      );
+
+      if (existing.length > 0) {
+        return res.status(409).json({
+          status: "error",
+          message: `Geo location '${name}' already exists`,
+        });
+      }
+      const vals = {
+        name,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        radius_km: radius_km ? parseFloat(radius_km) : 0,
+        hr_employee_ids: [[6, 0, hr_employee_ids]],
+        client_id,
+        is_from_konvert_hr_portal: true,
+      };
+      console.log("Geo location payload -->", vals);
+      const geoId = await odooService.create("geo.config", vals);
+      return res.status(200).json({
+        status: "success",
+        message: "Geo location created successfully",
+        geoId,
+      });
+    } catch (error) {
+      console.error("Create Geo Location Error:", error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to create geo location",
+      });
+    }
+  }
+  async getAllGeoLocations(req, res) {
+    try {
+      console.log("API Called: getAllGeoLocations");
+
+      const { client_id } = await getClientFromRequest(req);
+
+      const geoLocations = await odooService.searchRead(
+        "geo.config",
+        [["client_id", "=", client_id]],
+        [
+          "id",
+          "name",
+          "latitude",
+          "longitude",
+          "radius_km",
+          "hr_employee_ids",
+        ]
+      );
+
+      return res.status(200).json({
+        status: "success",
+        data: geoLocations,
+      });
+
+    } catch (error) {
+      console.error("Get Geo Locations Error:", error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to fetch geo locations",
+      });
+    }
+  }
+  async updateGeoLocation(req, res) {
+    try {
+      console.log("API Called: updateGeoLocation");
+
+      const { id } = req.params;
+      const {
+        name,
+        latitude,
+        longitude,
+        radius_km,
+        hr_employee_ids,
+      } = req.body;
+
+      const { client_id } = await getClientFromRequest(req);
+      const existing = await odooService.searchRead(
+        "geo.config",
+        [
+          ["id", "=", id],
+          ["client_id", "=", client_id],
+        ],
+        ["id"]
+      );
+
+      if (!existing.length) {
+        return res.status(404).json({
+          status: "error",
+          message: "Geo location not found for this client",
+        });
+      }
+
+      if (hr_employee_ids) {
+        if (!Array.isArray(hr_employee_ids)) {
+          return res.status(400).json({
+            status: "error",
+            message: "hr_employee_ids must be an array",
+          });
+        }
+
+        const employees = await odooService.searchRead(
+          "hr.employee",
+          [["id", "in", hr_employee_ids]],
+          ["id"]
+        );
+
+        const validIds = employees.map((e) => e.id);
+        const missingIds = hr_employee_ids.filter((id) => !validIds.includes(id));
+
+        if (missingIds.length > 0) {
+          return res.status(404).json({
+            status: "error",
+            message: `Employee(s) not found: ${missingIds.join(", ")}`,
+          });
+        }
+      }
+
+      const vals = {};
+
+      if (name) vals.name = name;
+      if (latitude) vals.latitude = parseFloat(latitude);
+      if (longitude) vals.longitude = parseFloat(longitude);
+      if (radius_km) vals.radius_km = parseFloat(radius_km);
+      if (hr_employee_ids) vals.hr_employee_ids = [[6, 0, hr_employee_ids]];
+
+      console.log("Geo Location update payload -->", vals);
+
+      await odooService.write("geo.config", parseInt(id), vals);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Geo location updated successfully",
+      });
+
+    } catch (error) {
+      console.error("Update Geo Location Error:", error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to update geo location",
+      });
+    }
+  }
+  async deleteGeoLocation(req, res) {
+    try {
+      console.log("API Called: deleteGeoLocation");
+
+      const { id } = req.params;
+      const { client_id } = await getClientFromRequest(req);
+
+      const existing = await odooService.searchRead(
+        "geo.config",
+        [
+          ["id", "=", id],
+          ["client_id", "=", client_id],
+        ],
+        ["id"]
+      );
+
+      if (!existing.length) {
+        return res.status(404).json({
+          status: "error",
+          message: "Geo location not found or does not belong to this client",
+        });
+      }
+
+      await odooService.unlink("geo.config", parseInt(id));
+
+      return res.status(200).json({
+        status: "success",
+        message: "Geo location deleted successfully",
+      });
+
+    } catch (error) {
+      console.error("Delete Geo Location Error:", error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to delete geo location",
+      });
+    }
+  }
+
 }
 
 module.exports = new ApiController();

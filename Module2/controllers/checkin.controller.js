@@ -2,7 +2,6 @@ const odooService = require("../services/odoo.service");
 const moment = require("moment-timezone");
 function haversine(lat1, lon1, lat2, lon2) {
   const toRad = (x) => (x * Math.PI) / 180;
-
   const R = 6371;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -23,11 +22,9 @@ function parseRequestBody(body) {
 
   return body;
 }
+
 exports.apiAttendance = async (req, res) => {
   try {
-    console.log(
-      "\n================ UNIFIED ATTENDANCE API CALLED ================"
-    );
     console.log("🔹 Raw Body:", req.body);
 
     const parsedBody = parseRequestBody(req.body);
@@ -266,6 +263,173 @@ exports.apiAttendance = async (req, res) => {
   }
 };
 
+exports.getAllAttendancesMobile = async (req, res) => {
+  try {
+    const {
+      user_id,
+      date_from,
+      date_to,
+      month,
+      year,
+      limit = 100,
+      offset = 0,
+    } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        status: "error",
+        errorMessage: "user_id is required",
+        statuscode: 400,
+      });
+    }
+
+    console.log("🔍 Searching user in res.users:", user_id);
+
+    // Step 1: find user in Odoo
+    const users = await odooService.searchRead(
+      "res.users",
+      [["id", "=", parseInt(user_id)]],
+      ["id", "name", "login", "partner_id"],
+      1
+    );
+
+    if (!users.length) {
+      return res.status(404).json({
+        success: false,
+        status: "error",
+        errorMessage: `User not found for user_id: ${user_id}`,
+        statuscode: 404,
+      });
+    }
+
+    const user = users[0];
+    console.log("👤 Odoo User Found:", user);
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["user_id", "=", user.id]],
+      ["id", "name"],
+      1
+    );
+
+    if (!employee.length) {
+      return res.status(404).json({
+        success: false,
+        status: "error",
+        errorMessage: `Employee not found for user_id: ${user_id}`,
+        statuscode: 404,
+      });
+    }
+
+    const employeeId = employee[0].id;
+    console.log("✅ Employee found:", employee[0]);
+
+    let finalDateFrom = date_from;
+    let finalDateTo = date_to;
+    if (month && year) {
+      const m = parseInt(month);
+      const y = parseInt(year);
+
+      const start = new Date(y, m - 1, 1, 0, 0, 0);
+      const end = new Date(y, m, 0, 23, 59, 59);
+
+      finalDateFrom = start.toISOString().slice(0, 19).replace("T", " ");
+      finalDateTo = end.toISOString().slice(0, 19).replace("T", " ");
+
+      console.log("📅 Month-Year Filter:", finalDateFrom, finalDateTo);
+    }
+
+    let domain = [["employee_id", "=", employeeId]];
+
+    if (finalDateFrom) domain.push(["check_in", ">=", finalDateFrom]);
+    if (finalDateTo) domain.push(["check_in", "<=", finalDateTo]);
+
+    const REQUIRED_FIELDS = [
+      "check_in",
+      "checkin_lat",
+      "checkin_lon",
+      "check_out",
+      "checkout_lat",
+      "checkout_lon",
+      "worked_hours",
+      "early_out_minutes",
+      "overtime_hours",
+      "is_early_out",
+      "validated_overtime_hours",
+      "is_late_in",
+      "late_time_display",
+      "status_code"
+    ];
+
+    const attendances = await odooService.searchRead(
+      "hr.attendance",
+      domain,
+      REQUIRED_FIELDS,
+      parseInt(offset),
+      parseInt(limit),
+      "check_in desc"
+    );
+
+    const totalCount = await odooService.search("hr.attendance", domain);
+    if ((month && year) && totalCount.length === 0) {
+      const monthNames = [
+        "", "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+      ];
+
+      return res.status(200).json({
+        success: false,
+        status: "error",
+        errorMessage: `There is no attendance for ${monthNames[month]} ${year}`,
+        statuscode: 200,
+        data: [],
+        meta: {
+          total: 0,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          employee_name: employee[0].name,
+          employee_id: employeeId,
+          filter: {
+            month,
+            year,
+            date_from: finalDateFrom,
+            date_to: finalDateTo,
+          },
+        },
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      status: "success",
+      successMessage: "Attendance records fetched successfully",
+      statuscode: 200,
+      data: attendances,
+      meta: {
+        total: totalCount.length,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        employee_name: employee[0].name,
+        employee_id: employeeId,
+        filter: {
+          month: month || null,
+          year: year || null,
+          date_from: finalDateFrom || null,
+          date_to: finalDateTo || null,
+        },
+      },
+    });
+
+  } catch (error) {
+    console.error("🔥 Error fetching attendances:", error);
+
+    return res.status(500).json({
+      success: false,
+      status: "error",
+      errorMessage: error.message || "Failed to fetch attendances",
+      statuscode: 500,
+    });
+  }
+};
 exports.apiCheckinCheckout = async (req, res) => {
   try {
     console.log("API CheckIn CheckOut called", req.query);
@@ -348,164 +512,3 @@ exports.apiCheckinCheckout = async (req, res) => {
     });
   }
 };
-
-exports.getAllAttendancesMobile = async (req, res) => {
-  try {
-    const {
-      user_id,
-      date_from,
-      date_to,
-      month,
-      year,
-      limit = 100,
-      offset = 0,
-    } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        status: "error",
-        errorMessage: "user_id is required",
-        successMessage: "",
-        statuscode: 400,
-      });
-    }
-
-    console.log("🔍 Searching employee for user_id:", user_id);
-
-    const employee = await odooService.searchRead(
-      "hr.employee",
-      [["user_id", "=", parseInt(user_id)]],
-      ["id", "name"],
-      1
-    );
-
-    if (!employee.length) {
-      return res.status(404).json({
-        success: false,
-        status: "error",
-        errorMessage: `No employee found for user_id: ${user_id}`,
-        successMessage: "",
-        statuscode: 404,
-      });
-    }
-
-    const employeeId = employee[0].id;
-    console.log("✅ Employee found:", employee[0]);
-
-    let finalDateFrom = date_from;
-    let finalDateTo = date_to;
-
-    // Month-Year Filter
-    if (month && year) {
-      const m = parseInt(month);
-      const y = parseInt(year);
-
-      const start = new Date(y, m - 1, 1, 0, 0, 0);
-      const end = new Date(y, m, 0, 23, 59, 59);
-
-      finalDateFrom = start.toISOString().slice(0, 19).replace("T", " ");
-      finalDateTo = end.toISOString().slice(0, 19).replace("T", " ");
-
-      console.log("📅 Month-Year Filter Applied:", finalDateFrom, finalDateTo);
-    }
-
-    let domain = [["employee_id", "=", employeeId]];
-
-    if (finalDateFrom) domain.push(["check_in", ">=", finalDateFrom]);
-    if (finalDateTo) domain.push(["check_in", "<=", finalDateTo]);
-
-    const REQUIRED_FIELDS = [
-      "check_in",
-      "checkin_lat",
-      "checkin_lon",
-      "check_out",
-      "checkout_lat",
-      "checkout_lon",
-      "worked_hours",
-      "early_out_minutes",
-      "overtime_hours",
-      "is_early_out",
-      "validated_overtime_hours",
-      "is_late_in",
-      "late_time_display",
-      "status_code"
-    ];
-
-    const attendances = await odooService.searchRead(
-      "hr.attendance",
-      domain,
-      REQUIRED_FIELDS,
-      parseInt(offset),
-      parseInt(limit),
-      "check_in desc"
-    );
-
-    const totalCount = await odooService.search("hr.attendance", domain);
-
-    // 🔥 NEW: If month-year filter applied & no attendance found
-    if ((month && year) && totalCount.length === 0) {
-      const monthNames = [
-        "", "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-      ];
-      const monthName = monthNames[parseInt(month)];
-
-      return res.status(200).json({
-        success: false,
-        status: "error",
-        errorMessage: `There is no attendance for ${monthName} ${year}`,
-        successMessage: "",
-        statuscode: 200,
-        data: [],
-        meta: {
-          total: 0,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          employee_name: employee[0].name,
-          employee_id: employeeId,
-          filter: {
-            month: month,
-            year: year,
-            date_from: finalDateFrom,
-            date_to: finalDateTo,
-          },
-        },
-      });
-    }
-
-    // Normal success response
-    return res.status(200).json({
-      success: true,
-      status: "success",
-      successMessage: "Attendance records fetched successfully",
-      statuscode: 200,
-      data: attendances,
-      meta: {
-        total: totalCount.length,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        employee_name: employee[0].name,
-        employee_id: employeeId,
-        filter: {
-          month: month || null,
-          year: year || null,
-          date_from: finalDateFrom || null,
-          date_to: finalDateTo || null,
-        },
-      },
-    });
-
-  } catch (error) {
-    console.error("🔥 Error fetching attendances:", error);
-
-    return res.status(500).json({
-      success: false,
-      status: "error",
-      errorMessage: error.message || "Failed to fetch attendances",
-      successMessage: "",
-      statuscode: 500,
-    });
-  }
-};
-
