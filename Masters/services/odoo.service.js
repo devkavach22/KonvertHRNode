@@ -46,9 +46,7 @@ class OdooService {
     
     const effectiveUid = userId || this.uid;
     const effectivePassword = userPassword || this.password;
-    
-    // console.log("🔹 Executing with UID:", effectiveUid);
-    
+        
     const objectClient = this.createClient("/xmlrpc/2/object");
     return new Promise((resolve, reject) => {
       objectClient.methodCall(
@@ -110,10 +108,6 @@ class OdooService {
 }
 
 module.exports = new OdooService();
-
-
-
-
 
 
 

@@ -1,5 +1,7 @@
 const odooService = require("../services/odoo.service");
 const moment = require("moment-timezone");
+const { getClientFromRequest } = require("../services/plan.helper");
+
 function haversine(lat1, lon1, lat2, lon2) {
   const toRad = (x) => (x * Math.PI) / 180;
   const R = 6371;
@@ -11,6 +13,7 @@ function haversine(lat1, lon1, lat2, lon2) {
 
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
+
 function parseRequestBody(body) {
   if (body._parts && Array.isArray(body._parts)) {
     const parsedData = {};
@@ -19,7 +22,6 @@ function parseRequestBody(body) {
     });
     return parsedData;
   }
-
   return body;
 }
 
@@ -30,7 +32,16 @@ exports.apiAttendance = async (req, res) => {
     const parsedBody = parseRequestBody(req.body);
     console.log("🔹 Parsed Body:", parsedBody);
 
-    let { email, Image, Latitude, Longitude, check_in, check_out } = parsedBody;
+    let { email, Image, Latitude, Longitude, check_in, check_out, user_id } = parsedBody;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        statuscode: 400,
+        errorMessage: "Email is required",
+      });
+    }
+
     if (!Latitude || !Longitude) {
       return res.status(400).json({
         success: false,
@@ -62,14 +73,7 @@ exports.apiAttendance = async (req, res) => {
     Latitude = lat;
     Longitude = lon;
 
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        statuscode: 400,
-        errorMessage: "Email is required",
-      });
-    }
-
+    // Find user by email
     const users = await odooService.searchRead(
       "res.users",
       [["login", "=", email]],
@@ -86,6 +90,37 @@ exports.apiAttendance = async (req, res) => {
     }
 
     const user = users[0];
+
+    // ✅ IMPORTANT: If user_id is provided, verify it matches the email's user
+    if (user_id) {
+      console.log("🔍 user_id provided, verifying it matches the email...");
+      
+      const providedUserId = parseInt(user_id);
+      
+      if (user.id !== providedUserId) {
+        return res.status(403).json({
+          success: false,
+          statuscode: 403,
+          errorMessage: "User ID does not match the provided email",
+        });
+      }
+
+      console.log("✅ user_id matches email, checking client plan...");
+      
+      // Now check client plan
+      try {
+        const { client_id } = await getClientFromRequest(req);
+        console.log("✅ Client plan is active, client_id:", client_id);
+      } catch (error) {
+        return res.status(error.status || 403).json({
+          success: false,
+          statuscode: error.status || 403,
+          errorMessage: error.message || "Client plan validation failed",
+        });
+      }
+    } else {
+      console.log("ℹ️ No user_id provided, skipping plan validation");
+    }
 
     const employees = await odooService.searchRead(
       "hr.employee",
@@ -185,8 +220,6 @@ exports.apiAttendance = async (req, res) => {
         check_out_image: false,
       });
 
-
-
       return res.status(200).json({
         success: true,
         statuscode: 200,
@@ -201,7 +234,6 @@ exports.apiAttendance = async (req, res) => {
         },
       });
     }
-
 
     const attendanceRecord = existingCheckin[0];
     if (attendanceRecord.checkout_lat || attendanceRecord.checkout_lon) {
@@ -262,6 +294,7 @@ exports.apiAttendance = async (req, res) => {
     });
   }
 };
+
 
 exports.getAllAttendancesMobile = async (req, res) => {
   try {
@@ -430,6 +463,7 @@ exports.getAllAttendancesMobile = async (req, res) => {
     });
   }
 };
+
 exports.apiCheckinCheckout = async (req, res) => {
   try {
     console.log("API CheckIn CheckOut called", req.query);

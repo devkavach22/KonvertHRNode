@@ -507,5 +507,13 @@ router.get("/branch", authenticate, apiController.getPartners.bind(apiController
 router.put("/branch/:id", authenticate, apiController.updatePartner.bind(apiController));
 router.delete("/branch/:id", authenticate, apiController.deletePartner.bind(apiController));
 
+router.post(
+  "/create/geoLocation",
+  authenticate,
+  apiController.createGeoLocation.bind(apiController)
+);
+
+router.get("/geoLocation", apiController.getAllGeoLocations.bind(apiController));
+
 module.exports = router;
 

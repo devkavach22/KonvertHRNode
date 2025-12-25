@@ -20,7 +20,7 @@ const {
   getAllAttendancePolicies,
   getAttendancePolicyById,
 } = require("../controller/controller.js");
-const authenticate = require("../../../Module2/middleware/auth.middleware");
+const authenticate = require("../../../Masters/middleware/auth.middleware.js");
 
 
 const router = express.Router();

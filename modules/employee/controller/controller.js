@@ -16,10 +16,10 @@ const {
 } = require("../service/service.js");
 
 const { odooHelpers } = require("../../../config/odoo.js");
-const odooService = require("../../../Module2/services/odoo.service.js");
+const odooService = require("../../../Masters/services/odoo.service.js");
 const {
   getClientFromRequest,
-} = require("../../../Module2/services/plan.helper");
+} = require("../../../Masters/services/plan.helper.js");
 
 const createBusinessType = async (req, res) => {
   try {

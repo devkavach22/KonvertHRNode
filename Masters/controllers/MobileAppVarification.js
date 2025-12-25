@@ -1,5 +1,6 @@
 const odooService = require("../services/odoo.service");
 exports.registerEmployeeDevice = async (req, res) => {
+  console.log("Mobile API Called")
   try {
       const {
       random_code_for_reg,

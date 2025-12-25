@@ -5311,7 +5311,6 @@ class ApiController {
   }
   async createGeoLocation(req, res) {
     try {
-
       const {
         name,
         latitude,
