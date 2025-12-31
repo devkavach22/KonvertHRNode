@@ -1692,6 +1692,240 @@ const deleteEmployee = async (req, res) => {
   }
 };
 
+const getEmployeeDashboard = async(req,res) => {
+try{
+const{
+user_id,
+leave_type_id,
+state,
+date_from,
+date_to,
+limit=10,
+offset=0,
+use_mock=false
+} = req.query;
+
+/* ───────── MOCK RESPONSE (FOR TESTING) ───────── */
+if (use_mock === "true") {
+return res.status(200).json({
+success: true,
+cards: [
+{ leave_type: "Annual Leave", total: 12, used: 5, remaining: 7 },
+{ leave_type: "Medical Leave", total: 10, used: 4, remaining: 6 },
+{ leave_type: "Casual Leave", total: 6, used: 1, remaining: 5 },
+{ leave_type: "Other Leave", total: 4, used: 2, remaining: 2 }
+],
+tableData: [
+{
+id: 101,
+leave_type: "Annual Leave",
+from: "2025-01-10",
+to: "2025-01-12",
+no_of_days: 3,
+status: "validate"
+},
+{
+id: 102,
+leave_type: "Medical Leave",
+from: "2025-02-05",
+to: "2025-02-05",
+no_of_days: 1,
+status: "confirm"
+},
+{
+id: 103,
+leave_type: "Unpaid Leave",
+from: "2025-03-01",
+to: "2025-03-03",
+no_of_days: 3,
+status: "confirm"
+}
+],
+meta: {
+total: 3,
+limit: Number(limit),
+offset: Number(offset)
+}
+});
+}
+
+if(!user_id){
+return res.status(400).json({
+success:false,
+errorMessage:"user_id is required"
+});
+}
+
+const user = await odooService.searchRead(
+"res.users",
+[["id","=",Number(user_id)]],
+["partner_id"],
+1
+);
+
+const partnerId = user?.[0]?.partner_id?.[0];
+if (!partnerId) throw new Error("Partner not found");
+
+const employee = await odooService.searchRead(
+"hr.employee",
+[["address_id", "=", partnerId]],
+["id", "name"],
+1
+);
+
+const employeeId = employee?.[0]?.id;
+if (!employeeId) throw new Error("Employee not found");
+
+const leaveTypes = await odooService.searchRead(
+"hr.leave.type",
+[],
+["id","name"]
+);
+
+/* ───────── CARD COUNTS (STATIC) ───────── */
+const allocations = await odooService.searchRead(
+"hr.leave.allocation",
+[
+["employee_id", "=", employeeId],
+["state", "=", "validate"],
+],
+["holiday_status_id", "number_of_days"]
+);
+
+const approvedLeaves = await odooService.searchRead(
+"hr.leave",
+[
+["employee_id", "=", employeeId],
+["state", "=", "validate"],
+],
+["holiday_status_id", "number_of_days"]
+);
+
+const cards = {
+annual: { leave_type: "Annual Leave", total: 0, used: 0, remaining: 0 },
+medical: { leave_type: "Medical Leave", total: 0, used: 0, remaining: 0 },
+casual: { leave_type: "Casual Leave", total: 0, used: 0, remaining: 0 },
+other: { leave_type: "Other Leave", total: 0, used: 0, remaining: 0 }
+};
+
+/* ───────── MAP LEAVE TYPE → CATEGORY ───────── */
+const leaveTypeCategoryMap = {};
+
+leaveTypes.forEach(t => {
+const name = t.name.toLowerCase();
+
+if (name.includes("annual")) leaveTypeCategoryMap[t.id] = "annual";
+else if (name.includes("medical")) leaveTypeCategoryMap[t.id] = "medical";
+else if (name.includes("casual")) leaveTypeCategoryMap[t.id] = "casual";
+else leaveTypeCategoryMap[t.id] = "other";
+});
+
+// Total allocated
+allocations.forEach(a => {
+// const leaveTypeId = a.holiday_status_id?.[0];
+const category = leaveTypeCategoryMap[a.holiday_status_id?.[0]] || "other";
+cards[category].total += a.number_of_days;
+// const id = a.holiday_status_id[0];
+// cardMap[id] = {
+// leave_type_id: id,
+// leave_type: a.holiday_status_id[1],
+// total: a.number_of_days,
+// used: 0,
+// };
+});
+
+// Used leaves
+approvedLeaves.forEach(l => {
+// const leaveTypeId = l.holiday_status_id?.[0];
+const category = leaveTypeCategoryMap[l.holiday_status_id?.[0]] || "other";
+cards[category].used += l.number_of_days;
+// const id = l.holiday_status_id[0];
+// if (cardMap[id]) {
+// cardMap[id].used += l.number_of_days;
+// }
+});
+
+Object.values(cards).forEach(c => {
+c.remaining = c.total - c.used;
+});
+
+const cardArray = Object.values(cards);
+
+// const cards = Object.values(cardMap).map(c => ({
+// ...c,
+// remaining: c.total - c.used,
+// }));
+
+/* ───────── TABLE DOMAIN (FILTERED) ───────── */
+let domain = [["employee_id", "=", employeeId]];
+
+if (leave_type_id)
+domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
+
+if (state)
+domain.push(["state", "=", state]);
+
+if (date_from)
+domain.push(["request_date_from", ">=", date_from]);
+
+if (date_to)
+domain.push(["request_date_to", "<=", date_to]);
+
+/* ───────── TOTAL COUNT ───────── */
+const totalCount = await odooService.searchCount(
+"hr.leave",
+domain
+);
+
+/* ───────── TABLE DATA ───────── */
+const leaves = await odooService.searchRead(
+"hr.leave",
+domain,
+[
+"id",
+"holiday_status_id",
+"request_date_from",
+"request_date_to",
+"number_of_days",
+"state",
+// "approver_id",
+],
+Number(offset),
+Number(limit),
+"request_date_from desc"
+);
+
+const tableData = leaves.map(l => ({
+id: l.id,
+leave_type_id: l.holiday_status_id[0],
+leave_type: l.holiday_status_id[1],
+from: l.request_date_from,
+to: l.request_date_to,
+no_of_days: l.number_of_days,
+// approved_by: l.approver_id?.[1] || "-",
+status: l.state,
+}));
+
+/* ───────── RESPONSE ───────── */
+return res.status(200).json({
+success: true,
+cards: cardArray, // 👈 Always same counts
+tableData, // 👈 Changes on card click
+meta: {
+total: totalCount,
+limit: Number(limit),
+offset: Number(offset),
+},
+});
+}
+catch (error){
+console.error("Employee Leave Error:",error);
+return res.status(500).json({
+success:false,
+errorMessage: error.message
+});
+}
+};
 module.exports = {
   createEmployee,
   updateEmployee,
@@ -1713,4 +1947,5 @@ module.exports = {
   deleteAttendancePolicy,
   getAllAttendancePolicies,
   getAttendancePolicyById,
+  getEmployeeDashboard
 };

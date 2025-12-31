@@ -19,6 +19,7 @@ const {
   deleteAttendancePolicy,
   getAllAttendancePolicies,
   getAttendancePolicyById,
+  getEmployeeDashboard
 } = require("../controller/controller.js");
 const authenticate = require("../../../Masters/middleware/auth.middleware.js");
 
@@ -72,4 +73,5 @@ router.put(
 
 router.get("/employees", authenticate, getEmployees);
 router.delete('/:id', deleteEmployee);
+router.get("/employee-dashboard",authenticate,getEmployeeDashboard);
 module.exports = router;
