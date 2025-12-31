@@ -5886,212 +5886,7 @@ class ApiController {
       });
     }
   }
-  // async getAdminAttendances(req, res) {
-  //   try {
-  //     const {
-  //       user_id,
-  //       date_from,
-  //       date_to,
-  //       limit = 100,
-  //       offset = 0,
-  //     } = req.query;
 
-  //     if (!user_id) {
-  //       return res.status(400).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: "user_id is required",
-  //       });
-  //     }
-
-  //     console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
-
-  //     const partner = await odooService.searchRead(
-  //       "res.users",
-  //       [["id", "=", parseInt(user_id)]],
-  //       ["id", "partner_id"]
-  //     );
-
-  //     if (!partner.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: `Partner not found for user_id: ${user_id}`,
-  //       });
-  //     }
-
-  //     const partnerId = partner[0].partner_id?.[0];
-
-  //     const adminEmployee = await odooService.searchRead(
-  //       "hr.employee",
-  //       [["address_id", "=", partnerId]],
-  //       ["id", "address_id"]
-  //     );
-
-  //     if (!adminEmployee.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: `Employee not found for partner ${partnerId}`,
-  //       });
-  //     }
-
-  //     const client_id = adminEmployee[0].address_id?.[0];
-  //     console.log(client_id, "✔ client_id");
-
-  //     const totalEmployees = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_number_of_employee",
-  //       [[], client_id]
-  //     );
-
-  //     const Presentemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_present_employee",
-  //       [client_id]
-  //     );
-
-  //     const TotalLateemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_late_employee",
-  //       [client_id]
-  //     );
-
-  //     const Ununiformendemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_uninformed_employee",
-  //       [client_id]
-  //     );
-
-  //     const TodayAbsetEmployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_employees_no_attendance_today",
-  //       [client_id]
-  //     );
-
-  //     const ApprovedLeaveOfEmployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_permited_employee",
-  //       [client_id]
-  //     );
-  //     console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee)
-
-  //     const allEmployees = await odooService.searchRead(
-  //       "hr.employee",
-  //       [["address_id", "=", client_id]],
-  //       ["id", "name", "job_id"]
-  //     );
-
-  //     if (!allEmployees.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: "No employees found for this client_id",
-  //       });
-  //     }
-  //     const employeeMap = {};
-  //     allEmployees.forEach(emp => {
-  //       employeeMap[emp.id] = {
-  //         job_id: emp.job_id || null,
-  //         job_name: emp.job_id ? emp.job_id[1] : null,
-  //       };
-  //     });
-
-  //     const employeeIds = allEmployees.map(e => e.id);
-  //     let domain = [["employee_id", "in", employeeIds]];
-  //     if (date_from) domain.push(["check_in", ">=", date_from]);
-  //     if (date_to) domain.push(["check_in", "<=", date_to]);
-
-  //     const FIELDS = [
-  //       "employee_id",
-  //       "check_in",
-  //       "checkin_lat",
-  //       "checkin_lon",
-  //       "check_out",
-  //       "checkout_lat",
-  //       "checkout_lon",
-  //       "worked_hours",
-  //       "early_out_minutes",
-  //       "overtime_hours",
-  //       "is_early_out",
-  //       "validated_overtime_hours",
-  //       "is_late_in",
-  //       "late_time_display",
-  //       "status_code",
-  //     ];
-  //     const attendances = await odooService.searchRead(
-  //       "hr.attendance",
-  //       domain,
-  //       FIELDS,
-  //       parseInt(offset),
-  //       parseInt(limit),
-  //       "check_in desc"
-  //     );
-
-  //     const attendanceMap = {};
-  //     attendances.forEach(a => {
-  //       const empId = a.employee_id?.[0];
-  //       attendanceMap[empId] = a;
-  //     });
-
-  //     const finalData = allEmployees.map(emp => {
-  //       const att = attendanceMap[emp.id];
-
-  //       return {
-  //         id: att?.id || null,
-  //         employee_id: [emp.id, emp.name],
-
-  //         check_in: att?.check_in || null,
-  //         checkin_lat: att?.checkin_lat || null,
-  //         checkin_lon: att?.checkin_lon || null,
-
-  //         check_out: att?.check_out || null,
-  //         checkout_lat: att?.checkout_lat || null,
-  //         checkout_lon: att?.checkout_lon || null,
-
-  //         worked_hours: att?.worked_hours || null,
-  //         early_out_minutes: att?.early_out_minutes || null,
-  //         overtime_hours: att?.overtime_hours || null,
-  //         validated_overtime_hours: att?.validated_overtime_hours || null,
-
-  //         is_late_in: att?.is_late_in || null,
-  //         late_time_display: att?.late_time_display || null,
-  //         is_early_out: att?.is_early_out || null,
-  //         status_code: att?.status_code || null,
-
-  //         job_id: emp.job_id || null,
-  //         job_name: emp.job_id ? emp.job_id[1] : null,
-  //       };
-  //     });
-  //     return res.status(200).json({
-  //       success: true,
-  //       status: "success",
-  //       successMessage: "Admin attendance records fetched",
-  //       data: finalData,
-  //       meta: {
-  //         total: finalData.length,
-  //         limit: parseInt(limit),
-  //         offset: parseInt(offset),
-  //         admin_partner_id: partnerId,
-  //         admin_address_id: client_id,
-  //         TotalEmployee: totalEmployees,
-  //         Presentemployee: Presentemployee,
-  //         TotalLateemployee: TotalLateemployee,
-  //         Ununiformendemployee: Ununiformendemployee,
-  //         TodayAbsetEmployee: TodayAbsetEmployee,
-  //         ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee
-  //       },
-  //     });
-
-  //   } catch (error) {
-  //     console.error("🔥 Admin Attendance Error:", error);
-  //     return res.status(500).json({
-  //       success: false,
-  //       status: "error",
-  //       errorMessage: error.message || "Failed to fetch admin attendance",
-  //     });
-  //   }
-  // }
 
 
   async getAdminAttendances(req, res) {
@@ -6147,7 +5942,6 @@ class ApiController {
     const client_id = adminEmployee[0].address_id?.[0];
     console.log(client_id, "✔ client_id");
 
-    // ---- custom stats calls (untouched) ----
     const totalEmployees = await odooService.callCustomMethod(
       "simple.action",
       "get_total_number_of_employee",
@@ -6185,7 +5979,6 @@ class ApiController {
     );
     console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee);
 
-    // ---- employees fetch ----
     const allEmployees = await odooService.searchRead(
       "hr.employee",
       [["address_id", "=", client_id]],
@@ -6225,7 +6018,6 @@ class ApiController {
       "status_code",
     ];
 
-    // ---- fetch hr.attendance ----
     const attendances = await odooService.searchRead(
       "hr.attendance",
       domain,
@@ -6241,9 +6033,6 @@ class ApiController {
       attendanceMap[empId] = a;
     });
 
-    // --------------------------------------------------------------------
-    // 🔥 NEW CODE: Fetch hr.attendance.line for break_start, break_end, break_hours
-    // --------------------------------------------------------------------
     const attendanceIds = attendances.map(a => a.id);
 
     let breakLines = [];
@@ -6255,13 +6044,11 @@ class ApiController {
       );
     }
 
-    // map attendance_id → break line
     const breakMap = {};
     breakLines.forEach(line => {
       const attId = line.attendance_id?.[0];
       breakMap[attId] = line;
     });
-    // --------------------------------------------------------------------
 
     const finalData = allEmployees.map(emp => {
       const att = attendanceMap[emp.id];
@@ -6289,7 +6076,6 @@ class ApiController {
         is_early_out: att?.is_early_out || null,
         status_code: att?.status_code || null,
 
-        // 🔥 break fields added correctly
         break_start: breakLine?.break_start || null,
         break_end: breakLine?.break_end || null,
         break_hours: breakLine?.break_hours || null,
