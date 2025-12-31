@@ -130,6 +130,14 @@ class OdooService {
       userPassword
     );
   }
+  async searchCount(model, domain) {
+    try {
+      return await this.execute(model, 'search_count', [domain]);
+    } catch (error) {
+      console.error(`Error in searchCount for model ${model}:`, error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new OdooService();
