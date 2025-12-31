@@ -24,6 +24,7 @@
     "multer": "^2.0.2",
     "nodemailer": "^7.0.10",
     "odoo-xmlrpc": "^1.0.8",
+    "pm2": "^6.0.14",
     "redis": "^5.10.0"
   },
   "devDependencies": {

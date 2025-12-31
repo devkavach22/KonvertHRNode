@@ -641,7 +641,6 @@ const updateAttendancePolicy = async (req, res) => {
       });
     }
 
-    // Validate data
     const validationError = validateAttendancePolicyData(data, true);
     if (validationError) {
       return res.status(validationError.status).json({
@@ -714,7 +713,36 @@ const getEmployeeByCode = async (req, res) => {
   }
 };
 
-
+const cleanBase64 = (base64String) => {
+  if (!base64String || base64String === null) {
+    return null;
+  }
+  
+  try {
+    // Remove data URL prefix if present (e.g., "data:image/png;base64,")
+    let cleaned = base64String;
+    if (cleaned.includes(',')) {
+      cleaned = cleaned.split(',')[1];
+    }
+    
+    // Remove whitespace and newlines
+    cleaned = cleaned.replace(/\s/g, '');
+    
+    // Validate if it's proper base64
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned)) {
+      console.error('Invalid base64 format');
+      return null;
+    }
+    
+    // Verify it can be decoded
+    Buffer.from(cleaned, 'base64');
+    
+    return cleaned;
+  } catch (error) {
+    console.error('Error cleaning base64:', error);
+    return null;
+  }
+};
 
 const createEmployee = async (req, res) => {
   try {
@@ -788,7 +816,23 @@ const createEmployee = async (req, res) => {
       driving_license,
       upload_passbook,
       image_1920,
+      group_id,
+      approval_user_id,
+      approval_sequance,
+      longitude,
+      device_id,
+      device_unique_id,
+      latitude,
+      device_name,
+      system_version,
+      ip_address,
+      device_platform,
     } = req.body;
+
+    // Clean base64 images
+    const cleanedDrivingLicense = cleanBase64(driving_license);
+    const cleanedPassbook = cleanBase64(upload_passbook);
+    const cleanedImage = cleanBase64(image_1920);
 
     const requiredFields = {
       name,
@@ -853,112 +897,15 @@ const createEmployee = async (req, res) => {
 
     const { client_id } = await getClientFromRequest(req);
     const userIdFromParams = req.query.user_id ? parseInt(req.query.user_id) : null;
-    
+
     console.log("user_id from params:", userIdFromParams);
     console.log("client_id:", client_id);
 
-    const data = {
-      name: trimmedName,
-      father_name,
-      gender,
-      birthday,
-      blood_group,
-      private_email: trimmedEmail,
-      present_address,
-      permanent_address,
-      emergency_contact_name,
-      emergency_contact_relation,
-      emergency_contact_address,
-      emergency_contact_mobile,
-      mobile_phone,
-      pin_code,
-      address_id: client_id ? parseInt(client_id) : undefined,
-      work_phone,
-      marital,
-      spouse_name,
-      attendance_policy_id: attendance_policy_id
-        ? parseInt(attendance_policy_id)
-        : undefined,
-      employee_category,
-      shift_roster_id: shift_roster_id ? parseInt(shift_roster_id) : undefined,
-      resource_calendar_id: resource_calendar_id
-        ? parseInt(resource_calendar_id)
-        : undefined,
-      district_id: district_id ? parseInt(district_id) : undefined,
-      state_id: state_id ? parseInt(state_id) : undefined,
-      bussiness_type_id: bussiness_type_id
-        ? parseInt(bussiness_type_id)
-        : undefined,
-      business_location_id: business_location_id
-        ? parseInt(business_location_id)
-        : undefined,
-      job_id: job_id ? parseInt(job_id) : undefined,
-      department_id: department_id ? parseInt(department_id) : undefined,
-      work_location_id: work_location_id
-        ? parseInt(work_location_id)
-        : undefined,
-      country_id: country_id ? parseInt(country_id) : undefined,
-      is_geo_tracking: is_geo_tracking ?? false,
-      aadhaar_number,
-      pan_number,
-      voter_id,
-      passport_id,
-      esi_number,
-      category,
-      is_uan_number_applicable,
-      uan_number,
-      cd_employee_num,
-      name_of_post_graduation,
-      name_of_any_other_education,
-      total_experiance,
-      religion,
-      date_of_marriage,
-      probation_period,
-      confirmation_date,
-      hold_remarks,
-      is_lapse_allocation,
-      group_company_joining_date,
-      week_off,
-      grade_band,
-      status,
-      employee_password,
-      hold_status,
-      bank_account_id,
-      attendance_capture_mode,
-      reporting_manager_id: reporting_manager_id
-        ? parseInt(reporting_manager_id)
-        : undefined,
-      head_of_department_id: head_of_department_id
-        ? parseInt(head_of_department_id)
-        : undefined,
-      pin,
-      type_of_sepration,
-      resignation_date,
-      notice_period_days,
-      joining_date,
-      employment_type,
-      driving_license: driving_license || null,
-      upload_passbook: upload_passbook || null,
-      image_1920: image_1920 || null,
-      name_of_site: name_of_site ? parseInt(name_of_site) : undefined,
-    };
-
-    // Use the custom create method with user_id
-    const create_uid_value = userIdFromParams || (client_id ? parseInt(client_id) : undefined);
-    console.log("create_uid will be set to:", create_uid_value);
-
-    const employeeId = await odooHelpers.createWithCustomUid(
-      "hr.employee",
-      data,
-      create_uid_value
-    );
-    
-    console.log("Employee created with ID:", employeeId);
-    console.log("create_uid successfully set to:", create_uid_value);
-
     let userId = null;
+    let employeeId = null;
+
     try {
-      console.log("Attempting to create user for employee ID:", employeeId);
+      console.log("Checking if user already exists with email:", trimmedEmail);
       const existingUser = await odooHelpers.searchRead(
         "res.users",
         [["login", "=", trimmedEmail]],
@@ -968,25 +915,124 @@ const createEmployee = async (req, res) => {
       if (existingUser.length > 0) {
         console.log("User already exists with this email:", existingUser[0]);
         userId = existingUser[0].id;
+        const data = {
+          name: trimmedName,
+          father_name,
+          gender,
+          birthday,
+          blood_group,
+          private_email: trimmedEmail,
+          present_address,
+          permanent_address,
+          emergency_contact_name,
+          emergency_contact_relation,
+          emergency_contact_address,
+          emergency_contact_mobile,
+          mobile_phone,
+          pin_code,
+          address_id: client_id ? parseInt(client_id) : undefined,
+          work_phone,
+          marital,
+          spouse_name,
+          attendance_policy_id: attendance_policy_id
+            ? parseInt(attendance_policy_id)
+            : undefined,
+          employee_category,
+          shift_roster_id: shift_roster_id ? parseInt(shift_roster_id) : undefined,
+          resource_calendar_id: resource_calendar_id
+            ? parseInt(resource_calendar_id)
+            : undefined,
+          district_id: district_id ? parseInt(district_id) : undefined,
+          state_id: state_id ? parseInt(state_id) : undefined,
+          bussiness_type_id: bussiness_type_id
+            ? parseInt(bussiness_type_id)
+            : undefined,
+          business_location_id: business_location_id
+            ? parseInt(business_location_id)
+            : undefined,
+          job_id: job_id ? parseInt(job_id) : undefined,
+          department_id: department_id ? parseInt(department_id) : undefined,
+          work_location_id: work_location_id
+            ? parseInt(work_location_id)
+            : undefined,
+          country_id: country_id ? parseInt(country_id) : undefined,
+          is_geo_tracking: is_geo_tracking ?? false,
+          aadhaar_number,
+          pan_number,
+          voter_id,
+          passport_id,
+          esi_number,
+          category,
+          is_uan_number_applicable,
+          uan_number,
+          cd_employee_num,
+          name_of_post_graduation,
+          name_of_any_other_education,
+          total_experiance,
+          religion,
+          date_of_marriage,
+          probation_period,
+          confirmation_date,
+          hold_remarks,
+          is_lapse_allocation,
+          group_company_joining_date,
+          week_off,
+          grade_band,
+          status,
+          employee_password,
+          hold_status,
+          bank_account_id,
+          attendance_capture_mode,
+          reporting_manager_id: reporting_manager_id
+            ? parseInt(reporting_manager_id)
+            : undefined,
+          head_of_department_id: head_of_department_id
+            ? parseInt(head_of_department_id)
+            : undefined,
+          pin,
+          type_of_sepration,
+          resignation_date,
+          notice_period_days,
+          joining_date,
+          employment_type,
+          driving_license: cleanedDrivingLicense,
+          upload_passbook: cleanedPassbook,
+          image_1920: cleanedImage,
+          name_of_site: name_of_site ? parseInt(name_of_site) : undefined,
+          user_id: userId,
+          longitude: longitude || null,
+          device_id: device_id || null,
+          device_unique_id: device_unique_id || null,
+          latitude: latitude || null,
+          device_name: device_name || null,
+          system_version: system_version || null,
+          ip_address: ip_address || null,
+          device_platform: device_platform || null,
+        };
+
+        const create_uid_value = userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+        console.log("create_uid will be set to:", create_uid_value);
+
+        employeeId = await odooHelpers.createWithCustomUid(
+          "hr.employee",
+          data,
+          create_uid_value
+        );
+
+        console.log("Employee created with ID:", employeeId);
 
         await odooHelpers.write("res.users", userId, {
           employee_ids: [[4, employeeId]],
         });
 
-        await odooHelpers.write("hr.employee", employeeId, {
-          user_id: userId,
-        });
-
-        console.log("Linked existing user to employee");
+        console.log("Linked existing user to new employee");
       } else {
-        // Create new user
         const userData = {
           name: trimmedName,
           login: trimmedEmail,
           email: trimmedEmail,
           phone: work_phone || "",
           mobile: mobile_phone || "",
-          employee_ids: [[4, employeeId]],
         };
 
         console.log("Creating user with data:", userData);
@@ -994,35 +1040,160 @@ const createEmployee = async (req, res) => {
         userId = await odooHelpers.create("res.users", userData);
         console.log("User created with ID:", userId);
 
-        await odooHelpers.write("hr.employee", employeeId, {
-          user_id: userId,
-        });
+        const autoCreatedEmployee = await odooHelpers.searchRead(
+          "hr.employee",
+          [["user_id", "=", userId]],
+          ["id"]
+        );
 
-        console.log("Employee updated with user_id:", userId);
+        if (autoCreatedEmployee.length > 0) {
+          employeeId = autoCreatedEmployee[0].id;
+          console.log("Found auto-created employee with ID:", employeeId);
+
+          const updateData = {
+            father_name,
+            gender,
+            birthday,
+            blood_group,
+            private_email: trimmedEmail,
+            present_address,
+            permanent_address,
+            emergency_contact_name,
+            emergency_contact_relation,
+            emergency_contact_address,
+            emergency_contact_mobile,
+            mobile_phone,
+            pin_code,
+            address_id: client_id ? parseInt(client_id) : undefined,
+            work_phone,
+            marital,
+            spouse_name,
+            attendance_policy_id: attendance_policy_id
+              ? parseInt(attendance_policy_id)
+              : undefined,
+            employee_category,
+            shift_roster_id: shift_roster_id ? parseInt(shift_roster_id) : undefined,
+            resource_calendar_id: resource_calendar_id
+              ? parseInt(resource_calendar_id)
+              : undefined,
+            district_id: district_id ? parseInt(district_id) : undefined,
+            state_id: state_id ? parseInt(state_id) : undefined,
+            bussiness_type_id: bussiness_type_id
+              ? parseInt(bussiness_type_id)
+              : undefined,
+            business_location_id: business_location_id
+              ? parseInt(business_location_id)
+              : undefined,
+            job_id: job_id ? parseInt(job_id) : undefined,
+            department_id: department_id ? parseInt(department_id) : undefined,
+            work_location_id: work_location_id
+              ? parseInt(work_location_id)
+              : undefined,
+            country_id: country_id ? parseInt(country_id) : undefined,
+            is_geo_tracking: is_geo_tracking ?? false,
+            aadhaar_number,
+            pan_number,
+            voter_id,
+            passport_id,
+            esi_number,
+            category,
+            is_uan_number_applicable,
+            uan_number,
+            cd_employee_num,
+            name_of_post_graduation,
+            name_of_any_other_education,
+            total_experiance,
+            religion,
+            date_of_marriage,
+            probation_period,
+            confirmation_date,
+            hold_remarks,
+            is_lapse_allocation,
+            group_company_joining_date,
+            week_off,
+            grade_band,
+            status,
+            employee_password,
+            hold_status,
+            bank_account_id,
+            attendance_capture_mode,
+            reporting_manager_id: reporting_manager_id
+              ? parseInt(reporting_manager_id)
+              : undefined,
+            head_of_department_id: head_of_department_id
+              ? parseInt(head_of_department_id)
+              : undefined,
+            pin,
+            type_of_sepration,
+            resignation_date,
+            notice_period_days,
+            joining_date,
+            employment_type,
+            driving_license: cleanedDrivingLicense,
+            upload_passbook: cleanedPassbook,
+            image_1920: cleanedImage,
+            name_of_site: name_of_site ? parseInt(name_of_site) : undefined,
+            longitude: longitude || null,
+            device_id: device_id || null,
+            device_unique_id: device_unique_id || null,
+            latitude: latitude || null,
+            device_name: device_name || null,
+            system_version: system_version || null,
+            ip_address: ip_address || null,
+            device_platform: device_platform || null,
+          };
+
+          await odooHelpers.write("hr.employee", employeeId, updateData);
+          console.log("Updated employee with all data");
+        } else {
+          console.error("Auto-created employee not found!");
+          return res.status(500).json({
+            status: "error",
+            message: "Employee auto-creation failed",
+          });
+        }
       }
-    } catch (userError) {
-      console.error("Error creating user:", userError);
 
-      // Employee created but user creation failed
-      return res.status(200).json({
-        status: "partial_success",
-        message: "Employee created successfully but user creation failed",
+      if (group_id && approval_user_id && approval_sequance !== undefined) {
+        try {
+          console.log("Creating employee approval user details...");
+          const approvalData = {
+            group_id: parseInt(group_id),
+            user_id: parseInt(approval_user_id),
+            approval_sequance: parseInt(approval_sequance),
+            employee_id: employeeId,
+          };
+
+          const approvalId = await odooHelpers.create(
+            "employee.approval.user.details",
+            approvalData
+          );
+
+          console.log("Employee approval user details created with ID:", approvalId);
+        } catch (approvalError) {
+          console.error("Error creating approval details:", approvalError);
+        }
+      }
+
+      const create_uid_value = userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+
+      return res.status(201).json({
+        status: "success",
+        message: "Employee and user created successfully",
         id: employeeId,
         user_id: userId,
         created_by: create_uid_value,
         created_date: new Date().toISOString(),
-        user_creation_error: userError.message,
+      });
+    } catch (userError) {
+      console.error("Error in user/employee creation:", userError);
+
+      return res.status(500).json({
+        status: "error",
+        message: userError.message || "Failed to create employee and user",
+        error_details: userError,
       });
     }
-
-    return res.status(201).json({
-      status: "success",
-      message: "Employee and user created successfully",
-      id: employeeId,
-      user_id: userId,
-      created_by: create_uid_value,
-      created_date: new Date().toISOString(),
-    });
   } catch (error) {
     console.error("Error creating employee:", error);
     return res.status(error.status || 500).json({
@@ -1031,7 +1202,6 @@ const createEmployee = async (req, res) => {
     });
   }
 };
-
 const getEmployees = async (req, res) => {
   try {
     const { client_id } = await getClientFromRequest(req);
@@ -1125,8 +1295,6 @@ const getEmployees = async (req, res) => {
     });
   }
 };
-
-
 const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1208,7 +1376,6 @@ const updateEmployee = async (req, res) => {
       image_1920,
     } = req.body;
 
-    // Check if employee exists
     const existingEmployee = await odooHelpers.searchRead(
       "hr.employee",
       [["id", "=", parseInt(id)]],
@@ -1224,16 +1391,12 @@ const updateEmployee = async (req, res) => {
 
     const currentEmployee = existingEmployee[0];
 
-    // Check for duplicate name or email (excluding current employee)
     if (name || private_email) {
       const trimmedName = name?.trim();
       const trimmedEmail = private_email?.trim();
 
       let duplicateCheckDomain = [];
-
-      // Build the domain based on what fields are being updated
       if (trimmedName && trimmedEmail) {
-        // Both name and email provided
         duplicateCheckDomain = [
           "&",
           ["id", "!=", parseInt(id)],
@@ -1242,14 +1405,12 @@ const updateEmployee = async (req, res) => {
           ["private_email", "=", trimmedEmail],
         ];
       } else if (trimmedName) {
-        // Only name provided
         duplicateCheckDomain = [
           "&",
           ["id", "!=", parseInt(id)],
           ["name", "=", trimmedName],
         ];
       } else if (trimmedEmail) {
-        // Only email provided
         duplicateCheckDomain = [
           "&",
           ["id", "!=", parseInt(id)],
@@ -1290,10 +1451,9 @@ const updateEmployee = async (req, res) => {
       }
     }
 
-    // Get client_id and user_id from request
     const { client_id } = await getClientFromRequest(req);
     const userIdFromParams = req.query.user_id ? parseInt(req.query.user_id) : null;
-    
+
     console.log("user_id from params (for write_uid):", userIdFromParams);
     console.log("client_id:", client_id);
 
@@ -1413,14 +1573,14 @@ const updateEmployee = async (req, res) => {
     if (write_uid_value) {
       try {
         const tableName = "hr_employee";
-        
+
         await odooHelpers.updateAuditFields(
           tableName,
           [parseInt(id)],
           null, // We don't want to change create_uid
           write_uid_value
         );
-        
+
         console.log(`Successfully updated write_uid to ${write_uid_value} for employee ${id}`);
       } catch (auditError) {
         console.error("Failed to update write_uid:", auditError.message);
@@ -1532,7 +1692,6 @@ const deleteEmployee = async (req, res) => {
   }
 };
 
-// Export controller
 module.exports = {
   createEmployee,
   updateEmployee,

@@ -25,15 +25,37 @@ function parseRequestBody(body) {
   return body;
 }
 
+function cleanBase64Image(imageString) {
+  if (!imageString) {
+    return false;
+  }
+
+  try {
+    let cleaned = imageString.trim().replace(/\s/g, '');
+    if (cleaned.startsWith('data:image')) {
+      const base64Index = cleaned.indexOf('base64,');
+      if (base64Index !== -1) {
+        cleaned = cleaned.substring(base64Index + 7);
+      }
+    }
+    cleaned = cleaned.replace(/[^A-Za-z0-9+/=]/g, '');
+
+    if (cleaned.length === 0 || cleaned.length % 4 !== 0) {
+      console.warn("⚠️ Invalid base64 length");
+      return false;
+    }
+
+    return cleaned;
+  } catch (error) {
+    console.error("🔥 Error cleaning base64:", error);
+    return false;
+  }
+}
+
 exports.apiAttendance = async (req, res) => {
   try {
-    console.log("🔹 Raw Body:", req.body);
-
     const parsedBody = parseRequestBody(req.body);
-    console.log("🔹 Parsed Body:", parsedBody);
-
     let { email, Image, Latitude, Longitude, check_in, check_out, user_id } = parsedBody;
-
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -49,10 +71,6 @@ exports.apiAttendance = async (req, res) => {
         errorMessage: "Latitude & Longitude are required",
       });
     }
-
-    console.log("📍 Latitude type:", typeof Latitude, "| Value:", Latitude);
-    console.log("📍 Longitude type:", typeof Longitude, "| Value:", Longitude);
-
     const lat = parseFloat(Latitude);
     const lon = parseFloat(Longitude);
 
@@ -73,7 +91,7 @@ exports.apiAttendance = async (req, res) => {
     Latitude = lat;
     Longitude = lon;
 
-    // Find user by email
+    const cleanedImage = cleanBase64Image(Image);
     const users = await odooService.searchRead(
       "res.users",
       [["login", "=", email]],
@@ -91,12 +109,9 @@ exports.apiAttendance = async (req, res) => {
 
     const user = users[0];
 
-    // ✅ IMPORTANT: If user_id is provided, verify it matches the email's user
     if (user_id) {
-      console.log("🔍 user_id provided, verifying it matches the email...");
-      
       const providedUserId = parseInt(user_id);
-      
+
       if (user.id !== providedUserId) {
         return res.status(403).json({
           success: false,
@@ -104,13 +119,8 @@ exports.apiAttendance = async (req, res) => {
           errorMessage: "User ID does not match the provided email",
         });
       }
-
-      console.log("✅ user_id matches email, checking client plan...");
-      
-      // Now check client plan
       try {
         const { client_id } = await getClientFromRequest(req);
-        console.log("✅ Client plan is active, client_id:", client_id);
       } catch (error) {
         return res.status(error.status || 403).json({
           success: false,
@@ -118,10 +128,7 @@ exports.apiAttendance = async (req, res) => {
           errorMessage: error.message || "Client plan validation failed",
         });
       }
-    } else {
-      console.log("ℹ️ No user_id provided, skipping plan validation");
     }
-
     const employees = await odooService.searchRead(
       "hr.employee",
       [["user_id", "=", user.id]],
@@ -200,13 +207,11 @@ exports.apiAttendance = async (req, res) => {
     const location = `${Longitude}, ${Latitude}`;
 
     if (!existingCheckin.length) {
-      console.log("✨ Creating NEW check-in record...");
-
       const createData = {
         employee_id: employee.id,
         check_in: currentTimeUTC,
         location,
-        check_in_image: Image || false,
+        check_in_image: cleanedImage,
         checkin_lat: parseFloat(Latitude),
         checkin_lon: parseFloat(Longitude),
         check_out: false,
@@ -255,7 +260,7 @@ exports.apiAttendance = async (req, res) => {
     const updateData = {
       check_out: checkoutTimeUTC,
       location,
-      check_out_image: Image || false,
+      check_out_image: cleanedImage,
       checkout_lat: parseFloat(Latitude),
       checkout_lon: parseFloat(Longitude),
     };
@@ -294,8 +299,6 @@ exports.apiAttendance = async (req, res) => {
     });
   }
 };
-
-
 exports.getAllAttendancesMobile = async (req, res) => {
   try {
     const {
@@ -318,8 +321,6 @@ exports.getAllAttendancesMobile = async (req, res) => {
     }
 
     console.log("🔍 Searching user in res.users:", user_id);
-
-    // Step 1: find user in Odoo
     const users = await odooService.searchRead(
       "res.users",
       [["id", "=", parseInt(user_id)]],
@@ -338,6 +339,7 @@ exports.getAllAttendancesMobile = async (req, res) => {
 
     const user = users[0];
     console.log("👤 Odoo User Found:", user);
+
     const employee = await odooService.searchRead(
       "hr.employee",
       [["user_id", "=", user.id]],
@@ -355,10 +357,9 @@ exports.getAllAttendancesMobile = async (req, res) => {
     }
 
     const employeeId = employee[0].id;
-    console.log("✅ Employee found:", employee[0]);
-
     let finalDateFrom = date_from;
     let finalDateTo = date_to;
+
     if (month && year) {
       const m = parseInt(month);
       const y = parseInt(year);
@@ -376,7 +377,6 @@ exports.getAllAttendancesMobile = async (req, res) => {
 
     if (finalDateFrom) domain.push(["check_in", ">=", finalDateFrom]);
     if (finalDateTo) domain.push(["check_in", "<=", finalDateTo]);
-
     const REQUIRED_FIELDS = [
       "check_in",
       "checkin_lat",
@@ -391,7 +391,9 @@ exports.getAllAttendancesMobile = async (req, res) => {
       "validated_overtime_hours",
       "is_late_in",
       "late_time_display",
-      "status_code"
+      "status_code",
+      "check_in_image",
+      "check_out_image"
     ];
 
     const attendances = await odooService.searchRead(
@@ -404,6 +406,7 @@ exports.getAllAttendancesMobile = async (req, res) => {
     );
 
     const totalCount = await odooService.search("hr.attendance", domain);
+
     if ((month && year) && totalCount.length === 0) {
       const monthNames = [
         "", "January", "February", "March", "April", "May", "June",
@@ -431,6 +434,7 @@ exports.getAllAttendancesMobile = async (req, res) => {
         },
       });
     }
+
     return res.status(200).json({
       success: true,
       status: "success",
@@ -454,7 +458,6 @@ exports.getAllAttendancesMobile = async (req, res) => {
 
   } catch (error) {
     console.error("🔥 Error fetching attendances:", error);
-
     return res.status(500).json({
       success: false,
       status: "error",
@@ -512,13 +515,11 @@ exports.apiCheckinCheckout = async (req, res) => {
 
     const employee = employees[0];
     console.log("Employee found:", employee);
-
     const attendances = await odooService.searchRead(
       "hr.attendance",
       [["employee_id", "=", employee.id]],
       ["id", "check_in", "check_out"],
-      1,
-      "check_in desc"
+      1
     );
 
     let status = "";
@@ -538,8 +539,8 @@ exports.apiCheckinCheckout = async (req, res) => {
       employee_id: employee.id,
       message: message,
     });
+
   } catch (err) {
-    console.error("🔥 ERROR in apiCheckinCheckout:", err);
     return res.status(500).json({
       success: false,
       errorMessage: err.message,

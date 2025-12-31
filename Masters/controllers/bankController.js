@@ -1,89 +1,119 @@
 const odooService = require("../services/odoo.service");
 const { getClientFromRequest } = require("../services/plan.helper");
 class BankController {
-  async createBank(req, res) {
-    try {
-      const { name, bic, swift_code, micr_code, phone, street, email } =
-        req.body;
-      if (!name || name.trim() === "") {
-        return res.status(400).json({
-          status: "error",
-          message: "Bank name is required",
-        });
-      }
-      const { client_id } = await getClientFromRequest(req);
-      const existing = await odooService.searchRead(
-        "res.bank",
-        [
-          ["name", "=", name.trim()],
-          ["client_id", "=", client_id],
-        ],
-        ["id"],
-        1
-      );
+async createBank(req, res) {
+  try {
+    const {
+      name,
+      bic,
+      swift_code,
+      micr_code,
+      phone,
+      street,
+      street2,
+      city,
+      state,
+      zip,
+      country,
+      email
+    } = req.body;
 
-      if (existing.length) {
-        return res.status(409).json({
-          status: "error",
-          message: `Bank with name '${name}' already exists for this client`,
-        });
-      }
-      const data = {
-        name: name.trim(),
-        bic: bic || "",
-        swift_code: swift_code || "",
-        micr_code: micr_code || "",
-        phone: phone || "",
-        street: street || "",
-        client_id,
-        email,
-      };
-      const id = await odooService.create("res.bank", data);
-      return res.status(201).json({
-        status: "success",
-        message: "Bank created successfully",
-        bank: { id, ...data },
-      });
-    } catch (error) {
-      console.error("Create Bank Error:", error);
-      return res.status(error.status || 500).json({
+    if (!name || name.trim() === "") {
+      return res.status(400).json({
         status: "error",
-        message: error.message || "Failed to create bank",
+        message: "Bank name is required",
       });
     }
-  }
 
-  async getAllBanks(req, res) {
-    try {
-      const { client_id } = await getClientFromRequest(req);
-      const banks = await odooService.searchRead(
-        "res.bank",
-        [["client_id", "=", client_id]],
-        [
-          "id",
-          "name",
-          "bic",
-          "swift_code",
-          "micr_code",
-          "phone",
-          "email",
-          "street",
-        ]
-      );
+    const { client_id } = await getClientFromRequest(req);
 
-      return res.status(200).json({
-        status: "success",
-        banks,
-      });
-    } catch (error) {
-      console.error("Get Banks Error:", error);
+    const existing = await odooService.searchRead(
+      "res.bank",
+      [
+        ["name", "=", name.trim()],
+        ["client_id", "=", client_id],
+      ],
+      ["id"],
+      1
+    );
 
-      return res.status(error.status || 500).json({
+    if (existing.length) {
+      return res.status(409).json({
         status: "error",
-        message: error.message || "Failed to fetch banks",
+        message: `Bank with name '${name}' already exists for this client`,
       });
     }
+
+    const data = {
+      name: name.trim(),
+      bic: bic || "",
+      swift_code: swift_code || "",
+      micr_code: micr_code || "",
+      phone: phone || "",
+      street: street || "",
+      street2: street2 || "",
+      city: city || "",
+      state: state || null,
+      zip: zip || "",
+      country: country|| null,
+      client_id,
+      email,
+    };
+
+    const id = await odooService.create("res.bank", data);
+    return res.status(201).json({
+      status: "success",
+      message: "Bank created successfully",
+      bank: { id, ...data },
+    });
+  } catch (error) {
+    console.error("Create Bank Error:", error);
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to create bank",
+    });
   }
+}
+
+
+async getAllBanks(req, res) {
+  try {
+    const { client_id } = await getClientFromRequest(req);
+
+    const banks = await odooService.searchRead(
+      "res.bank",
+      [["client_id", "=", client_id]],
+      [
+        "id",
+        "name",
+        "bic",
+        "swift_code",
+        "micr_code",
+        "phone",
+        "email",
+        "street",
+        "street2",
+        "city",
+        "state",
+        "zip",
+        "country"
+      ]
+    );
+
+    return res.status(200).json({
+      status: "success",
+      banks,
+    });
+  } catch (error) {
+    console.error("Get Banks Error:", error);
+
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to fetch banks",
+    });
+  }
+}
+
 
   async updateBank(req, res) {
     try {
@@ -196,7 +226,6 @@ async createBankAccount(req, res) {
       currency,
     } = req.body;
 
-    // ❌ Required validation
     if (!partner_name || !acc_number) {
       return res.status(400).json({
         status: "error",
@@ -204,10 +233,7 @@ async createBankAccount(req, res) {
       });
     }
 
-    // 🔑 CLIENT CHECK
     const { client_id } = await getClientFromRequest(req);
-
-    // 🔎 CHECK IF ACCOUNT NUMBER ALREADY EXISTS
     const existingAccounts = await odooService.searchRead(
       "res.partner.bank",
       [["acc_number", "=", acc_number.trim()]],
@@ -221,8 +247,6 @@ async createBankAccount(req, res) {
         message: `Bank account with number '${acc_number}' already exists`,
       });
     }
-
-    // 🔎 LOOKUP BANK BY NAME + CLIENT
     let bank_id = false;
     if (bank_name) {
       const bankRecords = await odooService.searchRead(
@@ -244,8 +268,6 @@ async createBankAccount(req, res) {
 
       bank_id = bankRecords[0].id;
     }
-
-    // 🔎 LOOKUP PARTNER BY NAME
     const partnerRecords = await odooService.searchRead(
       "res.partner",
       [["name", "=", partner_name.trim()]],
@@ -261,8 +283,6 @@ async createBankAccount(req, res) {
     }
 
     const partner_id = partnerRecords[0].id;
-
-    // 🔎 VALIDATE CURRENCY
     let currency_id = false;
     if (currency) {
       const allowedCurrencies = ["USD", "INR"];
@@ -290,16 +310,15 @@ async createBankAccount(req, res) {
       currency_id = currencyRecords[0].id;
     }
 
-    // ✅ CREATE BANK ACCOUNT
     const data = {
-      bank_id: bank_id || false, // optional
+      bank_id: bank_id || false, 
       partner_id,
       acc_number,
       bank_swift_code: bank_swift_code || "",
       bank_iafc_code: bank_iafc_code || "",
       currency_id: currency_id || false,
-      client_id, // required client linkage
-      allow_out_payment: true, // always true
+      client_id, 
+      allow_out_payment: true,
     };
 
     const id = await odooService.create("res.partner.bank", data);
@@ -322,10 +341,8 @@ async createBankAccount(req, res) {
 
 async getAllBankAccounts(req, res) {
   try {
-    // 🔑 Get client ID from request
     const { client_id } = await getClientFromRequest(req);
 
-    // 🔎 Fetch bank accounts for this client
     const bankAccounts = await odooService.searchRead(
       "res.partner.bank",
       [["client_id", "=", client_id]],
@@ -360,7 +377,7 @@ async getAllBankAccounts(req, res) {
 
 async updateBankAccount(req, res) {
   try {
-    const { id } = req.params; // bank account ID
+    const { id } = req.params; 
     const {
       bank_name,
       partner_name,
@@ -380,7 +397,6 @@ async updateBankAccount(req, res) {
       });
     }
 
-    // 🔎 Check if the bank account exists for this client
     const existingBankAccount = await odooService.searchRead(
       "res.partner.bank",
       [["id", "=", parseInt(id)], ["client_id", "=", client_id]],
@@ -394,7 +410,6 @@ async updateBankAccount(req, res) {
       });
     }
 
-    // 🔎 Check for duplicate account number
     if (acc_number) {
       const duplicate = await odooService.searchRead(
         "res.partner.bank",
@@ -415,7 +430,6 @@ async updateBankAccount(req, res) {
       }
     }
 
-    // 🔎 Resolve bank_id if bank_name is provided
     let bank_id = false;
     if (bank_name) {
       const bankRecords = await odooService.searchRead(
@@ -434,7 +448,6 @@ async updateBankAccount(req, res) {
       bank_id = bankRecords[0].id;
     }
 
-    // 🔎 Resolve partner_id if partner_name is provided
     let partner_id = false;
     if (partner_name) {
       const partnerRecords = await odooService.searchRead(
@@ -453,7 +466,6 @@ async updateBankAccount(req, res) {
       partner_id = partnerRecords[0].id;
     }
 
-    // 🔎 Resolve currency_id if provided
     let currency_id = false;
     if (currency) {
       const allowedCurrencies = ["USD", "INR"];
@@ -480,7 +492,6 @@ async updateBankAccount(req, res) {
       currency_id = currencyRecords[0].id;
     }
 
-    // ✅ Prepare data object for update
     const data = {
       ...(bank_id && { bank_id }),
       ...(partner_id && { partner_id }),
@@ -491,7 +502,6 @@ async updateBankAccount(req, res) {
       ...(allow_out_payment !== undefined && { allow_out_payment: !!allow_out_payment }),
     };
 
-    // 🔑 Perform update
     await odooService.write("res.partner.bank", [parseInt(id)], data);
 
     return res.status(200).json({
@@ -510,10 +520,8 @@ async updateBankAccount(req, res) {
 
 async deleteBankAccount(req, res) {
   try {
-    const { id } = req.params; // bank account ID
+    const { id } = req.params; 
     const { client_id } = await getClientFromRequest(req);
-
-    // 🔎 Check if the bank account exists for this client
     const existingBankAccount = await odooService.searchRead(
       "res.partner.bank",
       [["id", "=", parseInt(id)], ["client_id", "=", client_id]],
@@ -527,7 +535,6 @@ async deleteBankAccount(req, res) {
       });
     }
 
-    // 🔑 Delete the bank account
     await odooService.unlink("res.partner.bank", [parseInt(id)]);
 
     return res.status(200).json({

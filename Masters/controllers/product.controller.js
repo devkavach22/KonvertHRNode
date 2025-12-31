@@ -211,50 +211,6 @@ module.exports = {
     }
   },
 
-  // async getProducts(req, res) {
-  //   try {
-  //     console.log("Product API called .......")
-  //     let products = await odooService.searchRead(
-  //       "product.product",
-  //       [
-  //         ["type", "=", "service"],
-  //         ["is_plan", "=", true],
-  //       ],
-  //       [
-  //         "id",
-  //         "name",
-  //         "type",
-  //         "list_price",
-  //         "default_code",
-  //         "description",
-  //         "ideal_for",
-  //         "fees",
-  //         "duration_periods_no",
-  //         "duration",
-  //         "is_highlight",
-  //       ]
-  //     );
-
-  //     products = products.map((p) => ({
-  //       ...p,
-  //       description: p.description ? p.description.replace(/<[^>]*>/g, "") : "",
-  //     }));
-
-  //     return res.status(200).json({
-  //       status: "success",
-  //       count: products.length,
-  //       data: products,
-  //     });
-
-  //   } catch (error) {
-  //     return res.status(500).json({
-  //       status: "error",
-  //       message: "Failed to fetch products",
-  //       error: error.message,
-  //     });
-  //   }
-  // },
-
   async getProducts(req, res) {
     try {
       console.log("Product API called .......");
@@ -280,7 +236,6 @@ module.exports = {
         ]
       );
 
-      // Remove HTML tags from description
       products = products.map((p) => ({
         ...p,
         description: p.description
@@ -288,7 +243,6 @@ module.exports = {
           : "",
       }));
 
-      // 🔽 Sort by price (small → greatest)
       products.sort((a, b) => {
         const priceA = a.list_price || 0;
         const priceB = b.list_price || 0;
@@ -455,7 +409,6 @@ module.exports = {
       });
     }
   },
-
   async deleteProduct(req, res) {
     try {
       const { id } = req.params;

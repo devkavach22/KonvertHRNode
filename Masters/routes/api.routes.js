@@ -8,19 +8,19 @@ const productController = require("../controllers/product.controller");
 const companyController = require("../controllers/company.controller");
 const invoiceController = require("../controllers/invoice.controller");
 const { registerEmployeeDevice } = require("../controllers/MobileAppVarification");
-
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
-
 const CheckInandCheckout = require("../controllers/checkin.controller");
-
+const PayrollController = require("../../modules/Payroll/Payroll.controller");
+const LeaveController = require("../../modules/LeaveModule/Leave.controller");
 router.post("/auth", apiController.auth.bind(apiController));
-
 router.post(
   "/lead/create",
   authenticate,
   apiController.createLead.bind(apiController)
 );
+
+
 router.get(
   "/countries",
   authenticate,
@@ -260,7 +260,7 @@ router.post(
 router.put(
   "/tag/:id",
   authenticate,
- 
+
   apiController.updateTag.bind(apiController)
 );
 router.delete(
@@ -269,7 +269,6 @@ router.delete(
   apiController.deleteTag.bind(apiController)
 );
 
-// for the Invoice Creation
 router.post(
   "/Payment",
   authenticate,
@@ -295,6 +294,11 @@ router.get(
 );
 
 router.put(
+  "/admin/updateattendances/:id",
+  authenticate,
+  apiController.updateAdminAttendance.bind(apiController)
+);
+router.put(
   "/update/attendance/:id",
   authenticate,
   apiController.updateAttendance.bind(apiController)
@@ -307,7 +311,7 @@ router.delete(
 );
 
 router.get(
-  "/attendance",
+  "/employee/attendance",
   authenticate,
   apiController.getAllAttendances.bind(apiController)
 );
@@ -350,7 +354,6 @@ router.put(
   companyController.archiveCompany.bind(companyController)
 );
 
-// Mobile
 router.post(
   "/employee/attandence",
   authenticate,
@@ -512,8 +515,220 @@ router.post(
   authenticate,
   apiController.createGeoLocation.bind(apiController)
 );
-
 router.get("/geoLocation", apiController.getAllGeoLocations.bind(apiController));
+router.put("/geoLocation/:id", authenticate, apiController.updateGeoLocation.bind(apiController));
+router.delete("/geoLocation/:id", authenticate, apiController.deleteGeoLocation.bind(apiController));
 
+router.post(
+  "/create/regularization",
+  authenticate,
+  apiController.createAttendanceRegularization.bind(apiController)
+);
+router.get("/regularization", apiController.getAttendanceRegularization.bind(apiController));
+router.put("/regularization/:id", authenticate, apiController.updateAttendanceRegularization.bind(apiController));
+
+
+router.post(
+  "/create/regcategory",
+  authenticate,
+  apiController.createRegCategory.bind(apiController)
+);
+router.get("/regcategories", apiController.getRegCategories.bind(apiController));
+router.put("/regcategories/:id", authenticate, apiController.updateRegCategory.bind(apiController));
+router.delete("/regcategories/:id", authenticate, apiController.deleteRegCategory.bind(apiController));
+
+
+// Salary 
+router.post(
+  "/create/structure-type",
+  authenticate,
+  PayrollController.createStructureType.bind(PayrollController)
+);
+router.get("/structure-types", authenticate, PayrollController.getStructureTypes.bind(PayrollController));
+
+router.post(
+  "/create/salary-rule-category",
+  authenticate,
+  PayrollController.createSalaryRuleCategory.bind(PayrollController)
+);
+router.get("/salary-rule-categories", authenticate, PayrollController.getSalaryRuleCategories.bind(PayrollController));
+
+router.post(
+  "/create/salary-rule",
+  authenticate,
+  PayrollController.createSalaryRule.bind(PayrollController)
+);
+router.get("/salary-rules", authenticate, PayrollController.getSalaryRules.bind(PayrollController));
+
+
+router.get("/groups", authenticate, apiController.getGroupList.bind(apiController));
+
+router.get(
+  "/groups/users",
+  authenticate,
+  apiController.getGroupUsers.bind(apiController)
+);
+
+router.post(
+  "/create/leave-type",
+  authenticate,
+  LeaveController.createLeaveType.bind(LeaveController)
+);
+
+router.get(
+  "/leave-type",
+  authenticate,
+  LeaveController.getLeaveTypes.bind(LeaveController)
+);
+
+router.post(
+  "/create/leave-allocate",
+  authenticate,
+  LeaveController.createLeaveAllocation.bind(LeaveController)
+);
+
+router.get(
+  "/leave-allocate",
+  authenticate,
+  LeaveController.getLeaveAllocation.bind(LeaveController)
+);
+
+router.post(
+  "/create/leave-request",
+  authenticate,
+  LeaveController.createLeaveRequest.bind(LeaveController)
+);
+
+router.get(
+  "/leave-request",
+  authenticate,
+  LeaveController.getLeaveRequest.bind(LeaveController)
+);
+
+router.get(
+  "/admin/leave-dashboard",
+  authenticate,
+  LeaveController.getAdminLeave.bind(LeaveController)
+);
+
+router.post(
+  "/create/salary-structure",
+  authenticate,
+  PayrollController.createSalaryStructure.bind(PayrollController)
+);
+
+router.get(
+  "/salary-structure",
+  authenticate,
+  PayrollController.getSalaryStructure.bind(PayrollController)
+);
+
+router.post(
+  "/create/public-holiday",
+  authenticate,
+  LeaveController.createPublicHoliday.bind(LeaveController)
+);
+
+router.get(
+  "/public-holiday",
+  authenticate,
+  LeaveController.getPublicHoliday.bind(LeaveController)
+);
+
+router.post(
+  "/create/accural-plan",
+  authenticate,
+  LeaveController.createAccrualPlan.bind(LeaveController)
+);
+
+router.get(
+  "/accural-plan",
+  authenticate,
+  LeaveController.getAccrualPlan.bind(LeaveController)
+);
+
+router.post(
+  "/create/mandatory-days",
+  authenticate,
+  LeaveController.createMandatoryDays.bind(LeaveController)
+);
+
+router.get(
+  "/mandatory-days",
+  authenticate,
+  LeaveController.getMandatoryDays.bind(LeaveController)
+);
+
+router.put(
+  "/leave-type/:id",
+  authenticate,
+  LeaveController.updateLeaveType.bind(LeaveController)
+);
+
+router.delete(
+  "/leave-type/:id",
+  authenticate,
+  LeaveController.deleteLeaveType.bind(LeaveController)
+);
+
+router.put(
+  "/leave-allocation/:id",
+  authenticate,
+  LeaveController.updateLeaveAllocation.bind(LeaveController)
+);
+
+router.delete(
+  "/leave-allocation/:id",
+  authenticate,
+  LeaveController.deleteLeaveAllocation.bind(LeaveController)
+);
+
+router.put(
+  "/leave-request/:id",
+  authenticate,
+  LeaveController.updateLeaveRequest.bind(LeaveController)
+);
+
+router.delete(
+  "/leave-request/:id",
+  authenticate,
+  LeaveController.deleteLeaveRequest.bind(LeaveController)
+);
+
+router.put(
+  "/public-holiday/:id",
+  authenticate,
+  LeaveController.updatePublicHoliday.bind(LeaveController)
+);
+
+router.delete(
+  "/public-holiday/:id",
+  authenticate,
+  LeaveController.deletePublicHoliday.bind(LeaveController)
+);
+
+router.put(
+  "/accural-plan/:id",
+  authenticate,
+  LeaveController.updateAccrualPlan.bind(LeaveController)
+);
+
+router.delete(
+  "/accural-plan/:id",
+  authenticate,
+  LeaveController.deleteAccrualPlan.bind(LeaveController)
+);
+
+router.put(
+  "/mandatory-days/:id",
+  authenticate,
+  LeaveController.updateMandatoryDays.bind(LeaveController)
+);
+
+router.delete(
+  "/mandatory-days/:id",
+  authenticate,
+  LeaveController.deleteMandatoryDays.bind(LeaveController)
+);
 module.exports = router;
 
