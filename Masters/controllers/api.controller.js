@@ -4988,104 +4988,7 @@ class ApiController {
       });
     }
   }
-  async getAllAttendances(req, res) {
-    try {
-      const {
-        user_id,
-        date_from,
-        date_to,
-        limit = 100,
-        offset = 0,
-      } = req.query;
-      if (!user_id) {
-        return res.status(400).json({
-          success: false,
-          status: "error",
-          errorMessage: "user_id is required",
-          successMessage: "",
-          statuscode: 400,
-        });
-      }
-      console.log("🔍 Searching employee for user_id:", user_id);
-      const employee = await odooService.searchRead(
-        "hr.employee",
-        [["user_id", "=", parseInt(user_id)]],
-        ["id", "name"]
-      );
-      if (!employee.length) {
-        return res.status(400).json({
-          success: false,
-          status: "error",
-          errorMessage: `No employee found for user_id: ${user_id}`,
-          successMessage: "",
-          statuscode: 404,
-        });
-      }
-      const employeeId = employee[0].id;
-      console.log("✅ Employee found:", employee[0]);
-      let domain = [["employee_id", "=", employeeId]];
-      if (date_from) {
-        domain.push(["check_in", ">=", date_from]);
-      }
-      if (date_to) {
-        domain.push(["check_in", "<=", date_to]);
-      }
-      const REQUIRED_FIELDS = [
-        "check_in",
-        "checkin_lat",
-        "checkin_lon",
-        "check_out",
-        "checkout_lat",
-        "checkout_lon",
-        "worked_hours",
-        "early_out_minutes",
-        "overtime_hours",
-        "is_early_out",
-        "validated_overtime_hours",
-        "is_late_in",
-        "late_time_display",
-        "status_code"
-      ];
 
-      const attendances = await odooService.searchRead(
-        "hr.attendance",
-        domain,
-        REQUIRED_FIELDS,
-        parseInt(offset),
-        parseInt(limit),
-        "check_in desc"
-      );
-
-      const totalCount = await odooService.search("hr.attendance", domain);
-
-      console.log("📤 Attendance records found:", attendances.length);
-
-      return res.status(200).json({
-        success: true,
-        status: "success",
-        successMessage: "Attendance records fetched successfully",
-        statuscode: 200,
-        data: attendances,
-        meta: {
-          total: totalCount.length,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          employee_name: employee[0].name,
-          employee_id: employeeId,
-        },
-      });
-
-    } catch (error) {
-      console.error("🔥 Error fetching attendances:", error);
-      return res.status(500).json({
-        success: false,
-        status: "error",
-        errorMessage: error.message || "Failed to fetch attendances",
-        successMessage: "",
-        statuscode: 500,
-      });
-    }
-  }
 
   async updateAttendance(req, res) {
     try {
@@ -5606,8 +5509,6 @@ class ApiController {
       });
     }
   }
-
-
   async updateAttendanceRegularization(req, res) {
     try {
       console.log("API Called: updateAttendanceRegularization");
@@ -5661,13 +5562,6 @@ class ApiController {
       });
     }
   }
-
-
-
-
-
-
-
   async getRegCategories(req, res) {
     try {
       console.log("API Called getRegCategories");
@@ -5886,235 +5780,231 @@ class ApiController {
       });
     }
   }
-
-
-
   async getAdminAttendances(req, res) {
-  try {
-    const {
-      user_id,
-      date_from,
-      date_to,
-      limit = 100,
-      offset = 0,
-    } = req.query;
+    try {
+      const {
+        user_id,
+        date_from,
+        date_to,
+        limit = 100,
+        offset = 0,
+      } = req.query;
 
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        status: "error",
-        errorMessage: "user_id is required",
-      });
-    }
+      if (!user_id) {
+        return res.status(400).json({
+          success: false,
+          status: "error",
+          errorMessage: "user_id is required",
+        });
+      }
 
-    console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
+      console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
 
-    const partner = await odooService.searchRead(
-      "res.users",
-      [["id", "=", parseInt(user_id)]],
-      ["id", "partner_id"]
-    );
-
-    if (!partner.length) {
-      return res.status(404).json({
-        success: false,
-        status: "error",
-        errorMessage: `Partner not found for user_id: ${user_id}`,
-      });
-    }
-
-    const partnerId = partner[0].partner_id?.[0];
-
-    const adminEmployee = await odooService.searchRead(
-      "hr.employee",
-      [["address_id", "=", partnerId]],
-      ["id", "address_id"]
-    );
-
-    if (!adminEmployee.length) {
-      return res.status(404).json({
-        success: false,
-        status: "error",
-        errorMessage: `Employee not found for partner ${partnerId}`,
-      });
-    }
-
-    const client_id = adminEmployee[0].address_id?.[0];
-    console.log(client_id, "✔ client_id");
-
-    const totalEmployees = await odooService.callCustomMethod(
-      "simple.action",
-      "get_total_number_of_employee",
-      [[], client_id]
-    );
-
-    const Presentemployee = await odooService.callCustomMethod(
-      "simple.action",
-      "get_total_present_employee",
-      [client_id]
-    );
-
-    const TotalLateemployee = await odooService.callCustomMethod(
-      "simple.action",
-      "get_total_no_of_late_employee",
-      [client_id]
-    );
-
-    const Ununiformendemployee = await odooService.callCustomMethod(
-      "simple.action",
-      "get_total_no_of_uninformed_employee",
-      [client_id]
-    );
-
-    const TodayAbsetEmployee = await odooService.callCustomMethod(
-      "simple.action",
-      "get_employees_no_attendance_today",
-      [client_id]
-    );
-
-    const ApprovedLeaveOfEmployee = await odooService.callCustomMethod(
-      "simple.action",
-      "get_total_no_of_permited_employee",
-      [client_id]
-    );
-    console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee);
-
-    const allEmployees = await odooService.searchRead(
-      "hr.employee",
-      [["address_id", "=", client_id]],
-      ["id", "name", "job_id"]
-    );
-
-    if (!allEmployees.length) {
-      return res.status(404).json({
-        success: false,
-        status: "error",
-        errorMessage: "No employees found for this client_id",
-      });
-    }
-
-    const employeeIds = allEmployees.map(e => e.id);
-
-    let domain = [["employee_id", "in", employeeIds]];
-    if (date_from) domain.push(["check_in", ">=", date_from]);
-    if (date_to) domain.push(["check_in", "<=", date_to]);
-
-    // ---- attendance fields ----
-    const FIELDS = [
-      "employee_id",
-      "check_in",
-      "checkin_lat",
-      "checkin_lon",
-      "check_out",
-      "checkout_lat",
-      "checkout_lon",
-      "worked_hours",
-      "early_out_minutes",
-      "overtime_hours",
-      "is_early_out",
-      "validated_overtime_hours",
-      "is_late_in",
-      "late_time_display",
-      "status_code",
-    ];
-
-    const attendances = await odooService.searchRead(
-      "hr.attendance",
-      domain,
-      FIELDS,
-      parseInt(offset),
-      parseInt(limit),
-      "check_in desc"
-    );
-
-    const attendanceMap = {};
-    attendances.forEach(a => {
-      const empId = a.employee_id?.[0];
-      attendanceMap[empId] = a;
-    });
-
-    const attendanceIds = attendances.map(a => a.id);
-
-    let breakLines = [];
-    if (attendanceIds.length > 0) {
-      breakLines = await odooService.searchRead(
-        "hr.attendance.line",
-        [["attendance_id", "in", attendanceIds]],
-        ["attendance_id", "break_start", "break_end", "break_hours"]
+      const partner = await odooService.searchRead(
+        "res.users",
+        [["id", "=", parseInt(user_id)]],
+        ["id", "partner_id"]
       );
+
+      if (!partner.length) {
+        return res.status(404).json({
+          success: false,
+          status: "error",
+          errorMessage: `Partner not found for user_id: ${user_id}`,
+        });
+      }
+
+      const partnerId = partner[0].partner_id?.[0];
+
+      const adminEmployee = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", partnerId]],
+        ["id", "address_id"]
+      );
+
+      if (!adminEmployee.length) {
+        return res.status(404).json({
+          success: false,
+          status: "error",
+          errorMessage: `Employee not found for partner ${partnerId}`,
+        });
+      }
+
+      const client_id = adminEmployee[0].address_id?.[0];
+      console.log(client_id, "✔ client_id");
+
+      const totalEmployees = await odooService.callCustomMethod(
+        "simple.action",
+        "get_total_number_of_employee",
+        [[], client_id]
+      );
+
+      const Presentemployee = await odooService.callCustomMethod(
+        "simple.action",
+        "get_total_present_employee",
+        [client_id]
+      );
+
+      const TotalLateemployee = await odooService.callCustomMethod(
+        "simple.action",
+        "get_total_no_of_late_employee",
+        [client_id]
+      );
+
+      const Ununiformendemployee = await odooService.callCustomMethod(
+        "simple.action",
+        "get_total_no_of_uninformed_employee",
+        [client_id]
+      );
+
+      const TodayAbsetEmployee = await odooService.callCustomMethod(
+        "simple.action",
+        "get_employees_no_attendance_today",
+        [client_id]
+      );
+
+      const ApprovedLeaveOfEmployee = await odooService.callCustomMethod(
+        "simple.action",
+        "get_total_no_of_permited_employee",
+        [client_id]
+      );
+      console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee);
+
+      const allEmployees = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", client_id]],
+        ["id", "name", "job_id"]
+      );
+
+      if (!allEmployees.length) {
+        return res.status(404).json({
+          success: false,
+          status: "error",
+          errorMessage: "No employees found for this client_id",
+        });
+      }
+
+      const employeeIds = allEmployees.map(e => e.id);
+
+      let domain = [["employee_id", "in", employeeIds]];
+      if (date_from) domain.push(["check_in", ">=", date_from]);
+      if (date_to) domain.push(["check_in", "<=", date_to]);
+
+      // ---- attendance fields ----
+      const FIELDS = [
+        "employee_id",
+        "check_in",
+        "checkin_lat",
+        "checkin_lon",
+        "check_out",
+        "checkout_lat",
+        "checkout_lon",
+        "worked_hours",
+        "early_out_minutes",
+        "overtime_hours",
+        "is_early_out",
+        "validated_overtime_hours",
+        "is_late_in",
+        "late_time_display",
+        "status_code",
+      ];
+
+      const attendances = await odooService.searchRead(
+        "hr.attendance",
+        domain,
+        FIELDS,
+        parseInt(offset),
+        parseInt(limit),
+        "check_in desc"
+      );
+
+      const attendanceMap = {};
+      attendances.forEach(a => {
+        const empId = a.employee_id?.[0];
+        attendanceMap[empId] = a;
+      });
+
+      const attendanceIds = attendances.map(a => a.id);
+
+      let breakLines = [];
+      if (attendanceIds.length > 0) {
+        breakLines = await odooService.searchRead(
+          "hr.attendance.line",
+          [["attendance_id", "in", attendanceIds]],
+          ["attendance_id", "break_start", "break_end", "break_hours"]
+        );
+      }
+
+      const breakMap = {};
+      breakLines.forEach(line => {
+        const attId = line.attendance_id?.[0];
+        breakMap[attId] = line;
+      });
+
+      const finalData = allEmployees.map(emp => {
+        const att = attendanceMap[emp.id];
+        const breakLine = att ? breakMap[att.id] : null;
+
+        return {
+          id: att?.id || null,
+          employee_id: [emp.id, emp.name],
+
+          check_in: att?.check_in || null,
+          checkin_lat: att?.checkin_lat || null,
+          checkin_lon: att?.checkin_lon || null,
+
+          check_out: att?.check_out || null,
+          checkout_lat: att?.checkout_lat || null,
+          checkout_lon: att?.checkout_lon || null,
+
+          worked_hours: att?.worked_hours || null,
+          early_out_minutes: att?.early_out_minutes || null,
+          overtime_hours: att?.overtime_hours || null,
+          validated_overtime_hours: att?.validated_overtime_hours || null,
+
+          is_late_in: att?.is_late_in || null,
+          late_time_display: att?.late_time_display || null,
+          is_early_out: att?.is_early_out || null,
+          status_code: att?.status_code || null,
+
+          break_start: breakLine?.break_start || null,
+          break_end: breakLine?.break_end || null,
+          break_hours: breakLine?.break_hours || null,
+
+          job_id: emp.job_id || null,
+          job_name: emp.job_id ? emp.job_id[1] : null,
+        };
+      });
+
+      return res.status(200).json({
+        success: true,
+        status: "success",
+        successMessage: "Admin attendance records fetched",
+        data: finalData,
+        meta: {
+          total: finalData.length,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          admin_partner_id: partnerId,
+          admin_address_id: client_id,
+          TotalEmployee: totalEmployees,
+          Presentemployee: Presentemployee,
+          TotalLateemployee: TotalLateemployee,
+          Ununiformendemployee: Ununiformendemployee,
+          TodayAbsetEmployee: TodayAbsetEmployee,
+          ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee
+        },
+      });
+
+    } catch (error) {
+      console.error("🔥 Admin Attendance Error:", error);
+      return res.status(500).json({
+        success: false,
+        status: "error",
+        errorMessage: error.message || "Failed to fetch admin attendance",
+      });
     }
-
-    const breakMap = {};
-    breakLines.forEach(line => {
-      const attId = line.attendance_id?.[0];
-      breakMap[attId] = line;
-    });
-
-    const finalData = allEmployees.map(emp => {
-      const att = attendanceMap[emp.id];
-      const breakLine = att ? breakMap[att.id] : null;
-
-      return {
-        id: att?.id || null,
-        employee_id: [emp.id, emp.name],
-
-        check_in: att?.check_in || null,
-        checkin_lat: att?.checkin_lat || null,
-        checkin_lon: att?.checkin_lon || null,
-
-        check_out: att?.check_out || null,
-        checkout_lat: att?.checkout_lat || null,
-        checkout_lon: att?.checkout_lon || null,
-
-        worked_hours: att?.worked_hours || null,
-        early_out_minutes: att?.early_out_minutes || null,
-        overtime_hours: att?.overtime_hours || null,
-        validated_overtime_hours: att?.validated_overtime_hours || null,
-
-        is_late_in: att?.is_late_in || null,
-        late_time_display: att?.late_time_display || null,
-        is_early_out: att?.is_early_out || null,
-        status_code: att?.status_code || null,
-
-        break_start: breakLine?.break_start || null,
-        break_end: breakLine?.break_end || null,
-        break_hours: breakLine?.break_hours || null,
-
-        job_id: emp.job_id || null,
-        job_name: emp.job_id ? emp.job_id[1] : null,
-      };
-    });
-
-    return res.status(200).json({
-      success: true,
-      status: "success",
-      successMessage: "Admin attendance records fetched",
-      data: finalData,
-      meta: {
-        total: finalData.length,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        admin_partner_id: partnerId,
-        admin_address_id: client_id,
-        TotalEmployee: totalEmployees,
-        Presentemployee: Presentemployee,
-        TotalLateemployee: TotalLateemployee,
-        Ununiformendemployee: Ununiformendemployee,
-        TodayAbsetEmployee: TodayAbsetEmployee,
-        ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee
-      },
-    });
-
-  } catch (error) {
-    console.error("🔥 Admin Attendance Error:", error);
-    return res.status(500).json({
-      success: false,
-      status: "error",
-      errorMessage: error.message || "Failed to fetch admin attendance",
-    });
   }
-}
-
   async updateAdminAttendance(req, res) {
     try {
       const { id } = req.params;
@@ -6163,100 +6053,437 @@ class ApiController {
       });
     }
   }
-
-
-async getGroupList(req, res) {
-  try {
-    const groups = await odooService.searchRead(
-      "res.groups",
-      [],
-      ["id", "name"]
-    );
-
-    const data = groups.map(g => ({
-      group_id: g.id,
-      group_name: g.name
-    }));
-
-    return res.status(200).json({
-      status: "success",
-      message: "Group list fetched",
-      data,
-    });
-
-  } catch (error) {
-    console.error("❌ Get Group List Error:", error);
-    return res.status(500).json({
-      status: "error",
-      message: error.message,
-    });
-  }
-}
-
-async getGroupUsers(req, res) {
-  try {
-    const { group_id, group_name } = req.query;
-
-    if (!group_id && !group_name) {
-      return res.status(400).json({
-        status: "error",
-        message: "group_id or group_name is required",
-      });
-    }
-    const domain = group_id
-      ? [["id", "=", Number(group_id)]]
-      : [["name", "=", group_name]];
-
-    const groups = await odooService.searchRead(
-      "res.groups",
-      domain,
-      ["id", "name", "users"]
-    );
-
-    if (groups.length === 0) {
-      return res.status(404).json({
-        status: "error",
-        message: "Group not found",
-      });
-    }
-
-    const group = groups[0];
-
-    let userDetails = [];
-
-    if (group.users && group.users.length > 0) {
-      const users = await odooService.searchRead(
-        "res.users",
-        [["id", "in", group.users]],
-        ["id", "name", "login"]
+  async getGroupList(req, res) {
+    try {
+      const groups = await odooService.searchRead(
+        "res.groups",
+        [],
+        ["id", "name"]
       );
 
-      userDetails = users.map(u => ({
-        user_id: u.id,
-        name: u.name,
-        login: u.login
+      const data = groups.map(g => ({
+        group_id: g.id,
+        group_name: g.name
       }));
+
+      return res.status(200).json({
+        status: "success",
+        message: "Group list fetched",
+        data,
+      });
+
+    } catch (error) {
+      console.error("❌ Get Group List Error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
     }
-
-    return res.status(200).json({
-      status: "success",
-      message: "Group users fetched",
-      data: {
-        group_id: group.id,
-        group_name: group.name,
-        users: userDetails
-      },
-    });
-
-  } catch (error) {
-    console.error("❌ Get Group Users Error:", error);
-    return res.status(500).json({
-      status: "error",
-      message: error.message,
-    });
   }
-}
+  async getGroupUsers(req, res) {
+    try {
+      const { group_id, group_name } = req.query;
 
+      if (!group_id && !group_name) {
+        return res.status(400).json({
+          status: "error",
+          message: "group_id or group_name is required",
+        });
+      }
+      const domain = group_id
+        ? [["id", "=", Number(group_id)]]
+        : [["name", "=", group_name]];
+
+      const groups = await odooService.searchRead(
+        "res.groups",
+        domain,
+        ["id", "name", "users"]
+      );
+
+      if (groups.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "Group not found",
+        });
+      }
+
+      const group = groups[0];
+
+      let userDetails = [];
+
+      if (group.users && group.users.length > 0) {
+        const users = await odooService.searchRead(
+          "res.users",
+          [["id", "in", group.users]],
+          ["id", "name", "login"]
+        );
+
+        userDetails = users.map(u => ({
+          user_id: u.id,
+          name: u.name,
+          login: u.login
+        }));
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Group users fetched",
+        data: {
+          group_id: group.id,
+          group_name: group.name,
+          users: userDetails
+        },
+      });
+
+    } catch (error) {
+      console.error("❌ Get Group Users Error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
+    }
+  }
+  async getAllAttendances(req, res) {
+    try {
+      const {
+        user_id,
+        date_from,
+        date_to,
+        limit = 100,
+        offset = 0,
+      } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          success: false,
+          status: "error",
+          errorMessage: "user_id is required",
+          successMessage: "",
+          statuscode: 400,
+        });
+      }
+
+      console.log("🔍 Searching employee for user_id:", user_id);
+
+      // ---- fetch employee ----
+      const employee = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", parseInt(user_id)]],
+        ["id", "name"]
+      );
+
+      if (!employee.length) {
+        return res.status(400).json({
+          success: false,
+          status: "error",
+          errorMessage: `No employee found for user_id: ${user_id}`,
+          successMessage: "",
+          statuscode: 404,
+        });
+      }
+
+      const employeeId = employee[0].id;
+      console.log("✅ Employee found:", employee[0]);
+
+      // ---- build attendance domain ----
+      let domain = [["employee_id", "=", employeeId]];
+      if (date_from) domain.push(["check_in", ">=", date_from]);
+      if (date_to) domain.push(["check_in", "<=", date_to]);
+
+      // ---- attendance fields ----
+      const REQUIRED_FIELDS = [
+        "employee_id",
+        "check_in",
+        "checkin_lat",
+        "checkin_lon",
+        "check_out",
+        "checkout_lat",
+        "checkout_lon",
+        "worked_hours",
+        "early_out_minutes",
+        "overtime_hours",
+        "is_early_out",
+        "validated_overtime_hours",
+        "is_late_in",
+        "late_time_display",
+        "status_code"
+      ];
+
+      // ---- fetch hr.attendance ----
+      const attendances = await odooService.searchRead(
+        "hr.attendance",
+        domain,
+        REQUIRED_FIELDS,
+        parseInt(offset),
+        parseInt(limit),
+        "check_in desc"
+      );
+
+      const totalCount = await odooService.search("hr.attendance", domain);
+
+      console.log("📤 Attendance records found:", attendances.length);
+
+      // --------------------------------------------------------------------
+      // 🔥 NEW: Fetch break fields from hr.attendance.line
+      // --------------------------------------------------------------------
+      const attendanceIds = attendances.map(a => a.id);
+
+      let breakLines = [];
+      if (attendanceIds.length > 0) {
+        breakLines = await odooService.searchRead(
+          "hr.attendance.line",
+          [["attendance_id", "in", attendanceIds]],
+          ["attendance_id", "break_start", "break_end", "break_hours"]
+        );
+      }
+
+      // map attendance_id → break line
+      const breakMap = {};
+      breakLines.forEach(line => {
+        const attId = line.attendance_id?.[0];
+        breakMap[attId] = line;
+      });
+      // --------------------------------------------------------------------
+
+      // ---- merge break data into attendance ----
+      const finalAttendance = attendances.map(att => {
+        const breakLine = breakMap[att.id] || null;
+
+        return {
+          ...att,
+
+          break_start: breakLine?.break_start || null,
+          break_end: breakLine?.break_end || null,
+          break_hours: breakLine?.break_hours || null,
+        };
+      });
+
+      return res.status(200).json({
+        success: true,
+        status: "success",
+        successMessage: "Attendance records fetched successfully",
+        statuscode: 200,
+        data: finalAttendance,
+        meta: {
+          total: totalCount.length,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          employee_name: employee[0].name,
+          employee_id: employeeId,
+        },
+      });
+
+    } catch (error) {
+      console.error("🔥 Error fetching attendances:", error);
+      return res.status(500).json({
+        success: false,
+        status: "error",
+        errorMessage: error.message || "Failed to fetch attendances",
+        successMessage: "",
+        statuscode: 500,
+      });
+    }
+  }
+
+  async getEmployeeWorkingHours(req, res) {
+    try {
+      const { user_id, date } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          success: false,
+          status: "error",
+          errorMessage: "user_id is required",
+          successMessage: "",
+          statuscode: 400,
+        });
+      }
+      const targetDate = date || new Date().toISOString().split('T')[0];
+      const employee = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", parseInt(user_id)]],
+        ["id", "name", "resource_calendar_id"]
+      );
+
+      if (!employee.length) {
+        return res.status(404).json({
+          success: false,
+          status: "error",
+          errorMessage: `No employee found for user_id: ${user_id}`,
+          successMessage: "",
+          statuscode: 404,
+        });
+      }
+
+      const employeeData = employee[0];
+      if (!employeeData.resource_calendar_id) {
+        return res.status(404).json({
+          success: false,
+          status: "error",
+          errorMessage: "No resource calendar assigned to this employee",
+          successMessage: "",
+          statuscode: 404,
+        });
+      }
+
+      const calendarId = Array.isArray(employeeData.resource_calendar_id)
+        ? employeeData.resource_calendar_id[0]
+        : employeeData.resource_calendar_id;
+      const calendar = await odooService.searchRead(
+        "resource.calendar",
+        [["id", "=", calendarId]],
+        ["id", "name", "hours_per_day"]
+      );
+
+      if (!calendar.length) {
+        return res.status(404).json({
+          success: false,
+          status: "error",
+          errorMessage: "Resource calendar not found",
+          successMessage: "",
+          statuscode: 404,
+        });
+      }
+      const allowedHoursPerDay = calendar[0].hours_per_day || 0;
+
+      const getDateRanges = (dateString) => {
+        const currentDate = new Date(dateString);
+        const todayStart = `${dateString} 00:00:00`;
+        const todayEnd = `${dateString} 23:59:59`;
+
+        const currentDay = currentDate.getDay();
+        const mondayOffset = currentDay === 0 ? -6 : 1 - currentDay;
+        const weekStart = new Date(currentDate);
+        weekStart.setDate(currentDate.getDate() + mondayOffset);
+        const weekStartStr = weekStart.toISOString().split('T')[0] + ' 00:00:00';
+
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        const weekEndStr = weekEnd.toISOString().split('T')[0] + ' 23:59:59';
+
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01 00:00:00`;
+
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')} 23:59:59`;
+
+        return { todayStart, todayEnd, weekStartStr, weekEndStr, monthStart, monthEnd };
+      };
+
+      const ranges = getDateRanges(targetDate);
+      const todayAttendance = await odooService.searchRead(
+        "hr.attendance",
+        [
+          ["employee_id", "=", employeeData.id],
+          ["check_in", ">=", ranges.todayStart],
+          ["check_in", "<=", ranges.todayEnd]
+        ],
+        ["id", "check_in", "worked_hours"]
+      );
+      const weekAttendance = await odooService.searchRead(
+        "hr.attendance",
+        [
+          ["employee_id", "=", employeeData.id],
+          ["check_in", ">=", ranges.weekStartStr],
+          ["check_in", "<=", ranges.weekEndStr]
+        ],
+        ["id", "check_in", "worked_hours"]
+      );
+      console.log("🔍 Fetching MONTH's attendance...");
+      const monthAttendance = await odooService.searchRead(
+        "hr.attendance",
+        [
+          ["employee_id", "=", employeeData.id],
+          ["check_in", ">=", ranges.monthStart],
+          ["check_in", "<=", ranges.monthEnd]
+        ],
+        ["id", "check_in", "worked_hours"]
+      );
+      const calculateBreakHours = async (attendances) => {
+        if (!attendances.length) return 0;
+
+        const attendanceIds = attendances.map(att => att.id);
+        const breakLines = await odooService.searchRead(
+          "hr.attendance.line",
+          [["attendance_id", "in", attendanceIds]],
+          ["break_hours"]
+        );
+
+        const totalBreakHours = breakLines.reduce((sum, brk) => {
+          return sum + (brk.break_hours || 0);
+        }, 0);
+
+        return totalBreakHours;
+      };
+
+      const calculateTotal = (attendances) => {
+        return attendances.reduce((sum, att) => sum + (att.worked_hours || 0), 0);
+      };
+
+      const workedHoursToday = calculateTotal(todayAttendance);
+      const workedHoursWeek = calculateTotal(weekAttendance);
+      const workedHoursMonth = calculateTotal(monthAttendance);
+      const breakHoursToday = await calculateBreakHours(todayAttendance);
+      const breakHoursWeek = await calculateBreakHours(weekAttendance);
+      const breakHoursMonth = await calculateBreakHours(monthAttendance);
+
+      const allowedHoursWeek = allowedHoursPerDay * 5;
+      const allowedHoursMonth = allowedHoursPerDay * 22;
+
+      return res.status(200).json({
+        success: true,
+        status: "success",
+        successMessage: "Employee working hours fetched successfully",
+        statuscode: 200,
+        data: {
+          employee_id: employeeData.id,
+          employee_name: employeeData.name,
+          resource_calendar_id: calendarId,
+          calendar_name: calendar[0].name,
+          allowed_hours_per_day: allowedHoursPerDay,
+
+          today: {
+            date: targetDate,
+            worked_hours: parseFloat(workedHoursToday.toFixed(2)),
+            allowed_hours: allowedHoursPerDay,
+            remaining_hours: parseFloat((allowedHoursPerDay - workedHoursToday).toFixed(2)),
+            percentage: parseFloat(((workedHoursToday / allowedHoursPerDay) * 100).toFixed(2)),
+            is_completed: workedHoursToday >= allowedHoursPerDay,
+            attendance_records: todayAttendance.length,
+            total_break_hours: parseFloat(breakHoursToday.toFixed(2))
+          },
+
+          week: {
+            worked_hours: parseFloat(workedHoursWeek.toFixed(2)),
+            allowed_hours: allowedHoursWeek,
+            remaining_hours: parseFloat((allowedHoursWeek - workedHoursWeek).toFixed(2)),
+            percentage: parseFloat(((workedHoursWeek / allowedHoursWeek) * 100).toFixed(2)),
+            attendance_records: weekAttendance.length,
+            total_break_hours: parseFloat(breakHoursWeek.toFixed(2))
+          },
+
+          month: {
+            worked_hours: parseFloat(workedHoursMonth.toFixed(2)),
+            allowed_hours: allowedHoursMonth,
+            remaining_hours: parseFloat((allowedHoursMonth - workedHoursMonth).toFixed(2)),
+            percentage: parseFloat(((workedHoursMonth / allowedHoursMonth) * 100).toFixed(2)),
+            attendance_records: monthAttendance.length,
+            total_break_hours: parseFloat(breakHoursMonth.toFixed(2))
+          }
+        },
+      });
+    } catch (error) {
+      console.error("🔥 Error fetching employee working hours:", error);
+      return res.status(500).json({
+        success: false,
+        status: "error",
+        errorMessage: error.message || "Failed to fetch employee working hours",
+        successMessage: "",
+        statuscode: 500,
+      });
+    }
+  }
 }
 
 module.exports = new ApiController();

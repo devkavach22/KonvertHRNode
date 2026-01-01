@@ -469,14 +469,13 @@ exports.getAllAttendancesMobile = async (req, res) => {
 
 exports.apiCheckinCheckout = async (req, res) => {
   try {
-    console.log("API CheckIn CheckOut called", req.query);
+    console.log("..API CheckIn CheckOut called Status ...", req.query);
 
     const { email } = req.query;
 
     if (!email) {
       return res.status(400).json({
         success: false,
-        successMessage: "",
         errorMessage: "Email is required",
       });
     }
@@ -491,7 +490,6 @@ exports.apiCheckinCheckout = async (req, res) => {
     if (!users.length) {
       return res.status(404).json({
         success: false,
-        successMessage: "",
         errorMessage: "User not found",
       });
     }
@@ -508,36 +506,49 @@ exports.apiCheckinCheckout = async (req, res) => {
     if (!employees.length) {
       return res.status(403).json({
         success: false,
-        successMessage: "",
         errorMessage: "Employee record not linked to user",
       });
     }
 
     const employee = employees[0];
-    console.log("Employee found:", employee);
+
     const attendances = await odooService.searchRead(
       "hr.attendance",
       [["employee_id", "=", employee.id]],
-      ["id", "check_in", "check_out"],
+      [
+        "id",
+        "check_in",
+        "check_out",
+        "check_in_image",    
+        "check_out_image"    
+      ],
       1
     );
 
     let status = "";
     let message = "";
+    let action_time = null;
+    let action_image = null;
 
     if (attendances.length && !attendances[0].check_out) {
       status = "CheckedIn";
       message = "Employee is currently checked in.";
+      action_time = attendances[0].check_in;
+      action_image = attendances[0].check_in_image; 
     } else {
       status = "CheckedOut";
       message = "Employee is currently checked out.";
+      action_time = attendances.length ? attendances[0].check_out : null;
+      action_image = attendances.length ? attendances[0].check_out_image : null; 
     }
 
     return res.status(200).json({
       success: true,
-      status: status,
+      status,
       employee_id: employee.id,
-      message: message,
+      message,
+      action_time,
+      action_image
     });
 
   } catch (err) {

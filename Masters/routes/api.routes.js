@@ -315,7 +315,11 @@ router.get(
   authenticate,
   apiController.getAllAttendances.bind(apiController)
 );
-
+router.get(
+  "/employee/working-hours",
+  authenticate,
+  apiController.getEmployeeWorkingHours.bind(apiController)
+);
 
 
 router.get(
