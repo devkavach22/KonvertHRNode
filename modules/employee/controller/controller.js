@@ -1202,85 +1202,129 @@ const createEmployee = async (req, res) => {
     });
   }
 };
+
+
 const getEmployees = async (req, res) => {
   try {
     const { client_id } = await getClientFromRequest(req);
-    const employees = await odooHelpers.searchRead(
+    console.log("API Called get")
+    const employeeIds = await odooHelpers.searchRead(
       "hr.employee",
       [["address_id", "=", client_id]],
-      [
-        "id",
-        "name",
-        "father_name",
-        "gender",
-        "birthday",
-        "blood_group",
-        "private_email",
-        "present_address",
-        "permanent_address",
-        "emergency_contact_name",
-        "emergency_contact_relation",
-        "emergency_contact_mobile",
-        "emergency_contact_address",
-        "mobile_phone",
-        "pin_code",
-        "work_phone",
-        "marital",
-        "attendance_policy_id",
-        "employee_category",
-        "shift_roster_id",
-        "resource_calendar_id",
-        "district_id",
-        "state_id",
-        "bussiness_type_id",
-        "business_location_id",
-        "job_id",
-        "department_id",
-        "work_location_id",
-        "country_id",
-        "is_geo_tracking",
-        "aadhaar_number",
-        "pan_number",
-        "voter_id",
-        "passport_id",
-        "esi_number",
-        "category",
-        "is_uan_number_applicable",
-        "uan_number",
-        "cd_employee_num",
-        "name_of_post_graduation",
-        "name_of_any_other_education",
-        "total_experiance",
-        "religion",
-        "date_of_marriage",
-        "probation_period",
-        "confirmation_date",
-        "hold_remarks",
-        "is_lapse_allocation",
-        "group_company_joining_date",
-        "week_off",
-        "grade_band",
-        "status",
-        "employee_password",
-        "hold_status",
-        "bank_account_id",
-        "attendance_capture_mode",
-        "reporting_manager_id",
-        "head_of_department_id",
-        "barcode",
-        "pin",
-        "type_of_sepration",
-        "resignation_date",
-        "notice_period_days",
-        "joining_date",
-        "employment_type",
-        "user_id",
-        "driving_license",
-        "upload_passbook",
-        "image_1920",
-        "name_of_site"
-      ]
+      ["id"]
     );
+
+    const employees = [];
+
+    for (let emp of employeeIds) {
+      try {
+        const employeeData = await odooHelpers.searchRead(
+          "hr.employee",
+          [["id", "=", emp.id]],
+          [
+            "id",
+            "name",
+            "father_name",
+            "gender",
+            "birthday",
+            "blood_group",
+            "private_email",
+            "present_address",
+            "permanent_address",
+            "emergency_contact_name",
+            "emergency_contact_relation",
+            "emergency_contact_mobile",
+            "emergency_contact_address",
+            "mobile_phone",
+            "pin_code",
+            "work_phone",
+            "marital",
+            "spouse_name",
+            "attendance_policy_id",
+            "employee_category",
+            "shift_roster_id",
+            "resource_calendar_id",
+            "district_id",
+            "state_id",
+            "bussiness_type_id",
+            "business_location_id",
+            "job_id",
+            "department_id",
+            "work_location_id",
+            "country_id",
+            "is_geo_tracking",
+            "aadhaar_number",
+            "pan_number",
+            "voter_id",
+            "passport_id",
+            "esi_number",
+            "category",
+            "is_uan_number_applicable",
+            "uan_number",
+            "cd_employee_num",
+            "name_of_post_graduation",
+            "name_of_any_other_education",
+            "total_experiance",
+            "religion",
+            "date_of_marriage",
+            "probation_period",
+            "confirmation_date",
+            "hold_remarks",
+            "is_lapse_allocation",
+            "group_company_joining_date",
+            "week_off",
+            "grade_band",
+            "status",
+            "employee_password",
+            "hold_status",
+            "bank_account_id",
+            "attendance_capture_mode",
+            "reporting_manager_id",
+            "head_of_department_id",
+            "barcode",
+            "pin",
+            "type_of_sepration",
+            "resignation_date",
+            "notice_period_days",
+            "joining_date",
+            "employment_type",
+            "user_id",
+            "driving_license",
+            "upload_passbook",
+            "image_1920",
+            "name_of_site",
+            "longitude",
+            "device_id",
+            "device_unique_id",
+            "latitude",
+            "device_name",
+            "system_version",
+            "ip_address",
+            "device_platform"
+          ]
+        );
+
+        if (employeeData.length > 0) {
+          const employee = employeeData[0];
+          
+          const approvalDetails = await odooHelpers.searchRead(
+            "employee.approval.user.details",
+            [["employee_id", "=", employee.id]],
+            ["group_id", "user_id", "approval_sequance"]
+          );
+          
+          if (approvalDetails.length > 0) {
+            employee.group_id = approvalDetails[0].group_id;
+            employee.approval_user_id = approvalDetails[0].user_id;
+            employee.approval_sequance = approvalDetails[0].approval_sequance;
+          }
+          
+          employees.push(employee);
+        }
+      } catch (empError) {
+        console.error(`Error fetching employee ${emp.id}:`, empError);
+      }
+    }
 
     return res.status(200).json({
       status: "success",
