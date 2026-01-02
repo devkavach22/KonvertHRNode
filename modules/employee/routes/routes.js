@@ -54,7 +54,6 @@ router.delete("/business-location/:id", authenticate, deleteBusinessLocation);
 
 router.post("/create/attendance-policy", authenticate, createAttendancePolicy);
 router.get("/attendance-policies", authenticate, getAllAttendancePolicies);
-router.get("/attendance-policy/:id", authenticate, getAttendancePolicyById);
 router.put("/attendance-policy/:id", authenticate, updateAttendancePolicy);
 router.delete("/attendance-policy/:id", authenticate, deleteAttendancePolicy);
 

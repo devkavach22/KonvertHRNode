@@ -975,268 +975,168 @@ async deleteLeaveRequest(req, res) {
   }
 }
 
-  async getAdminLeave(req, res) {
-    try {
-      const {
-        user_id,
-        date_from,
-        date_to,
-        limit = 100,
-        offset = 0,
-        leave_type_id,
-        leave_state
-      } = req.query;
+async getAdminLeave(req, res) {
+try {
+const {
+user_id,
+date_from,
+date_to,
+leave_type_id,
+leave_state,
+limit = 20,
+offset = 0
+} = req.query;
 
-      if (!user_id) {
-        return res.status(400).json({
-          success: false,
-          status: "error",
-          errorMessage: "user_id is required",
-        });
-      }
+if (!user_id) {
+return res.status(400).json({
+success: false,
+message: "user_id is required"
+});
+}
 
-      console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
+/* =====================
+RESOLVE ADMIN CLIENT
+===================== */
+const user = await odooService.searchRead(
+"res.users",
+[["id", "=", Number(user_id)]],
+["partner_id"],
+1
+);
 
-      const partner = await odooService.searchRead(
-        "res.users",
-        [["id", "=", parseInt(user_id)]],
-        ["id", "partner_id"]
-      );
+if (!user.length) throw new Error("User not found");
 
-      if (!partner.length) {
-        return res.status(404).json({
-          success: false,
-          status: "error",
-          errorMessage: `Partner not found for user_id: ${user_id}`,
-        });
-      }
+const partnerId = user[0].partner_id[0];
 
-      const partnerId = partner[0].partner_id?.[0];
+const adminEmployee = await odooService.searchRead(
+"hr.employee",
+[["address_id", "=", partnerId]],
+["address_id"],
+1
+);
 
-      const adminEmployee = await odooService.searchRead(
-        "hr.employee",
-        [["address_id", "=", partnerId]],
-        ["id", "address_id"]
-      );
+if (!adminEmployee.length)
+throw new Error("Admin employee not found");
 
-      if (!adminEmployee.length) {
-        return res.status(404).json({
-          success: false,
-          status: "error",
-          errorMessage: `Employee not found for partner ${partnerId}`,
-        });
-      }
+const client_id = adminEmployee[0].address_id[0];
 
-      const client_id = adminEmployee[0].address_id?.[0];
-      console.log(client_id, "✔ client_id");
+/* =====================
+DASHBOARD METRICS
+===================== */
+const [
+totalEmployees,
+presentEmployees,
 
-      const totalEmployees = await odooService.callCustomMethod(
-        "simple.action",
-        "get_total_number_of_employee",
-        [[], client_id]
-      );
+// ✅ FIXED: now passing employee_id
+pendingRequests,
 
-      const Presentemployee = await odooService.callCustomMethod(
-        "simple.action",
-        "get_total_present_employee",
-        [client_id]
-      );
+plannedLeaves,
 
-      const TotalLateemployee = await odooService.callCustomMethod(
-        "simple.action",
-        "get_total_no_of_late_employee",
-        [client_id]
-      );
+unplannedLeaves
+] = await Promise.all([
+odooService.callCustomMethod(
+"simple.action",
+"get_total_number_of_employee",
+[[], client_id]
+),
+odooService.callCustomMethod(
+"simple.action",
+"get_total_present_employee",
+[client_id]
+),
 
-      const Ununiformendemployee = await odooService.callCustomMethod(
-        "simple.action",
-        "get_total_no_of_uninformed_employee",
-        [client_id]
-      );
+// ✅ FIX HERE
+odooService.callCustomMethod(
+"simple.action",
+"list_of_all_employee_pending_approval_list",
+[client_id, false]
+),
 
-      const pendingRequests = await odooService.searchCount("hr.leave", [
-        ["employee_id.address_id", "=", client_id],
-        ["state", "=", "confirm"]
-      ]);
+odooService.searchCount("hr.leave", [
+["employee_id.address_id", "=", client_id],
+["state", "in", ["validate", "validate1"]]
+]),
 
-      const plannedLeaves = await odooService.searchCount("hr.leave", [
-        ["employee_id.address_id", "=", client_id],
-        ["state", "=", "validate"]
-      ]);
+odooService.callCustomMethod(
+"simple.action",
+"get_total_no_of_uninformed_employee",
+[client_id]
+)
+]);
 
-      const TodayAbsetEmployee = await odooService.callCustomMethod(
-        "simple.action",
-        "get_employees_no_attendance_today",
-        [client_id]
-      );
+/* =====================
+LEAVE TABLE
+===================== */
+const leaveDomain = [
+["employee_id.address_id", "=", client_id]
+];
 
-      const ApprovedLeaveOfEmployee = await odooService.callCustomMethod(
-        "simple.action",
-        "get_total_no_of_permited_employee",
-        [client_id]
-      );
-      console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee)
+if (leave_state)
+leaveDomain.push(["state", "=", leave_state]);
 
-      const allEmployees = await odooService.searchRead(
-        "hr.employee",
-        [["address_id", "=", client_id]],
-        ["id", "name", "job_id"]
-      );
+if (leave_type_id)
+leaveDomain.push(["holiday_status_id", "=", Number(leave_type_id)]);
 
-      if (!allEmployees.length) {
-        return res.status(404).json({
-          success: false,
-          status: "error",
-          errorMessage: "No employees found for this client_id",
-        });
-      }
-      const employeeMap = {};
-      allEmployees.forEach(emp => {
-        employeeMap[emp.id] = {
-          job_id: emp.job_id || null,
-          job_name: emp.job_id ? emp.job_id[1] : null,
-        };
-      });
+if (date_from)
+leaveDomain.push(["request_date_to", ">=", date_from]);
 
-      const employeeIds = allEmployees.map(e => e.id);
-      let domain = [["employee_id", "in", employeeIds]];
-      if (date_from) domain.push(["check_in", ">=", date_from]);
-      if (date_to) domain.push(["check_in", "<=", date_to]);
+if (date_to)
+leaveDomain.push(["request_date_from", "<=", date_to]);
 
-      const FIELDS = [
-        "employee_id",
-        "check_in",
-        "checkin_lat",
-        "checkin_lon",
-        "check_out",
-        "checkout_lat",
-        "checkout_lon",
-        "worked_hours",
-        "early_out_minutes",
-        "overtime_hours",
-        "is_early_out",
-        "validated_overtime_hours",
-        "is_late_in",
-        "late_time_display",
-        "status_code",
-      ];
-      const attendances = await odooService.searchRead(
-        "hr.attendance",
-        domain,
-        FIELDS,
-        parseInt(offset),
-        parseInt(limit),
-        "check_in desc"
-      );
+const leaves = await odooService.searchRead(
+"hr.leave",
+leaveDomain,
+[
+"employee_id",
+"holiday_status_id",
+"request_date_from",
+"request_date_to",
+"number_of_days",
+"state"
+],
+Number(offset),
+Number(limit),
+"request_date_from desc"
+);
 
-      const attendanceMap = {};
-      attendances.forEach(a => {
-        const empId = a.employee_id?.[0];
-        attendanceMap[empId] = a;
-      });
+const leaveList = leaves.map(l => ({
+employee_id: l.employee_id?.[0],
+employee_name: l.employee_id?.[1],
+leave_type_id: l.holiday_status_id?.[0],
+leave_type: l.holiday_status_id?.[1],
+from: l.request_date_from,
+to: l.request_date_to,
+no_of_days: l.number_of_days,
+status: l.state
+}));
 
-      const finalData = allEmployees.map(emp => {
-        const att = attendanceMap[emp.id];
+/* =====================
+RESPONSE
+===================== */
+return res.status(200).json({
+success: true,
+dashboard: {
+total_present: `${presentEmployees}/${totalEmployees}`,
+planned_leaves: plannedLeaves,
+unplanned_leaves: unplannedLeaves,
+pending_requests: pendingRequests
+},
+leaveList,
+meta: {
+client_id,
+limit: Number(limit),
+offset: Number(offset)
+}
+});
 
-        return {
-          id: att?.id || null,
-          employee_id: [emp.id, emp.name],
-
-          check_in: att?.check_in || null,
-          checkin_lat: att?.checkin_lat || null,
-          checkin_lon: att?.checkin_lon || null,
-
-          check_out: att?.check_out || null,
-          checkout_lat: att?.checkout_lat || null,
-          checkout_lon: att?.checkout_lon || null,
-
-          worked_hours: att?.worked_hours || null,
-          early_out_minutes: att?.early_out_minutes || null,
-          overtime_hours: att?.overtime_hours || null,
-          validated_overtime_hours: att?.validated_overtime_hours || null,
-
-          is_late_in: att?.is_late_in || null,
-          late_time_display: att?.late_time_display || null,
-          is_early_out: att?.is_early_out || null,
-          status_code: att?.status_code || null,
-
-          job_id: emp.job_id || null,
-          job_name: emp.job_id ? emp.job_id[1] : null,
-        };
-      });
-      let leaveDomain = [["employee_id.address_id", "=", client_id]];
-
-      if (leave_state)
-        leaveDomain.push(["state", "=", leave_state]);
-
-      if (leave_type_id)
-        leaveDomain.push(["holiday_status_id", "=", parseInt(leave_type_id)]);
-
-      if (date_from)
-        leaveDomain.push(["request_date_from", ">=", date_from]);
-
-      if (date_to)
-        leaveDomain.push(["request_date_to", "<=", date_to]);
-
-      const leaveTableRaw = await odooService.searchRead(
-        "hr.leave",
-        leaveDomain,
-        [
-          "employee_id",
-          "holiday_status_id",
-          "request_date_from",
-          "request_date_to",
-          "number_of_days",
-          "state",
-        ],
-        parseInt(offset),
-        parseInt(limit),
-        "request_date_from desc"
-      );
-
-      const leaveTable = leaveTableRaw.map(l => ({
-        employee_id: l.employee_id?.[0],
-        employee_name: l.employee_id?.[1],
-        leave_type_id: l.holiday_status_id?.[0],
-        leave_type: l.holiday_status_id?.[1],
-        from: l.request_date_from,
-        to: l.request_date_to,
-        no_of_days: l.number_of_days,
-        status: l.state,
-      }));
-      return res.status(200).json({
-        success: true,
-        status: "success",
-        successMessage: "Admin attendance records fetched",
-        data: finalData,
-        leaveTable,
-        meta: {
-          total: finalData.length,
-          leave_total: leaveTable.length,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          admin_partner_id: partnerId,
-          admin_address_id: client_id,
-          TotalEmployee: totalEmployees,
-          Presentemployee: Presentemployee,
-          TotalLateemployee: TotalLateemployee,
-          Ununiformendemployee: Ununiformendemployee,
-          TodayAbsetEmployee: TodayAbsetEmployee,
-          ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee,
-          pendingRequests: pendingRequests,
-          plannedLeaves: plannedLeaves
-        },
-      });
-
-    } catch (error) {
-      console.error("🔥 Admin Attendance Error:", error);
-      return res.status(500).json({
-        success: false,
-        status: "error",
-        errorMessage: error.message || "Failed to fetch admin attendance",
-      });
-    }
-  }
+} catch (error) {
+console.error("❌ Admin Leave Dashboard Error:", error);
+return res.status(500).json({
+success: false,
+message: error.message
+});
+}
+}
 
 async createPublicHoliday(req, res) {
   try {
