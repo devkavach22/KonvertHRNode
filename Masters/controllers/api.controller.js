@@ -5890,7 +5890,6 @@ class ApiController {
       if (date_from) domain.push(["check_in", ">=", date_from]);
       if (date_to) domain.push(["check_in", "<=", date_to]);
 
-      // ---- attendance fields ----
       const FIELDS = [
         "employee_id",
         "check_in",
@@ -5918,11 +5917,13 @@ class ApiController {
         "check_in desc"
       );
 
-      const attendanceMap = {};
-      attendances.forEach(a => {
-        const empId = a.employee_id?.[0];
-        attendanceMap[empId] = a;
-      });
+      const convertToIST = (utcDateStr) => {
+        if (!utcDateStr) return null;
+        const utcDate = new Date(utcDateStr + ' UTC');
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const istDate = new Date(utcDate.getTime() + istOffset);
+        return istDate.toISOString().slice(0, 19).replace('T', ' ');
+      };
 
       const attendanceIds = attendances.map(a => a.id);
 
@@ -5941,40 +5942,84 @@ class ApiController {
         breakMap[attId] = line;
       });
 
-      const finalData = allEmployees.map(emp => {
-        const att = attendanceMap[emp.id];
-        const breakLine = att ? breakMap[att.id] : null;
-
-        return {
-          id: att?.id || null,
-          employee_id: [emp.id, emp.name],
-
-          check_in: att?.check_in || null,
-          checkin_lat: att?.checkin_lat || null,
-          checkin_lon: att?.checkin_lon || null,
-
-          check_out: att?.check_out || null,
-          checkout_lat: att?.checkout_lat || null,
-          checkout_lon: att?.checkout_lon || null,
-
-          worked_hours: att?.worked_hours || null,
-          early_out_minutes: att?.early_out_minutes || null,
-          overtime_hours: att?.overtime_hours || null,
-          validated_overtime_hours: att?.validated_overtime_hours || null,
-
-          is_late_in: att?.is_late_in || null,
-          late_time_display: att?.late_time_display || null,
-          is_early_out: att?.is_early_out || null,
-          status_code: att?.status_code || null,
-
-          break_start: breakLine?.break_start || null,
-          break_end: breakLine?.break_end || null,
-          break_hours: breakLine?.break_hours || null,
-
-          job_id: emp.job_id || null,
-          job_name: emp.job_id ? emp.job_id[1] : null,
-        };
+      const attendancesByEmployee = {};
+      attendances.forEach(att => {
+        const empId = att.employee_id?.[0];
+        if (!attendancesByEmployee[empId]) {
+          attendancesByEmployee[empId] = [];
+        }
+        attendancesByEmployee[empId].push(att);
       });
+
+      const finalData = allEmployees.map(emp => {
+        const empAttendances = attendancesByEmployee[emp.id] || [];
+
+        if (empAttendances.length > 0) {
+          return empAttendances.map(att => {
+            const breakLine = breakMap[att.id];
+            return {
+              id: att.id,
+              employee_id: att.employee_id,
+
+              check_in: convertToIST(att.check_in),
+              checkin_lat: att.checkin_lat,
+              checkin_lon: att.checkin_lon,
+
+              check_out: convertToIST(att.check_out),
+              checkout_lat: att.checkout_lat,
+              checkout_lon: att.checkout_lon,
+
+              worked_hours: att.worked_hours,
+              early_out_minutes: att.early_out_minutes,
+              overtime_hours: att.overtime_hours,
+              validated_overtime_hours: att.validated_overtime_hours,
+
+              is_late_in: att.is_late_in,
+              late_time_display: att.late_time_display,
+              is_early_out: att.is_early_out,
+              status_code: att.status_code,
+
+              break_start: convertToIST(breakLine?.break_start),
+              break_end: convertToIST(breakLine?.break_end),
+              break_hours: breakLine?.break_hours || null,
+
+              job_id: emp.job_id || null,
+              job_name: emp.job_id ? emp.job_id[1] : null,
+            };
+          });
+        } else {
+          // Employee has no attendance - return single record with null values
+          return [{
+            id: null,
+            employee_id: [emp.id, emp.name],
+
+            check_in: null,
+            checkin_lat: null,
+            checkin_lon: null,
+
+            check_out: null,
+            checkout_lat: null,
+            checkout_lon: null,
+
+            worked_hours: null,
+            early_out_minutes: null,
+            overtime_hours: null,
+            validated_overtime_hours: null,
+
+            is_late_in: null,
+            late_time_display: null,
+            is_early_out: null,
+            status_code: null,
+
+            break_start: null,
+            break_end: null,
+            break_hours: null,
+
+            job_id: emp.job_id || null,
+            job_name: emp.job_id ? emp.job_id[1] : null,
+          }];
+        }
+      }).flat();
 
       return res.status(200).json({
         success: true,
@@ -5982,7 +6027,8 @@ class ApiController {
         successMessage: "Admin attendance records fetched",
         data: finalData,
         meta: {
-          total: finalData.length,
+          total_Attendace_records: finalData.length,
+          total_employees: allEmployees.length,
           limit: parseInt(limit),
           offset: parseInt(offset),
           admin_partner_id: partnerId,
@@ -6005,6 +6051,7 @@ class ApiController {
       });
     }
   }
+
   async updateAdminAttendance(req, res) {
     try {
       const { id } = req.params;
