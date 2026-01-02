@@ -470,14 +470,15 @@ exports.getAllAttendancesMobile = async (req, res) => {
 exports.apiCheckinCheckout = async (req, res) => {
   try {
     console.log("..API CheckIn CheckOut called Status ...", req.query);
-
     const { email } = req.query;
-
+    
     if (!email) {
-      return res.status(400).json({
+      const response = {
         success: false,
         errorMessage: "Email is required",
-      });
+      };
+      console.log("Response (400):", response);
+      return res.status(400).json(response);
     }
 
     const users = await odooService.searchRead(
@@ -488,14 +489,15 @@ exports.apiCheckinCheckout = async (req, res) => {
     );
 
     if (!users.length) {
-      return res.status(404).json({
+      const response = {
         success: false,
         errorMessage: "User not found",
-      });
+      };
+      console.log("Response (404):", response);
+      return res.status(404).json(response);
     }
 
     const user = users[0];
-
     const employees = await odooService.searchRead(
       "hr.employee",
       [["user_id", "=", user.id]],
@@ -504,14 +506,15 @@ exports.apiCheckinCheckout = async (req, res) => {
     );
 
     if (!employees.length) {
-      return res.status(403).json({
+      const response = {
         success: false,
         errorMessage: "Employee record not linked to user",
-      });
+      };
+      console.log("Response (403):", response);
+      return res.status(403).json(response);
     }
 
     const employee = employees[0];
-
     const attendances = await odooService.searchRead(
       "hr.attendance",
       [["employee_id", "=", employee.id]],
@@ -519,11 +522,21 @@ exports.apiCheckinCheckout = async (req, res) => {
         "id",
         "check_in",
         "check_out",
-        "check_in_image",    
-        "check_out_image"    
+        "check_in_image",
+        "check_out_image"
       ],
       1
     );
+
+    // Helper function to convert Odoo datetime to local timezone
+    const convertToLocalTime = (odooDateTime) => {
+      if (!odooDateTime) return null;
+      
+      // Odoo stores datetime in UTC, convert to IST (Asia/Kolkata)
+      return moment.utc(odooDateTime, "YYYY-MM-DD HH:mm:ss")
+        .tz("Asia/Kolkata")
+        .format("YYYY-MM-DD HH:mm:ss");
+    };
 
     let status = "";
     let message = "";
@@ -533,28 +546,31 @@ exports.apiCheckinCheckout = async (req, res) => {
     if (attendances.length && !attendances[0].check_out) {
       status = "CheckedIn";
       message = "Employee is currently checked in.";
-      action_time = attendances[0].check_in;
-      action_image = attendances[0].check_in_image; 
+      action_time = convertToLocalTime(attendances[0].check_in);
+      action_image = attendances[0].check_in_image;
     } else {
       status = "CheckedOut";
       message = "Employee is currently checked out.";
-      action_time = attendances.length ? attendances[0].check_out : null;
-      action_image = attendances.length ? attendances[0].check_out_image : null; 
+      action_time = attendances.length ? convertToLocalTime(attendances[0].check_out) : null;
+      action_image = attendances.length ? attendances[0].check_out_image : null;
     }
 
-    return res.status(200).json({
+    const response = {
       success: true,
       status,
       employee_id: employee.id,
       message,
       action_time,
       action_image
-    });
-
+    };
+        return res.status(200).json(response);
+    
   } catch (err) {
-    return res.status(500).json({
+    const response = {
       success: false,
       errorMessage: err.message,
-    });
+    };
+    console.log("Response (500):", response);
+    return res.status(500).json(response);
   }
 };
