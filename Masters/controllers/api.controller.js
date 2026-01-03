@@ -6111,15 +6111,17 @@ class ApiController {
   }
   async getGroupList(req, res) {
     try {
+      const allowedGroupIds = [130, 164, 16];
+
       const groups = await odooService.searchRead(
         "res.groups",
-        [],
+        [["id", "in", allowedGroupIds]], // ✅ filter applied
         ["id", "name"]
       );
 
       const data = groups.map(g => ({
         group_id: g.id,
-        group_name: g.name
+        group_name: g.name,
       }));
 
       return res.status(200).json({
@@ -6136,27 +6138,24 @@ class ApiController {
       });
     }
   }
+
   async getGroupUsers(req, res) {
     try {
-      const { group_id, group_name } = req.query;
+      const { group_id } = req.query;
 
-      if (!group_id && !group_name) {
+      if (!group_id) {
         return res.status(400).json({
           status: "error",
-          message: "group_id or group_name is required",
+          message: "group_id is required",
         });
       }
-      const domain = group_id
-        ? [["id", "=", Number(group_id)]]
-        : [["name", "=", group_name]];
-
       const groups = await odooService.searchRead(
         "res.groups",
-        domain,
+        [["id", "=", Number(group_id)]],
         ["id", "name", "users"]
       );
 
-      if (groups.length === 0) {
+      if (!groups.length) {
         return res.status(404).json({
           status: "error",
           message: "Group not found",
@@ -6165,29 +6164,66 @@ class ApiController {
 
       const group = groups[0];
 
-      let userDetails = [];
+      if (!group.users || group.users.length === 0) {
+        return res.status(200).json({
+          status: "success",
+          message: "No users in this group",
+          data: {
+            group_id: group.id,
+            group_name: group.name,
+            users: [],
+          },
+        });
+      }
+      const users = await odooService.searchRead(
+        "res.users",
+        [["id", "in", group.users]],
+        ["id", "name", "login"]
+      );
 
-      if (group.users && group.users.length > 0) {
-        const users = await odooService.searchRead(
-          "res.users",
-          [["id", "in", group.users]],
-          ["id", "name", "login"]
+      const finalUsers = [];
+
+      for (const user of users) {
+        const employeeRec = await odooService.searchRead(
+          "hr.employee",
+          [["user_id", "=", user.id]],
+          ["id", "address_id"],
+          1
         );
 
-        userDetails = users.map(u => ({
-          user_id: u.id,
-          name: u.name,
-          login: u.login
-        }));
+        if (!employeeRec.length) continue;
+
+        const employee = employeeRec[0];
+        const partnerId = employee.address_id?.[0];
+
+        if (!partnerId) continue;
+
+        const plan = await odooService.searchRead(
+          "client.plan.details",
+          [
+            ["partner_id", "=", partnerId],
+            ["is_expier", "=", true],
+          ],
+          ["id"],
+          1
+        );
+
+        if (!plan.length) continue;
+
+        finalUsers.push({
+          user_id: user.id,
+          name: user.name,
+          login: user.login,
+        });
       }
 
       return res.status(200).json({
         status: "success",
-        message: "Group users fetched",
+        message: "Group users with active plan fetched",
         data: {
           group_id: group.id,
           group_name: group.name,
-          users: userDetails
+          users: finalUsers,
         },
       });
 
@@ -6195,7 +6231,7 @@ class ApiController {
       console.error("❌ Get Group Users Error:", error);
       return res.status(500).json({
         status: "error",
-        message: error.message,
+        message: error.message || "Failed to fetch group users",
       });
     }
   }
@@ -6282,10 +6318,8 @@ class ApiController {
 
       const totalCount = await odooService.search("hr.attendance", domain);
 
-      // Get today's date in Asia/Kolkata timezone
       const todayDate = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
 
-      // Fetch attendance line details for all attendance records
       const attendanceIds = attendances.map(att => att.id);
       let attendanceLinesByAttendance = {};
 
@@ -6296,7 +6330,6 @@ class ApiController {
           ["attendance_id", "check_in", "check_out", "break_start", "break_end", "break_hours", "productive_hours"]
         );
 
-        // Group attendance lines by attendance_id
         allAttendanceLines.forEach(line => {
           const attId = line.attendance_id?.[0];
           if (attId) {
@@ -6331,17 +6364,14 @@ class ApiController {
           overtime_end: formatDatetime(att.overtime_end),
         };
 
-        // Add check_in and check_out for all records
         const attendanceLines = attendanceLinesByAttendance[att.id] || [];
 
         if (attendanceLines.length > 0) {
-          // Get the first session's check_in and last session's check_out
           const firstLine = attendanceLines[0];
           const lastLine = attendanceLines[attendanceLines.length - 1];
           formatted.check_in = formatDatetime(firstLine.check_in);
           formatted.check_out = formatDatetime(lastLine.check_out);
         } else {
-          // Fallback to main attendance record if no lines found
           formatted.check_in = formatDatetime(att.check_in);
           formatted.check_out = formatDatetime(att.check_out);
         }
@@ -6452,21 +6482,13 @@ class ApiController {
               productive_hours: parseFloat((line.productive_hours || 0).toFixed(2))
             }));
           }
-
           const workingDaysInMonth = getWorkingDaysInMonth(targetDate);
-
           const allowedWeek = allowedHoursPerDay * 5;
           const allowedMonth = allowedHoursPerDay * workingDaysInMonth;
-
-          // Calculate allowed overtime for week and month
           const allowedOvertimeWeek = allowedOvertimePerDay * 5;
           const allowedOvertimeMonth = allowedOvertimePerDay * workingDaysInMonth;
-
-          // Calculate total overtime hours
           const sumOvertimeHours = (records) =>
             records.reduce((sum, rec) => sum + (parseFloat(rec.validated_overtime_hours) || 0), 0);
-
-          // Fetch overtime hours for today, week, and month
           const [todayOvertimeLogs, weekOvertimeLogs, monthOvertimeLogs] = await Promise.all([
             odooService.searchRead(
               "hr.attendance",
@@ -6484,15 +6506,9 @@ class ApiController {
               ["id", "validated_overtime_hours"]
             )
           ]);
-
           const overtimeToday = sumOvertimeHours(todayOvertimeLogs);
           const overtimeWeek = sumOvertimeHours(weekOvertimeLogs);
           const overtimeMonth = sumOvertimeHours(monthOvertimeLogs);
-
-          console.log("📅 Month Working Days:", workingDaysInMonth);
-          console.log("⏱ Allowed Hours Per Day:", allowedHoursPerDay);
-          console.log("✅ Allowed Hours For Month:", allowedMonth);
-
           workingHoursSummary = {
             resource_calendar_id: calendarId,
             calendar_name: calendar[0].name,
@@ -6508,8 +6524,8 @@ class ApiController {
               attendance_records: todayLogs.length,
               total_break_hours: parseFloat(breakHoursToday.toFixed(2)),
               total_overtime_hours_allowed: parseFloat(allowedOvertimePerDay.toFixed(2)),
+              total_overtime_hours_worked: parseFloat(overtimeToday.toFixed(2)),
               attendance_line_details: todayAttendanceLineDetails,
-              // Add message when no check-in found
               message: todayLogs.length === 0 ? "Not checked in till now" : null
             },
 
@@ -6519,7 +6535,8 @@ class ApiController {
               remaining_hours: parseFloat(Math.max(0, allowedWeek - workedWeek).toFixed(2)),
               percentage: parseFloat(Math.min(100, (workedWeek / allowedWeek) * 100).toFixed(2)),
               attendance_records: weekLogs.length,
-              total_overtime_hours_allowed: parseFloat(allowedOvertimeWeek.toFixed(2))
+              total_overtime_hours_allowed: parseFloat(allowedOvertimeWeek.toFixed(2)),
+              total_overtime_hours_worked: parseFloat(overtimeWeek.toFixed(2))
             },
 
             month: {
@@ -6528,7 +6545,8 @@ class ApiController {
               remaining_hours: parseFloat(Math.max(0, allowedMonth - workedMonth).toFixed(2)),
               percentage: parseFloat(Math.min(100, (workedMonth / allowedMonth) * 100).toFixed(2)),
               attendance_records: monthLogs.length,
-              total_overtime_hours_allowed: parseFloat(allowedOvertimeMonth.toFixed(2))
+              total_overtime_hours_allowed: parseFloat(allowedOvertimeMonth.toFixed(2)),
+              total_overtime_hours_worked: parseFloat(overtimeMonth.toFixed(2))
             }
           };
         }
@@ -6563,6 +6581,6 @@ class ApiController {
         statuscode: 500,
       });
     }
-  }
+  } KAVACH
 }
 module.exports = new ApiController();
