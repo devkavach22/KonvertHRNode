@@ -471,7 +471,7 @@ exports.apiCheckinCheckout = async (req, res) => {
   try {
     console.log("..API CheckIn CheckOut called Status ...", req.query);
     const { email } = req.query;
-    
+
     if (!email) {
       const response = {
         success: false,
@@ -528,11 +528,9 @@ exports.apiCheckinCheckout = async (req, res) => {
       1
     );
 
-    // Helper function to convert Odoo datetime to local timezone
     const convertToLocalTime = (odooDateTime) => {
       if (!odooDateTime) return null;
-      
-      // Odoo stores datetime in UTC, convert to IST (Asia/Kolkata)
+
       return moment.utc(odooDateTime, "YYYY-MM-DD HH:mm:ss")
         .tz("Asia/Kolkata")
         .format("YYYY-MM-DD HH:mm:ss");
@@ -563,8 +561,8 @@ exports.apiCheckinCheckout = async (req, res) => {
       action_time,
       action_image
     };
-        return res.status(200).json(response);
-    
+    return res.status(200).json(response);
+
   } catch (err) {
     const response = {
       success: false,

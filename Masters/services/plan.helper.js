@@ -21,7 +21,6 @@ const checkActivePlan = async (partnerId) => {
   return plan[0];
 };
 
-
 const getClientFromRequest = async (req) => {
   const user_id = req.body?.user_id || req.query?.user_id;
   const unique_user_id = req.body?.unique_user_id || req.query?.unique_user_id;
@@ -40,19 +39,53 @@ const getClientFromRequest = async (req) => {
   const user = await odooService.searchRead(
     "res.users",
     searchDomain,
-    ["partner_id"],
+    [
+      "partner_id",
+      "is_client_employee_admin",
+      "is_client_employee_user",
+      "id",
+    ],
     1
   );
 
-  if (!user.length || !user[0].partner_id) {
+  if (!user.length) {
     throw {
       status: 404,
-      message: "User not found or partner not linked",
+      message: "User not found",
     };
   }
 
-  const client_id = user[0].partner_id[0];
+  const currentUser = user[0];
+  let client_id = null;
 
+  if (currentUser.is_client_employee_admin) {
+    if (!currentUser.partner_id || !currentUser.partner_id[0]) {
+      throw {
+        status: 404,
+        message: "Partner not linked for admin user",
+      };
+    }
+    client_id = currentUser.partner_id[0];
+  } else if (currentUser.is_client_employee_user) {
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["user_id", "=", currentUser.id]],
+      ["address_id"],
+      1
+    );
+    if (!employee || employee.length === 0 || !employee[0].address_id) {
+      throw {
+        status: 404,
+        message: "Employee record not found or missing address_id",
+      };
+    }
+    client_id = employee[0].address_id[0];
+  } else {
+    throw {
+      status: 403,
+      message: "User is neither admin nor employee",
+    };
+  }
   const plan = await checkActivePlan(client_id);
   if (!plan) {
     throw {
@@ -61,8 +94,7 @@ const getClientFromRequest = async (req) => {
     };
   }
 
-  return { client_id, plan };
+  return { client_id, plan, currentUser };
 };
-
-
 module.exports = { checkActivePlan, getClientFromRequest };
+

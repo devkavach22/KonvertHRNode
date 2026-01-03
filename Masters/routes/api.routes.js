@@ -313,14 +313,8 @@ router.delete(
 router.get(
   "/employee/attendance",
   authenticate,
-  apiController.getAllAttendances.bind(apiController)
+  apiController.getEmployeeAttendanceComplete.bind(apiController)
 );
-router.get(
-  "/employee/working-hours",
-  authenticate,
-  apiController.getEmployeeWorkingHours.bind(apiController)
-);
-
 
 router.get(
   "/currencies",

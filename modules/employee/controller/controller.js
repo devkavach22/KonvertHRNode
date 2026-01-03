@@ -712,31 +712,30 @@ const getEmployeeByCode = async (req, res) => {
     });
   }
 };
-
 const cleanBase64 = (base64String) => {
   if (!base64String || base64String === null) {
     return null;
   }
-  
+
   try {
     // Remove data URL prefix if present (e.g., "data:image/png;base64,")
     let cleaned = base64String;
     if (cleaned.includes(',')) {
       cleaned = cleaned.split(',')[1];
     }
-    
+
     // Remove whitespace and newlines
     cleaned = cleaned.replace(/\s/g, '');
-    
+
     // Validate if it's proper base64
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned)) {
       console.error('Invalid base64 format');
       return null;
     }
-    
+
     // Verify it can be decoded
     Buffer.from(cleaned, 'base64');
-    
+
     return cleaned;
   } catch (error) {
     console.error('Error cleaning base64:', error);
@@ -827,9 +826,9 @@ const createEmployee = async (req, res) => {
       system_version,
       ip_address,
       device_platform,
+      account_number,
     } = req.body;
 
-    // Clean base64 images
     const cleanedDrivingLicense = cleanBase64(driving_license);
     const cleanedPassbook = cleanBase64(upload_passbook);
     const cleanedImage = cleanBase64(image_1920);
@@ -909,12 +908,70 @@ const createEmployee = async (req, res) => {
       const existingUser = await odooHelpers.searchRead(
         "res.users",
         [["login", "=", trimmedEmail]],
-        ["id", "employee_ids"]
+        ["id", "employee_ids", "partner_id"]
       );
 
       if (existingUser.length > 0) {
         console.log("User already exists with this email:", existingUser[0]);
         userId = existingUser[0].id;
+        const partnerId = existingUser[0].partner_id;
+        
+        await odooHelpers.write("res.users", userId, {
+          is_client_employee_user: true,
+        });
+
+        // Update bank account partner_id if bank_account_id is provided
+        if (bank_account_id && partnerId) {
+          try {
+            console.log("==========================================");
+            console.log("BANK ACCOUNT UPDATE PROCESS STARTED");
+            console.log("Bank account ID received:", bank_account_id);
+            console.log("User's partner_id:", partnerId);
+            console.log("==========================================");
+            
+            const bankAccounts = await odooHelpers.searchRead(
+              "res.partner.bank",
+              [["id", "=", parseInt(bank_account_id)]],
+              ["id", "partner_id", "acc_number"]
+            );
+
+            console.log("Bank accounts found:", bankAccounts);
+            console.log("Number of bank accounts found:", bankAccounts.length);
+
+            if (bankAccounts.length > 0) {
+              const bankAccountId = bankAccounts[0].id;
+              const oldPartnerId = bankAccounts[0].partner_id;
+              const userPartnerId = Array.isArray(partnerId) ? partnerId[0] : partnerId;
+              
+              console.log("Bank account ID to update:", bankAccountId);
+              console.log("Old partner_id:", oldPartnerId);
+              console.log("New partner_id (user's partner):", userPartnerId);
+              
+              await odooHelpers.write("res.partner.bank", bankAccountId, {
+                partner_id: userPartnerId,
+              });
+              
+              console.log("✓ Bank account partner_id SUCCESSFULLY updated!");
+              console.log(`✓ Bank account ${bankAccountId} partner_id updated from ${oldPartnerId} to ${userPartnerId}`);
+              console.log("==========================================");
+            } else {
+              console.log("✗ ERROR: Bank account with ID", bank_account_id, "NOT FOUND");
+              console.log("==========================================");
+            }
+          } catch (bankError) {
+            console.error("==========================================");
+            console.error("✗ ERROR updating bank account partner_id:", bankError);
+            console.error("Error details:", bankError.message);
+            console.error("==========================================");
+          }
+        } else {
+          console.log("==========================================");
+          console.log("BANK ACCOUNT UPDATE SKIPPED");
+          console.log("bank_account_id provided:", !!bank_account_id);
+          console.log("partnerId available:", !!partnerId);
+          console.log("==========================================");
+        }
+
         const data = {
           name: trimmedName,
           father_name,
@@ -1033,12 +1090,75 @@ const createEmployee = async (req, res) => {
           email: trimmedEmail,
           phone: work_phone || "",
           mobile: mobile_phone || "",
+          is_client_employee_user: true,
         };
 
         console.log("Creating user with data:", userData);
 
         userId = await odooHelpers.create("res.users", userData);
         console.log("User created with ID:", userId);
+
+        // Get the partner_id of the newly created user
+        const newUser = await odooHelpers.searchRead(
+          "res.users",
+          [["id", "=", userId]],
+          ["partner_id"]
+        );
+
+        const partnerId = newUser.length > 0 ? newUser[0].partner_id : null;
+        console.log("User's partner ID:", partnerId);
+
+        // Update bank account partner_id if account_number is provided
+        if (account_number && partnerId) {
+          try {
+            console.log("==========================================");
+            console.log("BANK ACCOUNT UPDATE PROCESS STARTED");
+            console.log("Account number received:", account_number);
+            console.log("User's partner_id:", partnerId);
+            console.log("==========================================");
+            
+            const bankAccounts = await odooHelpers.searchRead(
+              "res.partner.bank",
+              [["acc_number", "=", account_number]],
+              ["id", "partner_id", "acc_number"]
+            );
+
+            console.log("Bank accounts found:", bankAccounts);
+            console.log("Number of bank accounts found:", bankAccounts.length);
+
+            if (bankAccounts.length > 0) {
+              const bankAccountId = bankAccounts[0].id;
+              const oldPartnerId = bankAccounts[0].partner_id;
+              const userPartnerId = Array.isArray(partnerId) ? partnerId[0] : partnerId;
+              
+              console.log("Bank account ID to update:", bankAccountId);
+              console.log("Old partner_id:", oldPartnerId);
+              console.log("New partner_id (user's partner):", userPartnerId);
+              
+              await odooHelpers.write("res.partner.bank", bankAccountId, {
+                partner_id: userPartnerId,
+              });
+              
+              console.log("✓ Bank account partner_id SUCCESSFULLY updated!");
+              console.log(`✓ Bank account ${bankAccountId} partner_id updated from ${oldPartnerId} to ${userPartnerId}`);
+              console.log("==========================================");
+            } else {
+              console.log("✗ ERROR: Bank account with account number", account_number, "NOT FOUND");
+              console.log("==========================================");
+            }
+          } catch (bankError) {
+            console.error("==========================================");
+            console.error("✗ ERROR updating bank account partner_id:", bankError);
+            console.error("Error details:", bankError.message);
+            console.error("==========================================");
+          }
+        } else {
+          console.log("==========================================");
+          console.log("BANK ACCOUNT UPDATE SKIPPED");
+          console.log("account_number provided:", !!account_number);
+          console.log("partnerId available:", !!partnerId);
+          console.log("==========================================");
+        }
 
         const autoCreatedEmployee = await odooHelpers.searchRead(
           "hr.employee",
@@ -1202,8 +1322,6 @@ const createEmployee = async (req, res) => {
     });
   }
 };
-
-
 const getEmployees = async (req, res) => {
   try {
     const { client_id } = await getClientFromRequest(req);
@@ -1306,19 +1424,19 @@ const getEmployees = async (req, res) => {
 
         if (employeeData.length > 0) {
           const employee = employeeData[0];
-          
+
           const approvalDetails = await odooHelpers.searchRead(
             "employee.approval.user.details",
             [["employee_id", "=", employee.id]],
             ["group_id", "user_id", "approval_sequance"]
           );
-          
+
           if (approvalDetails.length > 0) {
             employee.group_id = approvalDetails[0].group_id;
             employee.approval_user_id = approvalDetails[0].user_id;
             employee.approval_sequance = approvalDetails[0].approval_sequance;
           }
-          
+
           employees.push(employee);
         }
       } catch (empError) {
@@ -1479,7 +1597,6 @@ const updateEmployee = async (req, res) => {
       }
     }
 
-    // Validate UAN requirements if applicable
     if (is_uan_number_applicable === true) {
       if (!uan_number && !currentEmployee.uan_number) {
         return res.status(400).json({
@@ -1501,7 +1618,6 @@ const updateEmployee = async (req, res) => {
     console.log("user_id from params (for write_uid):", userIdFromParams);
     console.log("client_id:", client_id);
 
-    // Build update data object (only include fields that are provided)
     const data = {};
 
     if (name !== undefined) data.name = name.trim();
@@ -1524,7 +1640,6 @@ const updateEmployee = async (req, res) => {
     if (mobile_phone !== undefined) data.mobile_phone = mobile_phone;
     if (pin_code !== undefined) data.pin_code = pin_code;
 
-    // Set address_id from client_id (like in create)
     if (client_id) {
       data.address_id = parseInt(client_id);
     }
@@ -1606,11 +1721,9 @@ const updateEmployee = async (req, res) => {
     if (upload_passbook !== undefined) data.upload_passbook = upload_passbook;
     if (image_1920 !== undefined) data.image_1920 = image_1920;
 
-    // Update employee
     await odooHelpers.write("hr.employee", parseInt(id), data);
     console.log("Employee updated with ID:", id);
 
-    // Update write_uid using audit method
     const write_uid_value = userIdFromParams || (client_id ? parseInt(client_id) : undefined);
     console.log("write_uid will be set to:", write_uid_value);
 
@@ -1621,7 +1734,7 @@ const updateEmployee = async (req, res) => {
         await odooHelpers.updateAuditFields(
           tableName,
           [parseInt(id)],
-          null, // We don't want to change create_uid
+          null,
           write_uid_value
         );
 
@@ -1631,7 +1744,6 @@ const updateEmployee = async (req, res) => {
       }
     }
 
-    // Update user if email changed
     let userUpdateStatus = null;
     if (private_email && currentEmployee.user_id) {
       try {
@@ -1735,240 +1847,239 @@ const deleteEmployee = async (req, res) => {
     });
   }
 };
+const getEmployeeDashboard = async (req, res) => {
+  try {
+    const {
+      user_id,
+      leave_type_id,
+      state,
+      date_from,
+      date_to,
+      limit = 10,
+      offset = 0,
+      use_mock = false
+    } = req.query;
 
-const getEmployeeDashboard = async(req,res) => {
-try{
-const{
-user_id,
-leave_type_id,
-state,
-date_from,
-date_to,
-limit=10,
-offset=0,
-use_mock=false
-} = req.query;
+    /* ───────── MOCK RESPONSE (FOR TESTING) ───────── */
+    if (use_mock === "true") {
+      return res.status(200).json({
+        success: true,
+        cards: [
+          { leave_type: "Annual Leave", total: 12, used: 5, remaining: 7 },
+          { leave_type: "Medical Leave", total: 10, used: 4, remaining: 6 },
+          { leave_type: "Casual Leave", total: 6, used: 1, remaining: 5 },
+          { leave_type: "Other Leave", total: 4, used: 2, remaining: 2 }
+        ],
+        tableData: [
+          {
+            id: 101,
+            leave_type: "Annual Leave",
+            from: "2025-01-10",
+            to: "2025-01-12",
+            no_of_days: 3,
+            status: "validate"
+          },
+          {
+            id: 102,
+            leave_type: "Medical Leave",
+            from: "2025-02-05",
+            to: "2025-02-05",
+            no_of_days: 1,
+            status: "confirm"
+          },
+          {
+            id: 103,
+            leave_type: "Unpaid Leave",
+            from: "2025-03-01",
+            to: "2025-03-03",
+            no_of_days: 3,
+            status: "confirm"
+          }
+        ],
+        meta: {
+          total: 3,
+          limit: Number(limit),
+          offset: Number(offset)
+        }
+      });
+    }
 
-/* ───────── MOCK RESPONSE (FOR TESTING) ───────── */
-if (use_mock === "true") {
-return res.status(200).json({
-success: true,
-cards: [
-{ leave_type: "Annual Leave", total: 12, used: 5, remaining: 7 },
-{ leave_type: "Medical Leave", total: 10, used: 4, remaining: 6 },
-{ leave_type: "Casual Leave", total: 6, used: 1, remaining: 5 },
-{ leave_type: "Other Leave", total: 4, used: 2, remaining: 2 }
-],
-tableData: [
-{
-id: 101,
-leave_type: "Annual Leave",
-from: "2025-01-10",
-to: "2025-01-12",
-no_of_days: 3,
-status: "validate"
-},
-{
-id: 102,
-leave_type: "Medical Leave",
-from: "2025-02-05",
-to: "2025-02-05",
-no_of_days: 1,
-status: "confirm"
-},
-{
-id: 103,
-leave_type: "Unpaid Leave",
-from: "2025-03-01",
-to: "2025-03-03",
-no_of_days: 3,
-status: "confirm"
-}
-],
-meta: {
-total: 3,
-limit: Number(limit),
-offset: Number(offset)
-}
-});
-}
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        errorMessage: "user_id is required"
+      });
+    }
 
-if(!user_id){
-return res.status(400).json({
-success:false,
-errorMessage:"user_id is required"
-});
-}
+    const user = await odooService.searchRead(
+      "res.users",
+      [["id", "=", Number(user_id)]],
+      ["partner_id"],
+      1
+    );
 
-const user = await odooService.searchRead(
-"res.users",
-[["id","=",Number(user_id)]],
-["partner_id"],
-1
-);
+    const partnerId = user?.[0]?.partner_id?.[0];
+    if (!partnerId) throw new Error("Partner not found");
 
-const partnerId = user?.[0]?.partner_id?.[0];
-if (!partnerId) throw new Error("Partner not found");
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["address_id", "=", partnerId]],
+      ["id", "name"],
+      1
+    );
 
-const employee = await odooService.searchRead(
-"hr.employee",
-[["address_id", "=", partnerId]],
-["id", "name"],
-1
-);
+    const employeeId = employee?.[0]?.id;
+    if (!employeeId) throw new Error("Employee not found");
 
-const employeeId = employee?.[0]?.id;
-if (!employeeId) throw new Error("Employee not found");
+    const leaveTypes = await odooService.searchRead(
+      "hr.leave.type",
+      [],
+      ["id", "name"]
+    );
 
-const leaveTypes = await odooService.searchRead(
-"hr.leave.type",
-[],
-["id","name"]
-);
+    /* ───────── CARD COUNTS (STATIC) ───────── */
+    const allocations = await odooService.searchRead(
+      "hr.leave.allocation",
+      [
+        ["employee_id", "=", employeeId],
+        ["state", "=", "validate"],
+      ],
+      ["holiday_status_id", "number_of_days"]
+    );
 
-/* ───────── CARD COUNTS (STATIC) ───────── */
-const allocations = await odooService.searchRead(
-"hr.leave.allocation",
-[
-["employee_id", "=", employeeId],
-["state", "=", "validate"],
-],
-["holiday_status_id", "number_of_days"]
-);
+    const approvedLeaves = await odooService.searchRead(
+      "hr.leave",
+      [
+        ["employee_id", "=", employeeId],
+        ["state", "=", "validate"],
+      ],
+      ["holiday_status_id", "number_of_days"]
+    );
 
-const approvedLeaves = await odooService.searchRead(
-"hr.leave",
-[
-["employee_id", "=", employeeId],
-["state", "=", "validate"],
-],
-["holiday_status_id", "number_of_days"]
-);
+    const cards = {
+      annual: { leave_type: "Annual Leave", total: 0, used: 0, remaining: 0 },
+      medical: { leave_type: "Medical Leave", total: 0, used: 0, remaining: 0 },
+      casual: { leave_type: "Casual Leave", total: 0, used: 0, remaining: 0 },
+      other: { leave_type: "Other Leave", total: 0, used: 0, remaining: 0 }
+    };
 
-const cards = {
-annual: { leave_type: "Annual Leave", total: 0, used: 0, remaining: 0 },
-medical: { leave_type: "Medical Leave", total: 0, used: 0, remaining: 0 },
-casual: { leave_type: "Casual Leave", total: 0, used: 0, remaining: 0 },
-other: { leave_type: "Other Leave", total: 0, used: 0, remaining: 0 }
-};
+    /* ───────── MAP LEAVE TYPE → CATEGORY ───────── */
+    const leaveTypeCategoryMap = {};
 
-/* ───────── MAP LEAVE TYPE → CATEGORY ───────── */
-const leaveTypeCategoryMap = {};
+    leaveTypes.forEach(t => {
+      const name = t.name.toLowerCase();
 
-leaveTypes.forEach(t => {
-const name = t.name.toLowerCase();
+      if (name.includes("annual")) leaveTypeCategoryMap[t.id] = "annual";
+      else if (name.includes("medical")) leaveTypeCategoryMap[t.id] = "medical";
+      else if (name.includes("casual")) leaveTypeCategoryMap[t.id] = "casual";
+      else leaveTypeCategoryMap[t.id] = "other";
+    });
 
-if (name.includes("annual")) leaveTypeCategoryMap[t.id] = "annual";
-else if (name.includes("medical")) leaveTypeCategoryMap[t.id] = "medical";
-else if (name.includes("casual")) leaveTypeCategoryMap[t.id] = "casual";
-else leaveTypeCategoryMap[t.id] = "other";
-});
+    // Total allocated
+    allocations.forEach(a => {
+      // const leaveTypeId = a.holiday_status_id?.[0];
+      const category = leaveTypeCategoryMap[a.holiday_status_id?.[0]] || "other";
+      cards[category].total += a.number_of_days;
+      // const id = a.holiday_status_id[0];
+      // cardMap[id] = {
+      // leave_type_id: id,
+      // leave_type: a.holiday_status_id[1],
+      // total: a.number_of_days,
+      // used: 0,
+      // };
+    });
 
-// Total allocated
-allocations.forEach(a => {
-// const leaveTypeId = a.holiday_status_id?.[0];
-const category = leaveTypeCategoryMap[a.holiday_status_id?.[0]] || "other";
-cards[category].total += a.number_of_days;
-// const id = a.holiday_status_id[0];
-// cardMap[id] = {
-// leave_type_id: id,
-// leave_type: a.holiday_status_id[1],
-// total: a.number_of_days,
-// used: 0,
-// };
-});
+    // Used leaves
+    approvedLeaves.forEach(l => {
+      // const leaveTypeId = l.holiday_status_id?.[0];
+      const category = leaveTypeCategoryMap[l.holiday_status_id?.[0]] || "other";
+      cards[category].used += l.number_of_days;
+      // const id = l.holiday_status_id[0];
+      // if (cardMap[id]) {
+      // cardMap[id].used += l.number_of_days;
+      // }
+    });
 
-// Used leaves
-approvedLeaves.forEach(l => {
-// const leaveTypeId = l.holiday_status_id?.[0];
-const category = leaveTypeCategoryMap[l.holiday_status_id?.[0]] || "other";
-cards[category].used += l.number_of_days;
-// const id = l.holiday_status_id[0];
-// if (cardMap[id]) {
-// cardMap[id].used += l.number_of_days;
-// }
-});
+    Object.values(cards).forEach(c => {
+      c.remaining = c.total - c.used;
+    });
 
-Object.values(cards).forEach(c => {
-c.remaining = c.total - c.used;
-});
+    const cardArray = Object.values(cards);
 
-const cardArray = Object.values(cards);
+    // const cards = Object.values(cardMap).map(c => ({
+    // ...c,
+    // remaining: c.total - c.used,
+    // }));
 
-// const cards = Object.values(cardMap).map(c => ({
-// ...c,
-// remaining: c.total - c.used,
-// }));
+    /* ───────── TABLE DOMAIN (FILTERED) ───────── */
+    let domain = [["employee_id", "=", employeeId]];
 
-/* ───────── TABLE DOMAIN (FILTERED) ───────── */
-let domain = [["employee_id", "=", employeeId]];
+    if (leave_type_id)
+      domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
 
-if (leave_type_id)
-domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
+    if (state)
+      domain.push(["state", "=", state]);
 
-if (state)
-domain.push(["state", "=", state]);
+    if (date_from)
+      domain.push(["request_date_from", ">=", date_from]);
 
-if (date_from)
-domain.push(["request_date_from", ">=", date_from]);
+    if (date_to)
+      domain.push(["request_date_to", "<=", date_to]);
 
-if (date_to)
-domain.push(["request_date_to", "<=", date_to]);
+    /* ───────── TOTAL COUNT ───────── */
+    const totalCount = await odooService.searchCount(
+      "hr.leave",
+      domain
+    );
 
-/* ───────── TOTAL COUNT ───────── */
-const totalCount = await odooService.searchCount(
-"hr.leave",
-domain
-);
+    /* ───────── TABLE DATA ───────── */
+    const leaves = await odooService.searchRead(
+      "hr.leave",
+      domain,
+      [
+        "id",
+        "holiday_status_id",
+        "request_date_from",
+        "request_date_to",
+        "number_of_days",
+        "state",
+        // "approver_id",
+      ],
+      Number(offset),
+      Number(limit),
+      "request_date_from desc"
+    );
 
-/* ───────── TABLE DATA ───────── */
-const leaves = await odooService.searchRead(
-"hr.leave",
-domain,
-[
-"id",
-"holiday_status_id",
-"request_date_from",
-"request_date_to",
-"number_of_days",
-"state",
-// "approver_id",
-],
-Number(offset),
-Number(limit),
-"request_date_from desc"
-);
+    const tableData = leaves.map(l => ({
+      id: l.id,
+      leave_type_id: l.holiday_status_id[0],
+      leave_type: l.holiday_status_id[1],
+      from: l.request_date_from,
+      to: l.request_date_to,
+      no_of_days: l.number_of_days,
+      // approved_by: l.approver_id?.[1] || "-",
+      status: l.state,
+    }));
 
-const tableData = leaves.map(l => ({
-id: l.id,
-leave_type_id: l.holiday_status_id[0],
-leave_type: l.holiday_status_id[1],
-from: l.request_date_from,
-to: l.request_date_to,
-no_of_days: l.number_of_days,
-// approved_by: l.approver_id?.[1] || "-",
-status: l.state,
-}));
-
-/* ───────── RESPONSE ───────── */
-return res.status(200).json({
-success: true,
-cards: cardArray, // 👈 Always same counts
-tableData, // 👈 Changes on card click
-meta: {
-total: totalCount,
-limit: Number(limit),
-offset: Number(offset),
-},
-});
-}
-catch (error){
-console.error("Employee Leave Error:",error);
-return res.status(500).json({
-success:false,
-errorMessage: error.message
-});
-}
+    /* ───────── RESPONSE ───────── */
+    return res.status(200).json({
+      success: true,
+      cards: cardArray, // 👈 Always same counts
+      tableData, // 👈 Changes on card click
+      meta: {
+        total: totalCount,
+        limit: Number(limit),
+        offset: Number(offset),
+      },
+    });
+  }
+  catch (error) {
+    console.error("Employee Leave Error:", error);
+    return res.status(500).json({
+      success: false,
+      errorMessage: error.message
+    });
+  }
 };
 module.exports = {
   createEmployee,
