@@ -5400,6 +5400,8 @@ class ApiController {
   async createAttendanceRegularization(req, res) {
     try {
       console.log("API Called createAttendanceRegularization");
+      console.log("========================================");
+
       const {
         employee_id,
         reg_reason,
@@ -5410,6 +5412,11 @@ class ApiController {
 
       const { client_id } = await getClientFromRequest(req);
 
+      console.log("📥 Request Body:", req.body);
+      console.log("🏢 Client ID:", client_id);
+      console.log("========================================");
+
+      // Validate required fields
       const requiredFields = {
         employee_id,
         reg_reason,
@@ -5427,7 +5434,41 @@ class ApiController {
         }
       }
 
-      // ✅ Use client_id instead of parent_id
+      // ✅ Validate that reg_category exists
+      try {
+        console.log("🔍 Validating category ID:", reg_category);
+
+        const categoryExists = await odooService.searchRead(
+          "reg.categories",
+          [["id", "=", parseInt(reg_category)]],
+          ["id", "type", "client_id"],
+          1
+        );
+
+        console.log("🔎 Category search result:", JSON.stringify(categoryExists, null, 2));
+
+        if (!categoryExists || categoryExists.length === 0) {
+          console.log("❌ Category not found!");
+          return res.status(400).json({
+            status: "error",
+            message: `Category not found. The reg_category ID '${reg_category}' does not exist.`,
+          });
+        }
+
+        console.log("✅ Valid category found:", categoryExists[0]);
+        console.log("========================================");
+
+      } catch (categoryError) {
+        console.error("❌ Category validation error:", categoryError);
+        console.error("Error details:", categoryError.message);
+        return res.status(400).json({
+          status: "error",
+          message: `Category validation failed: ${categoryError.message}`,
+        });
+      }
+
+      // Check for existing regularization
+      console.log("🔍 Checking for existing regularization...");
       const existing = await odooService.searchRead(
         "attendance.regular",
         [
@@ -5440,34 +5481,98 @@ class ApiController {
         1
       );
 
+      console.log("Existing regularization result:", existing);
+
       if (existing.length) {
+        console.log("❌ Duplicate regularization found!");
         return res.status(409).json({
           status: "error",
           message: "A regularization request already exists for this duration.",
         });
       }
 
+      console.log("✅ No duplicate found, proceeding...");
+      console.log("========================================");
+
+      // Prepare payload - CREATE IN DRAFT STATE
       const vals = {
         employee_id: parseInt(employee_id),
         reg_reason,
         from_date,
         to_date,
         reg_category: parseInt(reg_category),
-        state_select: "requested",
+        state_select: "draft", // ✅ Changed from "requested" to "draft"
         client_id: client_id,
       };
 
-      console.log("Attendance Regularization Payload:", vals);
+      console.log("📤 Attendance Regularization Payload:", JSON.stringify(vals, null, 2));
+      console.log("========================================");
 
+      // Create regularization
+      console.log("🚀 Creating regularization record...");
       const regId = await odooService.create("attendance.regular", vals);
+      console.log("✅ Regularization created with ID:", regId);
+      console.log("========================================");
+
+      // Auto-submit regularization (only works when state is 'draft')
+      try {
+        console.log("==========================================");
+        console.log("🔄 AUTO-SUBMITTING REGULARIZATION");
+        console.log("Regularization ID:", regId);
+        console.log("==========================================");
+
+        // Call the submit method
+        const submitResult = await odooService.callMethod(
+          "attendance.regular",
+          "action_submit_reg",
+          [regId]
+        );
+
+        console.log("Submit result:", submitResult);
+        console.log("✅ Regularization submitted successfully!");
+        console.log("==========================================");
+
+      } catch (submitError) {
+        console.error("❌ ERROR submitting regularization:", submitError);
+        console.error("Submit error details:", submitError.message);
+
+        // If submit fails, delete the draft record to avoid orphaned drafts
+        try {
+          console.log("🗑️ Cleaning up draft record...");
+          await odooService.delete("attendance.regular", regId);
+          console.log("✅ Draft record deleted");
+        } catch (deleteError) {
+          console.error("Failed to delete draft:", deleteError.message);
+        }
+
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to submit regularization request",
+          details: submitError.message,
+        });
+      }
 
       return res.status(200).json({
         status: "success",
-        message: "Attendance regularization request created successfully",
+        message: "Attendance regularization request created and submitted successfully",
         regId,
       });
+
     } catch (error) {
-      console.error("Attendance Regularization Error:", error);
+      console.error("==========================================");
+      console.error("❌ ATTENDANCE REGULARIZATION ERROR");
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+      console.error("==========================================");
+
+      // ✅ Handle specific foreign key constraint errors
+      if (error.message && error.message.includes("attendance_regular_reg_category_fkey")) {
+        return res.status(400).json({
+          status: "error",
+          message: "Category not found. The provided reg_category does not exist in the system.",
+        });
+      }
+
       return res.status(error.status || 500).json({
         status: "error",
         message: error.message || "Failed to create attendance regularization request",
@@ -5519,6 +5624,7 @@ class ApiController {
       });
     }
   }
+
   async updateAttendanceRegularization(req, res) {
     try {
       console.log("API Called: updateAttendanceRegularization");
@@ -6581,6 +6687,261 @@ class ApiController {
         statuscode: 500,
       });
     }
-  } KAVACH
+  }  async approveAttendanceRegularization(req, res) {
+  try {
+    console.log("API Called approveAttendanceRegularization");
+    console.log("========================================");
+
+    const { regularization_id } = req.body;
+    
+    // ✅ Get user from authenticate middleware
+    const userId = req.user?.user_id || req.user?.id;
+    
+    console.log("📥 Request Body:", req.body);
+    console.log("👤 Approver User ID:", userId);
+    console.log("🔍 Regularization ID:", regularization_id);
+
+    if (!regularization_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "regularization_id is required"
+      });
+    }
+
+    if (!userId) {
+      return res.status(401).json({
+        status: "error",
+        message: "User authentication failed. Unable to identify approver."
+      });
+    }
+
+    // ✅ Verify the regularization exists and is in 'requested' state
+    console.log("🔍 Verifying regularization record...");
+    const regularization = await odooService.searchRead(
+      "attendance.regular",
+      [["id", "=", parseInt(regularization_id)]],
+      ["id", "state_select", "employee_id", "reg_reason", "approver"],
+      1
+    );
+
+    if (!regularization || regularization.length === 0) {
+      console.log("❌ Regularization not found!");
+      return res.status(404).json({
+        status: "error",
+        message: `Regularization with ID ${regularization_id} not found`
+      });
+    }
+
+    console.log("✅ Regularization found:", regularization[0]);
+
+    if (regularization[0].state_select !== "requested") {
+      console.log("❌ Invalid state:", regularization[0].state_select);
+      return res.status(400).json({
+        status: "error",
+        message: `Cannot approve. Current state is '${regularization[0].state_select}'. Only 'requested' state can be approved.`
+      });
+    }
+
+    // ✅ Set the approver field before calling approval method
+    console.log("🔄 Setting approver...");
+    await odooService.write(
+      "attendance.regular",
+      [parseInt(regularization_id)],
+      { approver: parseInt(userId) }
+    );
+
+    console.log("========================================");
+    console.log("🔄 APPROVING REGULARIZATION");
+    console.log("Regularization ID:", regularization_id);
+    console.log("Approver ID:", userId);
+    console.log("========================================");
+
+    // ✅ Call the approval method with user context
+    await odooService.callMethod(
+      "attendance.regular",
+      "action_regular_approval",
+      [parseInt(regularization_id)],
+      {},
+      parseInt(userId), // Pass user ID
+      req.user?.password || process.env.ODOO_ADMIN_PASSWORD // Use user's password or admin password
+    );
+
+    console.log("✅ Regularization approved successfully!");
+    console.log("========================================");
+
+    return res.status(200).json({
+      status: "success",
+      message: "Attendance regularization approved successfully",
+      data: {
+        regularization_id: parseInt(regularization_id),
+        approver_id: parseInt(userId),
+        previous_state: "requested",
+        new_state: "approved"
+      }
+    });
+
+  } catch (error) {
+    console.error("==========================================");
+    console.error("❌ APPROVAL ERROR");
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+    console.error("==========================================");
+
+    // Handle specific error messages
+    if (error.message && error.message.includes("You Can Not Approve")) {
+      return res.status(403).json({
+        status: "error",
+        message: "You do not have permission to approve this regularization. Please check if you are the designated approver."
+      });
+    }
+
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Failed to approve attendance regularization"
+    });
+  }
+}
+  async approveAttendanceRegularization(req, res) {
+    try {
+      console.log("API Called approveAttendanceRegularization");
+      console.log("========================================");
+
+      const { regularization_id } = req.body;
+
+      // ✅ Get user from authenticate middleware
+      const userId = req.user?.user_id || req.user?.id;
+
+      console.log("📥 Request Body:", req.body);
+      console.log("👤 Approver User ID:", userId);
+      console.log("🔍 Regularization ID:", regularization_id);
+
+      if (!regularization_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "regularization_id is required"
+        });
+      }
+
+      if (!userId) {
+        return res.status(401).json({
+          status: "error",
+          message: "User authentication failed. Unable to identify approver."
+        });
+      }
+
+      // ✅ Verify the regularization exists and is in 'requested' state
+      console.log("🔍 Verifying regularization record...");
+      const regularization = await odooService.searchRead(
+        "attendance.regular",
+        [["id", "=", parseInt(regularization_id)]],
+        ["id", "state_select", "employee_id", "reg_reason", "approver"],
+        1
+      );
+
+      if (!regularization || regularization.length === 0) {
+        console.log("❌ Regularization not found!");
+        return res.status(404).json({
+          status: "error",
+          message: `Regularization with ID ${regularization_id} not found`
+        });
+      }
+
+      console.log("✅ Regularization found:", regularization[0]);
+
+      if (regularization[0].state_select !== "requested") {
+        console.log("❌ Invalid state:", regularization[0].state_select);
+        return res.status(400).json({
+          status: "error",
+          message: `Cannot approve. Current state is '${regularization[0].state_select}'. Only 'requested' state can be approved.`
+        });
+      }
+
+      // ✅ Set the approver field before calling approval method
+      console.log("🔄 Setting approver...");
+      await odooService.write(
+        "attendance.regular",
+        [parseInt(regularization_id)],
+        { approver: parseInt(userId) }
+      );
+
+      console.log("========================================");
+      console.log("🔄 APPROVING REGULARIZATION");
+      console.log("Regularization ID:", regularization_id);
+      console.log("Approver ID:", userId);
+      console.log("========================================");
+
+      // ✅ Call the approval method with user context
+      await odooService.callMethod(
+        "attendance.regular",
+        "action_regular_approval",
+        [parseInt(regularization_id)],
+        {},
+        parseInt(userId), // Pass user ID
+        req.user?.password || process.env.ODOO_ADMIN_PASSWORD // Use user's password or admin password
+      );
+
+      console.log("✅ Regularization approved successfully!");
+      console.log("========================================");
+
+      return res.status(200).json({
+        status: "success",
+        message: "Attendance regularization approved successfully",
+        data: {
+          regularization_id: parseInt(regularization_id),
+          approver_id: parseInt(userId),
+          previous_state: "requested",
+          new_state: "approved"
+        }
+      });
+
+    } catch (error) {
+      console.error("==========================================");
+      console.error("❌ APPROVAL ERROR");
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+      console.error("==========================================");
+
+      // Handle specific error messages
+      if (error.message && error.message.includes("You Can Not Approve")) {
+        return res.status(403).json({
+          status: "error",
+          message: "You do not have permission to approve this regularization. Please check if you are the designated approver."
+        });
+      }
+
+      return res.status(500).json({
+        status: "error",
+        message: error.message || "Failed to approve attendance regularization"
+      });
+    }
+  }
+  async rejectAttendanceRegularization(req, res) {
+    try {
+      const { regularization_id } = req.body;
+
+      if (!regularization_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "regularization_id is required"
+        });
+      }
+
+      await odooService.callMethod(
+        "attendance.regular",
+        "action_regular_rejection",
+        [parseInt(regularization_id)]
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Rejected successfully"
+      });
+    } catch (error) {
+      return res.status(500).json({
+        status: "error",
+        message: error.message || "Failed to reject"
+      });
+    }
+  }
 }
 module.exports = new ApiController();

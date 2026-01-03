@@ -915,7 +915,7 @@ const createEmployee = async (req, res) => {
         console.log("User already exists with this email:", existingUser[0]);
         userId = existingUser[0].id;
         const partnerId = existingUser[0].partner_id;
-        
+
         await odooHelpers.write("res.users", userId, {
           is_client_employee_user: true,
         });
@@ -928,7 +928,7 @@ const createEmployee = async (req, res) => {
             console.log("Bank account ID received:", bank_account_id);
             console.log("User's partner_id:", partnerId);
             console.log("==========================================");
-            
+
             const bankAccounts = await odooHelpers.searchRead(
               "res.partner.bank",
               [["id", "=", parseInt(bank_account_id)]],
@@ -942,15 +942,15 @@ const createEmployee = async (req, res) => {
               const bankAccountId = bankAccounts[0].id;
               const oldPartnerId = bankAccounts[0].partner_id;
               const userPartnerId = Array.isArray(partnerId) ? partnerId[0] : partnerId;
-              
+
               console.log("Bank account ID to update:", bankAccountId);
               console.log("Old partner_id:", oldPartnerId);
               console.log("New partner_id (user's partner):", userPartnerId);
-              
+
               await odooHelpers.write("res.partner.bank", bankAccountId, {
                 partner_id: userPartnerId,
               });
-              
+
               console.log("✓ Bank account partner_id SUCCESSFULLY updated!");
               console.log(`✓ Bank account ${bankAccountId} partner_id updated from ${oldPartnerId} to ${userPartnerId}`);
               console.log("==========================================");
@@ -1116,7 +1116,7 @@ const createEmployee = async (req, res) => {
             console.log("Account number received:", account_number);
             console.log("User's partner_id:", partnerId);
             console.log("==========================================");
-            
+
             const bankAccounts = await odooHelpers.searchRead(
               "res.partner.bank",
               [["acc_number", "=", account_number]],
@@ -1130,15 +1130,15 @@ const createEmployee = async (req, res) => {
               const bankAccountId = bankAccounts[0].id;
               const oldPartnerId = bankAccounts[0].partner_id;
               const userPartnerId = Array.isArray(partnerId) ? partnerId[0] : partnerId;
-              
+
               console.log("Bank account ID to update:", bankAccountId);
               console.log("Old partner_id:", oldPartnerId);
               console.log("New partner_id (user's partner):", userPartnerId);
-              
+
               await odooHelpers.write("res.partner.bank", bankAccountId, {
                 partner_id: userPartnerId,
               });
-              
+
               console.log("✓ Bank account partner_id SUCCESSFULLY updated!");
               console.log(`✓ Bank account ${bankAccountId} partner_id updated from ${oldPartnerId} to ${userPartnerId}`);
               console.log("==========================================");
@@ -1293,6 +1293,26 @@ const createEmployee = async (req, res) => {
         } catch (approvalError) {
           console.error("Error creating approval details:", approvalError);
         }
+      }
+      try {
+        console.log("==========================================");
+        console.log("SENDING REGISTRATION CODE EMAIL");
+        console.log("Employee ID:", employeeId);
+        console.log("==========================================");
+
+        await odooHelpers.callMethod(
+          "hr.employee",
+          "send_registration_code_email",
+          [employeeId]
+        );
+
+        console.log("✓ Registration code email sent successfully!");
+        console.log("==========================================");
+      } catch (emailError) {
+        console.error("==========================================");
+        console.error("✗ ERROR sending registration code email:", emailError);
+        console.error("Error details:", emailError.message);
+        console.error("==========================================");
       }
 
       const create_uid_value = userIdFromParams || (client_id ? parseInt(client_id) : undefined);

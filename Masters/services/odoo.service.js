@@ -1,4 +1,152 @@
+// const xmlrpc = require("xmlrpc");
+// class OdooService {
+//   constructor() {
+//     this.url = process.env.ODOO_URL;
+//     this.db = process.env.ODOO_DB;
+//     this.username = process.env.ODOO_ADMIN;
+//     this.password = process.env.ODOO_ADMIN_PASSWORD;
+//     this.uid = null;
+//     this.protocol = new URL(this.url).protocol;
+
+//     console.log(this.username);
+//     console.log(this.password);
+//   }
+
+//   createClient(path) {
+//     const urlObj = new URL(this.url);
+//     const clientConfig = {
+//       host: urlObj.hostname,
+//       port: urlObj.port || (this.protocol === "https:" ? 443 : 80),
+//       path: path,
+//       allowNone: true,
+//     };
+
+//     return this.protocol === "https:"
+//       ? xmlrpc.createSecureClient(clientConfig)
+//       : xmlrpc.createClient(clientConfig);
+//   }
+
+//   async authenticate() {
+//     if (this.uid) return this.uid;
+
+//     const commonClient = this.createClient("/xmlrpc/2/common");
+//     return new Promise((resolve, reject) => {
+//       commonClient.methodCall(
+//         "authenticate",
+//         [this.db, this.username, this.password, {}],
+//         (error, uid) => {
+//           if (error) reject(error);
+//           else {
+//             this.uid = uid;
+//             resolve(uid);
+//           }
+//         }
+//       );
+//     });
+//   }
+
+//   async execute(model, method, args = [], kwargs = {}, userId = null, userPassword = null) {
+//     await this.authenticate();
+
+//     const effectiveUid = userId || this.uid;
+//     const effectivePassword = userPassword || this.password;
+//     const objectClient = this.createClient("/xmlrpc/2/object");
+
+//     return new Promise((resolve, reject) => {
+//       objectClient.methodCall(
+//         "execute_kw",
+//         [this.db, effectiveUid, effectivePassword, model, method, args, kwargs],
+//         (error, result) => {
+//           if (error) reject(error);
+//           else resolve(result);
+//         }
+//       );
+//     });
+//   }
+
+//   async search(model, domain = [], fields = [], limit = 0) {
+//     const ids = await this.execute(model, "search", [domain], { limit });
+//     if (ids.length === 0) return [];
+//     return await this.execute(model, "read", [ids, fields]);
+//   }
+//   async searchRead(model, domain = [], fields = [], offsetOrLimit = 0, limit = null, order = "") {
+//     let offset = 0;
+//     if (limit === null) {
+//       limit = offsetOrLimit;
+//     } else {
+//       offset = offsetOrLimit;
+//     }
+
+//     const kwargs = { fields };
+
+//     if (limit) kwargs.limit = limit;
+//     if (offset) kwargs.offset = offset;
+//     if (order) kwargs.order = order;
+
+//     return await this.execute(model, "search_read", [domain], kwargs);
+//   }
+
+//   async create(model, values, options = {}) {
+//     const { uid = null, userPassword = null, context = {} } = options;
+
+//     console.log("🔹 OdooService.create called with UID:", uid || this.uid);
+
+//     return await this.execute(
+//       model,
+//       "create",
+//       [values],
+//       { context },
+//       uid,
+//       userPassword
+//     );
+//   }
+
+//   async write(model, ids, values, userId = null, userPassword = null) {
+//     return await this.execute(model, "write", [ids, values], {}, userId, userPassword);
+//   }
+
+//   async unlink(model, ids, userId = null, userPassword = null) {
+//     return await this.execute(model, "unlink", [ids], {}, userId, userPassword);
+//   }
+
+//   async callMethod(model, method, recordIds = [], context = {}, userId = null, userPassword = null) {
+//     return await this.execute(
+//       model,
+//       method,
+//       [recordIds],
+//       { context },
+//       userId,
+//       userPassword
+//     );
+//   }
+
+//   async callCustomMethod(model, method, args = [], kwargs = {}, userId = null, userPassword = null) {
+//     return await this.execute(
+//       model,
+//       method,
+//       args,
+//       kwargs,
+//       userId,
+//       userPassword
+//     );
+//   }
+//   async searchCount(model, domain) {
+//     try {
+//       return await this.execute(model, 'search_count', [domain]);
+//     } catch (error) {
+//       console.error(`Error in searchCount for model ${model}:`, error);
+//       throw error;
+//     }
+//   }
+// }
+
+// module.exports = new OdooService();
+
+
+
+
 const xmlrpc = require("xmlrpc");
+
 class OdooService {
   constructor() {
     this.url = process.env.ODOO_URL;
@@ -7,7 +155,6 @@ class OdooService {
     this.password = process.env.ODOO_ADMIN_PASSWORD;
     this.uid = null;
     this.protocol = new URL(this.url).protocol;
-
     console.log(this.username);
     console.log(this.password);
   }
@@ -18,9 +165,8 @@ class OdooService {
       host: urlObj.hostname,
       port: urlObj.port || (this.protocol === "https:" ? 443 : 80),
       path: path,
-      allowNone: true,
+      allowNone: true, // This is already set
     };
-
     return this.protocol === "https:"
       ? xmlrpc.createSecureClient(clientConfig)
       : xmlrpc.createClient(clientConfig);
@@ -28,7 +174,6 @@ class OdooService {
 
   async authenticate() {
     if (this.uid) return this.uid;
-
     const commonClient = this.createClient("/xmlrpc/2/common");
     return new Promise((resolve, reject) => {
       commonClient.methodCall(
@@ -47,18 +192,26 @@ class OdooService {
 
   async execute(model, method, args = [], kwargs = {}, userId = null, userPassword = null) {
     await this.authenticate();
-
     const effectiveUid = userId || this.uid;
     const effectivePassword = userPassword || this.password;
     const objectClient = this.createClient("/xmlrpc/2/object");
-
+    
     return new Promise((resolve, reject) => {
       objectClient.methodCall(
         "execute_kw",
         [this.db, effectiveUid, effectivePassword, model, method, args, kwargs],
         (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
+          if (error) {
+            // ✅ Handle the specific "cannot marshal None" error
+            if (error.message && error.message.includes("cannot marshal None")) {
+              console.log(`⚠️ Method ${method} returned None - treating as success`);
+              resolve(true); // Return true instead of rejecting
+            } else {
+              reject(error);
+            }
+          } else {
+            resolve(result);
+          }
         }
       );
     });
@@ -69,6 +222,7 @@ class OdooService {
     if (ids.length === 0) return [];
     return await this.execute(model, "read", [ids, fields]);
   }
+
   async searchRead(model, domain = [], fields = [], offsetOrLimit = 0, limit = null, order = "") {
     let offset = 0;
     if (limit === null) {
@@ -76,21 +230,16 @@ class OdooService {
     } else {
       offset = offsetOrLimit;
     }
-
     const kwargs = { fields };
-
     if (limit) kwargs.limit = limit;
     if (offset) kwargs.offset = offset;
     if (order) kwargs.order = order;
-
     return await this.execute(model, "search_read", [domain], kwargs);
   }
 
   async create(model, values, options = {}) {
     const { uid = null, userPassword = null, context = {} } = options;
-
     console.log("🔹 OdooService.create called with UID:", uid || this.uid);
-
     return await this.execute(
       model,
       "create",
@@ -110,14 +259,28 @@ class OdooService {
   }
 
   async callMethod(model, method, recordIds = [], context = {}, userId = null, userPassword = null) {
-    return await this.execute(
-      model,
-      method,
-      [recordIds],
-      { context },
-      userId,
-      userPassword
-    );
+    console.log(`🔹 Calling method: ${method} on model: ${model} with IDs:`, recordIds);
+    
+    try {
+      const result = await this.execute(
+        model,
+        method,
+        [recordIds],
+        { context },
+        userId,
+        userPassword
+      );
+      
+      console.log(`✅ Method ${method} completed successfully`);
+      return result;
+    } catch (error) {
+      // ✅ Additional handling for None return errors at method level
+      if (error.message && error.message.includes("cannot marshal None")) {
+        console.log(`⚠️ Method ${method} returned None - treating as successful operation`);
+        return true;
+      }
+      throw error;
+    }
   }
 
   async callCustomMethod(model, method, args = [], kwargs = {}, userId = null, userPassword = null) {
@@ -130,6 +293,7 @@ class OdooService {
       userPassword
     );
   }
+
   async searchCount(model, domain) {
     try {
       return await this.execute(model, 'search_count', [domain]);
@@ -141,6 +305,3 @@ class OdooService {
 }
 
 module.exports = new OdooService();
-
-
-
