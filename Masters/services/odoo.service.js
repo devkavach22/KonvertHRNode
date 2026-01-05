@@ -165,7 +165,7 @@ class OdooService {
       host: urlObj.hostname,
       port: urlObj.port || (this.protocol === "https:" ? 443 : 80),
       path: path,
-      allowNone: true, // This is already set
+      allowNone: true, 
     };
     return this.protocol === "https:"
       ? xmlrpc.createSecureClient(clientConfig)
@@ -202,10 +202,9 @@ class OdooService {
         [this.db, effectiveUid, effectivePassword, model, method, args, kwargs],
         (error, result) => {
           if (error) {
-            // ✅ Handle the specific "cannot marshal None" error
             if (error.message && error.message.includes("cannot marshal None")) {
               console.log(`⚠️ Method ${method} returned None - treating as success`);
-              resolve(true); // Return true instead of rejecting
+              resolve(true);
             } else {
               reject(error);
             }
@@ -274,7 +273,6 @@ class OdooService {
       console.log(`✅ Method ${method} completed successfully`);
       return result;
     } catch (error) {
-      // ✅ Additional handling for None return errors at method level
       if (error.message && error.message.includes("cannot marshal None")) {
         console.log(`⚠️ Method ${method} returned None - treating as successful operation`);
         return true;

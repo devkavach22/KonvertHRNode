@@ -6687,132 +6687,19 @@ class ApiController {
         statuscode: 500,
       });
     }
-  }  async approveAttendanceRegularization(req, res) {
-  try {
-    console.log("API Called approveAttendanceRegularization");
-    console.log("========================================");
 
-    const { regularization_id } = req.body;
-    
-    // ✅ Get user from authenticate middleware
-    const userId = req.user?.user_id || req.user?.id;
-    
-    console.log("📥 Request Body:", req.body);
-    console.log("👤 Approver User ID:", userId);
-    console.log("🔍 Regularization ID:", regularization_id);
-
-    if (!regularization_id) {
-      return res.status(400).json({
-        status: "error",
-        message: "regularization_id is required"
-      });
-    }
-
-    if (!userId) {
-      return res.status(401).json({
-        status: "error",
-        message: "User authentication failed. Unable to identify approver."
-      });
-    }
-
-    // ✅ Verify the regularization exists and is in 'requested' state
-    console.log("🔍 Verifying regularization record...");
-    const regularization = await odooService.searchRead(
-      "attendance.regular",
-      [["id", "=", parseInt(regularization_id)]],
-      ["id", "state_select", "employee_id", "reg_reason", "approver"],
-      1
-    );
-
-    if (!regularization || regularization.length === 0) {
-      console.log("❌ Regularization not found!");
-      return res.status(404).json({
-        status: "error",
-        message: `Regularization with ID ${regularization_id} not found`
-      });
-    }
-
-    console.log("✅ Regularization found:", regularization[0]);
-
-    if (regularization[0].state_select !== "requested") {
-      console.log("❌ Invalid state:", regularization[0].state_select);
-      return res.status(400).json({
-        status: "error",
-        message: `Cannot approve. Current state is '${regularization[0].state_select}'. Only 'requested' state can be approved.`
-      });
-    }
-
-    // ✅ Set the approver field before calling approval method
-    console.log("🔄 Setting approver...");
-    await odooService.write(
-      "attendance.regular",
-      [parseInt(regularization_id)],
-      { approver: parseInt(userId) }
-    );
-
-    console.log("========================================");
-    console.log("🔄 APPROVING REGULARIZATION");
-    console.log("Regularization ID:", regularization_id);
-    console.log("Approver ID:", userId);
-    console.log("========================================");
-
-    // ✅ Call the approval method with user context
-    await odooService.callMethod(
-      "attendance.regular",
-      "action_regular_approval",
-      [parseInt(regularization_id)],
-      {},
-      parseInt(userId), // Pass user ID
-      req.user?.password || process.env.ODOO_ADMIN_PASSWORD // Use user's password or admin password
-    );
-
-    console.log("✅ Regularization approved successfully!");
-    console.log("========================================");
-
-    return res.status(200).json({
-      status: "success",
-      message: "Attendance regularization approved successfully",
-      data: {
-        regularization_id: parseInt(regularization_id),
-        approver_id: parseInt(userId),
-        previous_state: "requested",
-        new_state: "approved"
-      }
-    });
-
-  } catch (error) {
-    console.error("==========================================");
-    console.error("❌ APPROVAL ERROR");
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
-    console.error("==========================================");
-
-    // Handle specific error messages
-    if (error.message && error.message.includes("You Can Not Approve")) {
-      return res.status(403).json({
-        status: "error",
-        message: "You do not have permission to approve this regularization. Please check if you are the designated approver."
-      });
-    }
-
-    return res.status(500).json({
-      status: "error",
-      message: error.message || "Failed to approve attendance regularization"
-    });
   }
-}
+
+
   async approveAttendanceRegularization(req, res) {
     try {
       console.log("API Called approveAttendanceRegularization");
       console.log("========================================");
 
-      const { regularization_id } = req.body;
-
-      // ✅ Get user from authenticate middleware
-      const userId = req.user?.user_id || req.user?.id;
+      const { regularization_id, user_id } = req.body;
 
       console.log("📥 Request Body:", req.body);
-      console.log("👤 Approver User ID:", userId);
+      console.log("👤 Approver User ID from body:", user_id);
       console.log("🔍 Regularization ID:", regularization_id);
 
       if (!regularization_id) {
@@ -6822,10 +6709,10 @@ class ApiController {
         });
       }
 
-      if (!userId) {
-        return res.status(401).json({
+      if (!user_id) {
+        return res.status(400).json({
           status: "error",
-          message: "User authentication failed. Unable to identify approver."
+          message: "user_id is required for approval"
         });
       }
 
@@ -6834,7 +6721,7 @@ class ApiController {
       const regularization = await odooService.searchRead(
         "attendance.regular",
         [["id", "=", parseInt(regularization_id)]],
-        ["id", "state_select", "employee_id", "reg_reason", "approver"],
+        ["id", "state_select", "employee_id", "reg_reason"],
         1
       );
 
@@ -6856,29 +6743,98 @@ class ApiController {
         });
       }
 
-      // ✅ Set the approver field before calling approval method
-      console.log("🔄 Setting approver...");
-      await odooService.write(
-        "attendance.regular",
-        [parseInt(regularization_id)],
-        { approver: parseInt(userId) }
+      // ✅ Get employee details to find manager
+      const employeeId = regularization[0].employee_id[0];
+      console.log("🔍 Fetching employee details for ID:", employeeId);
+
+      const employee = await odooService.searchRead(
+        "hr.employee",
+        [["id", "=", employeeId]],
+        ["id", "name", "parent_id", "user_id"],
+        1
       );
+
+      if (!employee || employee.length === 0) {
+        console.log("❌ Employee not found!");
+        return res.status(404).json({
+          status: "error",
+          message: "Employee not found"
+        });
+      }
+
+      console.log("✅ Employee found:", employee[0]);
+
+      // Check if user_id matches employee's manager
+      let isAuthorized = false;
+      if (employee[0].parent_id && employee[0].parent_id.length > 0) {
+        const managerId = employee[0].parent_id[0];
+        console.log("👔 Employee's Manager ID:", managerId);
+
+        // Get manager's user_id
+        const manager = await odooService.searchRead(
+          "hr.employee",
+          [["id", "=", managerId]],
+          ["id", "user_id"],
+          1
+        );
+
+        if (manager && manager.length > 0 && manager[0].user_id) {
+          const managerUserId = manager[0].user_id[0];
+          console.log("👤 Manager's User ID:", managerUserId);
+
+          if (managerUserId === parseInt(user_id)) {
+            isAuthorized = true;
+            console.log("✅ User is authorized (employee's manager)");
+          }
+        }
+      }
+
+      // Also check if user is admin
+      if (parseInt(user_id) === 2 || parseInt(user_id) === 1) {
+        isAuthorized = true;
+        console.log("✅ User is authorized (admin)");
+      }
+
+      if (!isAuthorized) {
+        console.log("❌ User is not authorized to approve");
+        return res.status(403).json({
+          status: "error",
+          message: "You are not authorized to approve this regularization. Only the employee's manager can approve."
+        });
+      }
 
       console.log("========================================");
       console.log("🔄 APPROVING REGULARIZATION");
       console.log("Regularization ID:", regularization_id);
-      console.log("Approver ID:", userId);
+      console.log("Approver User ID:", user_id);
       console.log("========================================");
 
-      // ✅ Call the approval method with user context
-      await odooService.callMethod(
+      // ✅ Directly update state to approved
+      console.log("📝 Updating regularization state to 'approved'...");
+      await odooService.write(
         "attendance.regular",
-        "action_regular_approval",
         [parseInt(regularization_id)],
-        {},
-        parseInt(userId), // Pass user ID
-        req.user?.password || process.env.ODOO_ADMIN_PASSWORD // Use user's password or admin password
+        {
+          state_select: 'approved'
+        }
       );
+
+      // ✅ Create approval log entry
+      try {
+        console.log("📝 Creating approval log entry...");
+        await odooService.create(
+          "attendance.approval.log.list",
+          {
+            hr_attendance_regular_id: parseInt(regularization_id),
+            approver_id: parseInt(user_id),
+            is_approved: true,
+            sequence_number: 1
+          }
+        );
+        console.log("✅ Approval log created successfully");
+      } catch (logError) {
+        console.log("⚠️ Could not create approval log:", logError.message);
+      }
 
       console.log("✅ Regularization approved successfully!");
       console.log("========================================");
@@ -6888,7 +6844,7 @@ class ApiController {
         message: "Attendance regularization approved successfully",
         data: {
           regularization_id: parseInt(regularization_id),
-          approver_id: parseInt(userId),
+          approver_id: parseInt(user_id),
           previous_state: "requested",
           new_state: "approved"
         }
@@ -6900,14 +6856,6 @@ class ApiController {
       console.error("Error message:", error.message);
       console.error("Error stack:", error.stack);
       console.error("==========================================");
-
-      // Handle specific error messages
-      if (error.message && error.message.includes("You Can Not Approve")) {
-        return res.status(403).json({
-          status: "error",
-          message: "You do not have permission to approve this regularization. Please check if you are the designated approver."
-        });
-      }
 
       return res.status(500).json({
         status: "error",
