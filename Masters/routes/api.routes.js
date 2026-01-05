@@ -269,10 +269,15 @@ router.delete(
   apiController.deleteTag.bind(apiController)
 );
 
+// router.post(
+//   "/Payment",
+//   authenticate,
+//   invoiceController.createInvoiceAndPay.bind(invoiceController)
+// );
 router.post(
-  "/Payment",
+  "/create/subscription",
   authenticate,
-  invoiceController.createInvoiceAndPay.bind(invoiceController)
+  invoiceController.createSubscription.bind(invoiceController)
 );
 
 router.post(
@@ -369,34 +374,6 @@ router.get(
   authenticate,
   CheckInandCheckout.getAllAttendancesMobile
 );
-
-
-router.post(
-  "/create/leave",
-  authenticate,
-  apiController.createLeave.bind(apiController)
-);
-
-router.get(
-  "/leave/data",
-  authenticate,
-
-  apiController.getLeaveData.bind(apiController)
-);
-
-
-router.post(
-  "/create/accrual_plan",
-  authenticate,
-  apiController.createAccrualPlan.bind(apiController)
-);
-router.get(
-  "/accrual_plans",
-  authenticate,
-  apiController.getAccrualPlans.bind(apiController)
-);
-
-
 router.post(
   "/create/work-entry-type",
   authenticate,
@@ -729,6 +706,11 @@ router.delete(
   "/mandatory-days/:id",
   authenticate,
   LeaveController.deleteMandatoryDays.bind(LeaveController)
+);
+router.post(
+"/leave-allocation/action",
+authenticate,
+LeaveController.updateAllocationStatus.bind(LeaveController)
 );
 module.exports = router;
 

@@ -31,14 +31,14 @@ function cleanBase64Image(imageString) {
   }
 
   try {
-    let cleaned = imageString.trim().replace(/\s/g, '');
-    if (cleaned.startsWith('data:image')) {
-      const base64Index = cleaned.indexOf('base64,');
+    let cleaned = imageString.trim().replace(/\s/g, "");
+    if (cleaned.startsWith("data:image")) {
+      const base64Index = cleaned.indexOf("base64,");
       if (base64Index !== -1) {
         cleaned = cleaned.substring(base64Index + 7);
       }
     }
-    cleaned = cleaned.replace(/[^A-Za-z0-9+/=]/g, '');
+    cleaned = cleaned.replace(/[^A-Za-z0-9+/=]/g, "");
 
     if (cleaned.length === 0 || cleaned.length % 4 !== 0) {
       console.warn("⚠️ Invalid base64 length");
@@ -55,7 +55,8 @@ function cleanBase64Image(imageString) {
 exports.apiAttendance = async (req, res) => {
   try {
     const parsedBody = parseRequestBody(req.body);
-    let { email, Image, Latitude, Longitude, check_in, check_out, user_id } = parsedBody;
+    let { email, Image, Latitude, Longitude, check_in, check_out, user_id } =
+      parsedBody;
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -85,7 +86,8 @@ exports.apiAttendance = async (req, res) => {
       return res.status(400).json({
         success: false,
         statuscode: 400,
-        errorMessage: "Latitude must be between -90 and 90, Longitude must be between -180 and 180",
+        errorMessage:
+          "Latitude must be between -90 and 90, Longitude must be between -180 and 180",
       });
     }
     Latitude = lat;
@@ -307,163 +309,179 @@ exports.getAllAttendancesMobile = async (req, res) => {
       date_to,
       month,
       year,
+      timezone = "Asia/Kolkata",
       limit = 100,
       offset = 0,
     } = req.query;
 
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        status: "error",
-        errorMessage: "user_id is required",
-        statuscode: 400,
-      });
-    }
-
-    console.log("🔍 Searching user in res.users:", user_id);
+    if (!user_id)
+      return res
+        .status(400)
+        .json({ success: false, errorMessage: "user_id is required" });
     const users = await odooService.searchRead(
       "res.users",
-      [["id", "=", parseInt(user_id)]],
-      ["id", "name", "login", "partner_id"],
-      1
-    );
-
-    if (!users.length) {
-      return res.status(404).json({
-        success: false,
-        status: "error",
-        errorMessage: `User not found for user_id: ${user_id}`,
-        statuscode: 404,
-      });
-    }
-
-    const user = users[0];
-    console.log("👤 Odoo User Found:", user);
-
-    const employee = await odooService.searchRead(
-      "hr.employee",
-      [["user_id", "=", user.id]],
+      [["id", "=", Number(user_id)]],
       ["id", "name"],
       1
     );
+    if (!users.length)
+      return res
+        .status(404)
+        .json({ success: false, errorMessage: "User not found" });
 
-    if (!employee.length) {
-      return res.status(404).json({
-        success: false,
-        status: "error",
-        errorMessage: `Employee not found for user_id: ${user_id}`,
-        statuscode: 404,
-      });
-    }
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["user_id", "=", users[0].id]],
+      ["id", "name"],
+      1
+    );
+    if (!employee.length)
+      return res
+        .status(404)
+        .json({ success: false, errorMessage: "Employee not found" });
 
     const employeeId = employee[0].id;
+
     let finalDateFrom = date_from;
     let finalDateTo = date_to;
+    const currentYear = moment().tz(timezone).year();
 
-    if (month && year) {
-      const m = parseInt(month);
-      const y = parseInt(year);
-
-      const start = new Date(y, m - 1, 1, 0, 0, 0);
-      const end = new Date(y, m, 0, 23, 59, 59);
-
-      finalDateFrom = start.toISOString().slice(0, 19).replace("T", " ");
-      finalDateTo = end.toISOString().slice(0, 19).replace("T", " ");
-
-      console.log("📅 Month-Year Filter:", finalDateFrom, finalDateTo);
+    if (month || year) {
+      const selectedYear = year || currentYear;
+      if (month) {
+        finalDateFrom = moment
+          .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+          .startOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+        finalDateTo = moment
+          .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+          .endOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+      } else {
+        finalDateFrom = moment
+          .tz(`${selectedYear}-01-01`, timezone)
+          .startOf("year")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+        finalDateTo = moment
+          .tz(`${selectedYear}-12-31`, timezone)
+          .endOf("year")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+      }
     }
 
-    let domain = [["employee_id", "=", employeeId]];
-
+    const domain = [["employee_id", "=", employeeId]];
     if (finalDateFrom) domain.push(["check_in", ">=", finalDateFrom]);
     if (finalDateTo) domain.push(["check_in", "<=", finalDateTo]);
+
     const REQUIRED_FIELDS = [
       "check_in",
+      "check_out",
+      "worked_hours",
       "checkin_lat",
       "checkin_lon",
-      "check_out",
       "checkout_lat",
       "checkout_lon",
-      "worked_hours",
-      "early_out_minutes",
-      "overtime_hours",
-      "is_early_out",
-      "validated_overtime_hours",
       "is_late_in",
       "late_time_display",
       "status_code",
       "check_in_image",
-      "check_out_image"
+      "check_out_image",
     ];
 
     const attendances = await odooService.searchRead(
       "hr.attendance",
       domain,
       REQUIRED_FIELDS,
-      parseInt(offset),
-      parseInt(limit),
+      0,
+      false,
       "check_in desc"
     );
 
-    const totalCount = await odooService.search("hr.attendance", domain);
-
-    if ((month && year) && totalCount.length === 0) {
-      const monthNames = [
-        "", "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-      ];
-
+    if (!attendances || attendances.length === 0) {
       return res.status(200).json({
-        success: false,
-        status: "error",
-        errorMessage: `There is no attendance for ${monthNames[month]} ${year}`,
+        success: true,
+        status: "success",
+        successMessage: "No attendance records found",
         statuscode: 200,
         data: [],
-        meta: {
-          total: 0,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          employee_name: employee[0].name,
-          employee_id: employeeId,
-          filter: {
-            month,
-            year,
-            date_from: finalDateFrom,
-            date_to: finalDateTo,
-          },
-        },
+        meta: { total: 0, employee_name: employee[0].name },
       });
     }
+
+    const attendanceIds = attendances.map((att) => att.id);
+    const allAttendanceLines = await odooService.searchRead(
+      "hr.attendance.line",
+      [["attendance_id", "in", attendanceIds]],
+      ["attendance_id", "check_in", "check_out"],
+      0,
+      false,
+      "check_in asc"
+    );
+
+    let linesMap = {};
+    allAttendanceLines.forEach((line) => {
+      const attId = line.attendance_id[0];
+      if (!linesMap[attId]) linesMap[attId] = [];
+      linesMap[attId].push(line);
+    });
+
+    const finalData = attendances.map((att) => {
+      const lines = linesMap[att.id] || [];
+      let actualCheckIn = att.check_in;
+      let actualCheckOut = att.check_out;
+
+      if (lines.length > 0) {
+        actualCheckIn = lines[0].check_in;
+        actualCheckOut = lines[lines.length - 1].check_out;
+      }
+
+      const formatTz = (dt) =>
+        dt ? moment.utc(dt).tz(timezone).format("YYYY-MM-DD HH:mm:ss") : null;
+
+      return {
+        date: moment.utc(actualCheckIn).tz(timezone).format("YYYY-MM-DD"),
+        attendance_ids: [att.id],
+        check_in: formatTz(actualCheckIn),
+        check_out: formatTz(actualCheckOut),
+        check_in_image: att.check_in_image || null,
+        check_out_image: att.check_out_image || null,
+        checkin_lat: att.checkin_lat,
+        checkin_lon: att.checkin_lon,
+        checkout_lat: att.checkout_lat || 0,
+        checkout_lon: att.checkout_lon || 0,
+        worked_hours: att.worked_hours || 0,
+        is_late_in: att.is_late_in,
+        late_time_display: att.late_time_display,
+        status_code: att.status_code,
+      };
+    });
+
+    const paginated = finalData.slice(
+      Number(offset),
+      Number(offset) + Number(limit)
+    );
 
     return res.status(200).json({
       success: true,
       status: "success",
       successMessage: "Attendance records fetched successfully",
       statuscode: 200,
-      data: attendances,
+      data: paginated,
       meta: {
-        total: totalCount.length,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
+        total: finalData.length,
+        limit: Number(limit),
+        offset: Number(offset),
         employee_name: employee[0].name,
-        employee_id: employeeId,
-        filter: {
-          month: month || null,
-          year: year || null,
-          date_from: finalDateFrom || null,
-          date_to: finalDateTo || null,
-        },
       },
     });
-
   } catch (error) {
-    console.error("🔥 Error fetching attendances:", error);
-    return res.status(500).json({
-      success: false,
-      status: "error",
-      errorMessage: error.message || "Failed to fetch attendances",
-      statuscode: 500,
-    });
+    return res
+      .status(500)
+      .json({ success: false, errorMessage: error.message });
   }
 };
 
@@ -518,20 +536,15 @@ exports.apiCheckinCheckout = async (req, res) => {
     const attendances = await odooService.searchRead(
       "hr.attendance",
       [["employee_id", "=", employee.id]],
-      [
-        "id",
-        "check_in",
-        "check_out",
-        "check_in_image",
-        "check_out_image"
-      ],
+      ["id", "check_in", "check_out", "check_in_image", "check_out_image"],
       1
     );
 
     const convertToLocalTime = (odooDateTime) => {
       if (!odooDateTime) return null;
 
-      return moment.utc(odooDateTime, "YYYY-MM-DD HH:mm:ss")
+      return moment
+        .utc(odooDateTime, "YYYY-MM-DD HH:mm:ss")
         .tz("Asia/Kolkata")
         .format("YYYY-MM-DD HH:mm:ss");
     };
@@ -549,7 +562,9 @@ exports.apiCheckinCheckout = async (req, res) => {
     } else {
       status = "CheckedOut";
       message = "Employee is currently checked out.";
-      action_time = attendances.length ? convertToLocalTime(attendances[0].check_out) : null;
+      action_time = attendances.length
+        ? convertToLocalTime(attendances[0].check_out)
+        : null;
       action_image = attendances.length ? attendances[0].check_out_image : null;
     }
 
@@ -559,10 +574,9 @@ exports.apiCheckinCheckout = async (req, res) => {
       employee_id: employee.id,
       message,
       action_time,
-      action_image
+      action_image,
     };
     return res.status(200).json(response);
-
   } catch (err) {
     const response = {
       success: false,

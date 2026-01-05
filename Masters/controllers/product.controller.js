@@ -220,6 +220,7 @@ module.exports = {
         [
           ["type", "=", "service"],
           ["is_plan", "=", true],
+          ["recurring_invoice", "=", true],
         ],
         [
           "id",

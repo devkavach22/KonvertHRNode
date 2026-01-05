@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 const allowedOrigins = [
-  "https://konverthr-marketing.onrender.com/"
+  "https://konverthr-marketing.onrender.com/",
 ];
 
 app.use(
@@ -30,7 +30,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ status: "error", message: "Internal Server Error" });
 });
 
-app.listen(PORT, "0.0.0.0",() => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server is running on port ${PORT}`);
 });
 
