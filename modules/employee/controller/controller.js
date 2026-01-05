@@ -2101,6 +2101,900 @@ const getEmployeeDashboard = async (req, res) => {
     });
   }
 };
+
+const createExpense = async (req, res) => {
+  try {
+    console.log("API called for Expense creation");
+
+    const user_id = req.body.user_id || req.query.user_id;
+
+    const {
+      name,
+      product_id,
+      account_id,
+      total_amount_currency,
+      payment_mode,
+      date,
+      attachment,
+      fileName
+    } = req.body;
+
+    // ───────── 1. RESOLVE CLIENT ─────────
+    const { client_id } = await getClientFromRequest(req);
+    if (!client_id) return res.status(400).json({ status: "error", message: "client_id not found" });
+
+    // ───────── 2. VALIDATIONS ─────────
+    const missingFields = [];
+    if (!user_id) missingFields.push("user_id");
+    if (!name) missingFields.push("name");
+    if (!product_id) missingFields.push("product_id");
+    if (!account_id) missingFields.push("account_id");
+    if (!total_amount_currency) missingFields.push("total_amount_currency");
+    if (!payment_mode) missingFields.push("payment_mode");
+
+    if (missingFields.length) {
+      return res.status(400).json({ status: "error", message: `Missing fields: ${missingFields.join(", ")}` });
+    }
+
+    // ───────── 3. USER → EMPLOYEE ─────────
+    const user = await odooService.searchRead(
+      "res.users",
+      [["id", "=", Number(user_id)]],
+      ["partner_id"],
+      1,
+      client_id // Pass context
+    );
+
+    if (!user.length || !user[0].partner_id) return res.status(400).json({ status: "error", message: "Invalid user_id" });
+
+    const partnerId = user[0].partner_id[0];
+
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["address_id", "=", partnerId], ["address_id", "=", client_id]],
+      ["id", "company_id"],
+      1,
+      client_id // Pass context
+    );
+
+    if (!employee.length) return res.status(400).json({ status: "error", message: "Employee not found for this client" });
+
+    const employee_id = employee[0].id;
+    const companyId = employee[0].company_id?.[0];
+
+    // ───────── 7. CREATE EXPENSE ─────────
+    const vals = {
+      name,
+      employee_id,
+      product_id,
+      account_id,
+      payment_mode,
+      total_amount_currency,
+      date: date || new Date().toISOString().split("T")[0],
+      company_id: companyId,
+      client_id: client_id // ✅ OK: Assuming hr.expense has this custom field
+    };
+
+    console.log("Creating Expense Payload:", vals);
+
+    // Pass client_id to service for context
+    const expenseId = await odooService.create("hr.expense", vals, client_id);
+
+    // ───────── 8. HANDLE ATTACHMENT (FIXED) ─────────
+    if (attachment && fileName) {
+      try {
+        // Create the attachment
+        const attachmentPayload = {
+          name: fileName,
+          datas: attachment.replace(/^data:.*;base64,/, ""),
+          type: "binary",
+          res_model: "hr.expense",
+          res_id: expenseId,
+          mimetype: "application/octet-stream"
+          // ❌ REMOVED: client_id: client_id (Field does not exist on ir.attachment)
+        };
+
+        // We pass client_id ONLY as the 3rd argument for the connection context
+        const attachmentId = await odooService.create("ir.attachment", attachmentPayload, client_id);
+
+        // Explicitly link it to the expense
+        await odooService.write("hr.expense", expenseId, {
+          attachment_ids: [[4, attachmentId]]
+        }, client_id);
+
+        console.log("Attachment created successfully for Expense ID:", expenseId);
+      } catch (attachError) {
+        console.error("❌ Attachment creation failed:", attachError);
+        // Note: We swallow this error so the Expense creation itself doesn't fail
+        // just because the attachment failed.
+      }
+    }
+
+    // ───────── 9. FETCH EXPENSE & MANUAL ATTACHMENT LOOKUP ─────────
+
+    // A. Fetch the Expense Record
+    const createdExpenseArr = await odooService.searchRead(
+      "hr.expense",
+      [["id", "=", expenseId]],
+      ["id", "name", "employee_id", "product_id", "account_id", "payment_mode", "total_amount_currency", "state", "date"],
+      1,
+      client_id
+    );
+
+    // B. Fetch the Attachment Record
+    const directAttachments = await odooService.searchRead(
+      "ir.attachment",
+      [
+        ["res_model", "=", "hr.expense"],
+        ["res_id", "=", expenseId]
+      ],
+      ["id", "name", "local_url"],
+      0,
+      0,
+      null,
+      client_id
+    );
+
+    const finalData = createdExpenseArr[0];
+
+    if (finalData) {
+      finalData.attachment_ids = directAttachments.map(att => ({
+        id: att.id,
+        name: att.name,
+        url: att.local_url
+      }));
+    }
+
+    return res.status(201).json({
+      status: "success",
+      message: "Expense created successfully",
+      data: finalData
+    });
+
+  } catch (error) {
+    console.error("❌ Create Expense Error:", error);
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Failed to create expense"
+    });
+  }
+};
+
+const getExpense = async (req, res) => {
+  try {
+    console.log("API called for Fetching Expenses");
+
+    // 1. Get user_id (Accepting from Query or Body)
+    const user_id = req.query.user_id || req.body.user_id;
+
+    // ───────── 1. RESOLVE CLIENT ─────────
+    const { client_id } = await getClientFromRequest(req);
+    if (!client_id) return res.status(400).json({ status: "error", message: "client_id not found" });
+
+    if (!user_id) {
+      return res.status(400).json({ status: "error", message: "Missing user_id" });
+    }
+
+    // ───────── 2. USER → EMPLOYEE (LOGIC REUSED) ─────────
+    // A. Fetch User to get Partner ID
+    const user = await odooService.searchRead("res.users", [["id", "=", Number(user_id)]], ["partner_id"], 1);
+
+    if (!user.length || !user[0].partner_id) {
+      return res.status(400).json({ status: "error", message: "Invalid user_id or Partner not found" });
+    }
+    const partnerId = user[0].partner_id[0];
+
+    // B. Fetch Employee matching both Partner Address AND Client Address
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["address_id", "=", partnerId], ["address_id", "=", client_id]],
+      ["id", "name"],
+      1
+    );
+
+    if (!employee.length) {
+      return res.status(400).json({ status: "error", message: "Employee not found for this client" });
+    }
+
+    const employee_id = employee[0].id;
+    console.log(`Fetching expenses for Employee ID: ${employee_id}`);
+
+    // ───────── 3. FETCH EXPENSES ─────────
+    // Fetch all expenses linked to this employee
+    // NOTE: Do NOT include 'attachment' in the fields list, it will cause an XML-RPC error.
+    const expenses = await odooService.searchRead(
+      "hr.expense",
+      [["employee_id", "=", employee_id]],
+      [
+        "id",
+        "name",
+        "product_id",
+        "account_id",
+        "payment_mode",
+        "total_amount_currency",
+        "state",
+        "date",
+        "currency_id"
+      ]
+    );
+
+    if (!expenses || expenses.length === 0) {
+      return res.status(200).json({
+        status: "success",
+        message: "No expenses found",
+        data: []
+      });
+    }
+
+    // ───────── 4. FETCH & MAP ATTACHMENTS ─────────
+    // We fetch attachments from 'ir.attachment' separately, just like in your create function (Step 9).
+
+    // Get all Expense IDs to perform a single batch query
+    const expenseIds = expenses.map(exp => exp.id);
+
+    const attachments = await odooService.searchRead(
+      "ir.attachment",
+      [
+        ["res_model", "=", "hr.expense"],
+        ["res_id", "in", expenseIds]
+      ],
+      ["id", "name", "local_url", "res_id"]
+    );
+
+    // Merge attachments into the expense objects
+    const finalData = expenses.map(exp => {
+      // Find attachments specifically for this expense ID
+      const expAttachments = attachments
+        .filter(att => att.res_id === exp.id)
+        .map(att => ({
+          id: att.id,
+          name: att.name,
+          url: att.local_url
+        }));
+
+      return {
+        ...exp,
+        attachment_ids: expAttachments // Injecting the attachment array
+      };
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Expenses fetched successfully",
+      data: finalData
+    });
+
+  } catch (error) {
+    console.error("❌ Get Expenses Error:", error);
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Failed to fetch expenses"
+    });
+  }
+};
+
+const updateExpense = async (req, res) => {
+  try {
+    console.log("API called for Expense Update");
+
+    // 1. Get Expense ID from URL Parameter
+    const expense_id = req.params.id;
+
+    // 2. Get User ID from Body or Query (Still needed to find the employee)
+    const user_id = req.body.user_id || req.query.user_id;
+
+    const {
+      name,
+      product_id,
+      account_id,
+      total_amount_currency,
+      payment_mode,
+      date,
+      attachment,
+      fileName
+    } = req.body;
+
+    // ───────── 3. RESOLVE CLIENT ─────────
+    const { client_id } = await getClientFromRequest(req);
+    if (!client_id) return res.status(400).json({ status: "error", message: "client_id not found" });
+
+    // ───────── 4. VALIDATIONS ─────────
+    if (!expense_id) return res.status(400).json({ status: "error", message: "Missing expense ID in URL" });
+    if (!user_id) return res.status(400).json({ status: "error", message: "Missing user_id in body or query" });
+
+    // ───────── 5. USER → EMPLOYEE LOOKUP ─────────
+    // We search by user_id directly to avoid the "Employee not found" error
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["user_id", "=", Number(user_id)]],
+      ["id", "name"],
+      1
+    );
+
+    if (!employee.length) {
+      return res.status(404).json({ status: "error", message: "Employee not found for this user." });
+    }
+
+    const employee_id = employee[0].id;
+
+    // ───────── 6. VERIFY OWNERSHIP ─────────
+    // Check if the expense exists AND belongs to this employee
+    const existingExpense = await odooService.searchRead(
+      "hr.expense",
+      [
+        ["id", "=", Number(expense_id)],
+        ["employee_id", "=", employee_id] // Security Check
+      ],
+      ["id", "state"],
+      1
+    );
+
+    if (!existingExpense.length) {
+      return res.status(404).json({ status: "error", message: "Expense not found or you do not have permission to edit it." });
+    }
+
+    // ───────── 7. UPDATE FIELDS ─────────
+    const vals = {};
+    if (name) vals.name = name;
+    if (product_id) vals.product_id = product_id;
+    if (account_id) vals.account_id = account_id;
+    if (total_amount_currency) vals.total_amount_currency = total_amount_currency;
+    if (payment_mode) vals.payment_mode = payment_mode;
+    if (date) vals.date = date;
+
+    if (Object.keys(vals).length > 0) {
+      await odooService.write("hr.expense", Number(expense_id), vals);
+    }
+
+    // ───────── 8. HANDLE NEW ATTACHMENT ─────────
+    if (attachment && fileName) {
+      try {
+        const attachmentId = await odooService.create("ir.attachment", {
+          name: fileName,
+          datas: attachment.replace(/^data:.*;base64,/, ""),
+          type: "binary",
+          res_model: "hr.expense",
+          res_id: Number(expense_id),
+          mimetype: "application/octet-stream"
+        });
+
+        await odooService.write("hr.expense", Number(expense_id), {
+          attachment_ids: [[4, attachmentId]]
+        });
+      } catch (attachError) {
+        console.error("❌ Attachment update failed:", attachError);
+      }
+    }
+
+    // ───────── 9. FETCH UPDATED DATA ─────────
+    const updatedExpenseArr = await odooService.searchRead(
+      "hr.expense",
+      [["id", "=", Number(expense_id)]],
+      ["id", "name", "employee_id", "product_id", "account_id", "payment_mode", "total_amount_currency", "state", "date"],
+      1
+    );
+
+    const directAttachments = await odooService.searchRead(
+      "ir.attachment",
+      [["res_model", "=", "hr.expense"], ["res_id", "=", Number(expense_id)]],
+      ["id", "name", "local_url"]
+    );
+
+    const finalData = updatedExpenseArr[0];
+    finalData.attachment_ids = directAttachments.map(att => ({
+      id: att.id,
+      name: att.name,
+      url: att.local_url
+    }));
+
+    return res.status(200).json({
+      status: "success",
+      message: "Expense updated successfully",
+      data: finalData
+    });
+
+  } catch (error) {
+    console.error("❌ Update Expense Error:", error);
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Failed to update expense"
+    });
+  }
+};
+const createCalendarEvent = async (req, res) => {
+  try {
+    console.log("API called for Calendar Event creation");
+
+    // 1. Get user_id (Accept from Body or Query)
+    const user_id = req.body.user_id || req.query.user_id;
+
+    const {
+      name,
+      start, // Expected format: "dd/mm/yyyy HH:MM:SS" or ISO
+      stop, // Expected format: "dd/mm/yyyy HH:MM:SS" or ISO
+      location,
+      duration,
+      description,
+      privacy // ✅ Added: 'public', 'private', or 'confidential'
+    } = req.body;
+
+    console.log(req.body);
+
+    // ───────── 1. RESOLVE CLIENT ─────────
+    const { client_id } = await getClientFromRequest(req);
+    if (!client_id) return res.status(400).json({ status: "error", message: "client_id not found" });
+
+    // ───────── 2. VALIDATIONS ─────────
+    const missingFields = [];
+    if (!user_id) missingFields.push("user_id");
+    if (!name) missingFields.push("name");
+    if (!start) missingFields.push("start");
+    if (!stop) missingFields.push("stop");
+
+    if (missingFields.length) {
+      return res.status(400).json({ status: "error", message: `Missing fields: ${missingFields.join(", ")}` });
+    }
+
+    // ───────── 3. RESOLVE USER (Preserved Logic) ─────────
+    // We search res.users by ID to get the partner_id and verify existence
+    const user = await odooService.searchRead(
+      "res.users",
+      [["id", "=", Number(user_id)]],
+      ["partner_id", "name", "login", "email"],
+      1
+    );
+
+    if (!user.length) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+
+    const userData = user[0];
+    // const userPartnerId = userData.partner_id ? userData.partner_id[0] : null; // (Not used, but available)
+
+    // ───────── 4. PARSE DATES ─────────
+    // Helper to convert "dd/mm/yyyy HH:MM:SS" to Odoo's preferred ISO format.
+    const parseToOdooTime = (dateStr) => {
+      if (dateStr && dateStr.includes('/')) {
+        const [datePart, timePart] = dateStr.split(' ');
+        const [day, month, year] = datePart.split('/');
+        return `${year}-${month}-${day} ${timePart}`;
+      }
+      return dateStr; // Return as-is if already in a suitable format
+    };
+
+    const formattedStart = parseToOdooTime(start);
+    const formattedStop = parseToOdooTime(stop);
+
+    // ───────── 5. CREATE CALENDAR EVENT ─────────
+    const eventVals = {
+      name: name,
+      start: formattedStart,
+      stop: formattedStop,
+      location: location,
+      duration: duration,
+      description: description || "",
+      user_id: Number(user_id),
+      privacy: privacy // ✅ Added: Passes 'public', 'private', or 'confidential' string
+    };
+
+    console.log("Creating Calendar Event:", eventVals);
+    const eventId = await odooService.create("calendar.event", eventVals);
+
+    // ───────── 6. FETCH CREATED EVENT FOR RESPONSE ─────────
+    const createdEventArr = await odooService.searchRead(
+      "calendar.event",
+      [["id", "=", eventId]],
+      // ✅ Added 'privacy', removed 'partner_ids' and 'alarm_ids'
+      ["id", "name", "start", "stop", "location", "duration", "description", "privacy", "user_id"],
+      1
+    );
+
+    const event = createdEventArr[0];
+
+    // Format Response
+    const responseData = {
+      event_id: event.id,
+      name: event.name,
+      start: event.start,
+      stop: event.stop,
+      location: event.location,
+      duration: event.duration,
+      description: event.description,
+      privacy: event.privacy, // ✅ Added to response
+      user_id: {
+        name: userData.name,
+        email: userData.email || userData.login
+      }
+    };
+
+    return res.status(200).json({
+      success: true,
+      successMessage: "Calendar event created successfully",
+      errorMessage: "",
+      statusCode: 200,
+      data: responseData
+    });
+
+  } catch (error) {
+    console.error("❌ Create Calendar Event Error:", error);
+    return res.status(500).json({
+      success: false,
+      successMessage: "",
+      errorMessage: `Internal server error: ${error.message}`,
+      statusCode: 500
+    });
+  }
+};
+
+const getCalendarEvent = async (req, res) => {
+  try {
+    console.log("API called for Fetching Calendar Events");
+
+    // 1. Get user_id (Accepting from Query or Body)
+    const user_id = req.query.user_id || req.body.user_id;
+
+    // ───────── 1. RESOLVE CLIENT ─────────
+    const { client_id } = await getClientFromRequest(req);
+    if (!client_id) return res.status(400).json({ status: "error", message: "client_id not found" });
+
+    // ───────── 2. VALIDATIONS ─────────
+    if (!user_id) {
+      return res.status(400).json({ status: "error", message: "Missing user_id" });
+    }
+
+    // ───────── 3. RESOLVE USER (Preserved Logic) ─────────
+    // We search res.users by ID to verify existence and get basic details
+    // This matches the logic used in createCalendarEvent
+    const user = await odooService.searchRead(
+      "res.users",
+      [["id", "=", Number(user_id)]],
+      ["id", "name", "login", "email"],
+      1
+    );
+
+    if (!user.length) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+    const userData = user[0];
+
+    // ───────── 4. FETCH CALENDAR EVENTS ─────────
+    // Fetch events where the creator (user_id) matches our user
+    const events = await odooService.searchRead(
+      "calendar.event",
+      [["user_id", "=", Number(user_id)]],
+      [
+        "id",
+        "name",
+        "start",
+        "stop",
+        "location",
+        "duration",
+        "description",
+        "privacy", // ✅ Added privacy field
+        "user_id"
+      ]
+    );
+
+    if (!events || events.length === 0) {
+      return res.status(200).json({
+        success: true,
+        successMessage: "No calendar events found",
+        data: []
+      });
+    }
+
+    // ───────── 5. FORMAT RESPONSE ─────────
+    // Map the Odoo response to your cleaner JSON structure
+    const result = events.map(event => ({
+      event_id: event.id,
+      name: event.name,
+      start: event.start,
+      stop: event.stop,
+      location: event.location,
+      duration: event.duration,
+      description: event.description || "",
+      privacy: event.privacy, // ✅ Returns 'public', 'private', or 'confidential'
+      user_id: {
+        name: userData.name,
+        email: userData.email || userData.login
+      }
+    }));
+
+    return res.status(200).json({
+      success: true,
+      successMessage: "Calendar events fetched successfully",
+      errorMessage: "",
+      statusCode: 200,
+      data: result
+    });
+
+  } catch (error) {
+    console.error("❌ Get Calendar Event Error:", error);
+    return res.status(500).json({
+      success: false,
+      successMessage: "",
+      errorMessage: `Internal server error: ${error.message}`,
+      statusCode: 500
+    });
+  }
+};
+
+const getExpenseCategories = async (req, res) => {
+  try {
+    console.log("------------------------------------------------");
+    console.log("API Called: getExpenseCategories");
+
+    // 1. Fetch Client Context
+    const context = await getClientFromRequest(req);
+    if (!context) throw new Error("Client context is missing");
+
+    const { user_id, client_id } = context;
+    console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
+
+    // 2. Define Search Domain
+    // CRITICAL: We only want products that are flagged as expenses ("can_be_expensed" = true)
+    // and belong to the current client.
+    const domain = [
+      ["can_be_expensed", "=", true], //
+      ["client_id", "=", client_id]
+    ];
+
+    // 3. Define Fields to Retrieve (Based on your images)
+    const fields = [
+      "name", // Product Name
+      "standard_price", // Cost
+      "default_code", // Internal Reference
+      "categ_id", // Category
+      "company_id", // Company
+      "description", // Guideline / Description
+      "expense_policy", // Re-Invoice Policy ('no', 'cost', 'sales_price')
+      "property_account_expense_id", // Expense Account
+      "taxes_id", // Sales Taxes
+      "supplier_taxes_id" // Purchase Taxes
+    ];
+
+    console.log("Calling odooService.searchRead...");
+
+    // 4. Fetch Data from Odoo
+    const records = await odooService.searchRead(
+      "product.product",
+      domain,
+      fields,
+      client_id // Pass context for connection
+    );
+
+    console.log(`Records found: ${records ? records.length : 0}`);
+
+    // 5. Map Data for Frontend
+    const data = records.map(rec => ({
+      id: rec.id,
+      name: rec.name,
+      cost: rec.standard_price || 0,
+      reference: rec.default_code || "",
+
+      // Relational Fields (Odoo returns [id, "Name"])
+      category_id: rec.categ_id ? rec.categ_id[0] : null,
+      category_name: rec.categ_id ? rec.categ_id[1] : null,
+
+      company_id: rec.company_id ? rec.company_id[0] : null,
+      company_name: rec.company_id ? rec.company_id[1] : null,
+
+      description: rec.description || "", // The "Guideline" field
+
+      re_invoice_policy: rec.expense_policy, // 'no', 'cost', or 'sales_price'
+
+      expense_account_id: rec.property_account_expense_id ? rec.property_account_expense_id[0] : null,
+      expense_account_name: rec.property_account_expense_id ? rec.property_account_expense_id[1] : null,
+
+      // Many2Many Fields (Odoo returns array of IDs)
+      sales_tax_ids: rec.taxes_id || [],
+      purchase_tax_ids: rec.supplier_taxes_id || []
+    }));
+
+    return res.status(200).json({
+      status: "success",
+      total: data.length,
+      data
+    });
+
+  } catch (error) {
+    console.error("!!! ERROR in getExpenseCategories !!!", error);
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to fetch expense categories"
+    });
+  }
+}
+
+const createExpenseCategory = async (req, res) => {
+  try {
+    console.log("------------------------------------------------");
+    console.log("API Called: createExpenseCategory");
+    console.log("Request Body:", JSON.stringify(req.body, null, 2));
+
+    const {
+      name,
+      cost,
+      reference,
+      category_name,
+      description,
+      expense_account_name,
+      sales_tax_names,
+      purchase_tax_names,
+      re_invoice_policy
+    } = req.body;
+
+    // 1️⃣ Fetch Client Context
+    console.log("Fetching client context from request...");
+    const context = await getClientFromRequest(req);
+
+    console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
+
+    if (!context) {
+      throw new Error("Client context is null or undefined");
+    }
+
+    const { user_id, client_id } = context;
+    console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
+
+    // 🔥 FIX: Only client_id is mandatory
+    if (!client_id) {
+      throw new Error("Invalid client context: client_id missing");
+    }
+
+    // 2️⃣ Validation
+    console.log("Starting Input Validation...");
+    if (!name) {
+      return res.status(400).json({
+        status: "error",
+        message: "Expense Category name is required"
+      });
+    }
+    console.log("Validation Passed.");
+
+    // 3️⃣ Duplicate Check (Client Scoped)
+    console.log("Checking for duplicate expense category...");
+    const existingProduct = await odooService.searchRead(
+      "product.product",
+      [
+        ["name", "=", name],
+        ["can_be_expensed", "=", true],
+        ["client_id", "=", client_id]
+      ],
+      ["id"],
+      1,
+      client_id
+    );
+
+    console.log("Duplicate check result:", JSON.stringify(existingProduct, null, 2));
+
+    if (existingProduct.length) {
+      return res.status(409).json({
+        status: "error",
+        message: "An expense category with this name already exists."
+      });
+    }
+
+    // 4️⃣ Resolve Product Category
+    let categ_id = false;
+    if (category_name) {
+      console.log(`Resolving product category: ${category_name}`);
+      const category = await odooService.searchRead(
+        "product.category",
+        [["name", "=", category_name]],
+        ["id"],
+        1,
+        client_id
+      );
+      if (category.length) categ_id = category[0].id;
+    }
+
+    // 5️⃣ Resolve Expense Account
+    let property_account_expense_id = false;
+    if (expense_account_name) {
+      console.log(`Resolving expense account: ${expense_account_name}`);
+      const account = await odooService.searchRead(
+        "account.account",
+        [["name", "=", expense_account_name]],
+        ["id"],
+        1,
+        client_id
+      );
+      if (account.length) property_account_expense_id = account[0].id;
+    }
+
+    // 6️⃣ Resolve Sales Taxes
+    let taxes_id = [[6, 0, []]];
+    if (Array.isArray(sales_tax_names) && sales_tax_names.length) {
+      const taxIds = [];
+      for (const taxName of sales_tax_names) {
+        const tax = await odooService.searchRead(
+          "account.tax",
+          [
+            ["name", "=", taxName],
+            ["type_tax_use", "=", "sale"]
+          ],
+          ["id"],
+          1,
+          client_id
+        );
+        if (tax.length) taxIds.push(tax[0].id);
+      }
+      if (taxIds.length) taxes_id = [[6, 0, taxIds]];
+    }
+
+    // 7️⃣ Resolve Purchase Taxes
+    let supplier_taxes_id = [[6, 0, []]];
+    if (Array.isArray(purchase_tax_names) && purchase_tax_names.length) {
+      const taxIds = [];
+      for (const taxName of purchase_tax_names) {
+        const tax = await odooService.searchRead(
+          "account.tax",
+          [
+            ["name", "=", taxName],
+            ["type_tax_use", "=", "purchase"]
+          ],
+          ["id"],
+          1,
+          client_id
+        );
+        if (tax.length) taxIds.push(tax[0].id);
+      }
+      if (taxIds.length) supplier_taxes_id = [[6, 0, taxIds]];
+    }
+
+    // 8️⃣ Construct Payload
+    const vals = {
+      name,
+      can_be_expensed: true,
+      type: "service",
+      standard_price: cost || 0,
+      default_code: reference || null,
+      description: description || null,
+      expense_policy: re_invoice_policy || "no",
+      categ_id: categ_id || undefined,
+      property_account_expense_id: property_account_expense_id || undefined,
+      taxes_id,
+      supplier_taxes_id,
+      client_id
+    };
+
+    // 🔥 FIX: create_uid only if available
+    if (user_id) {
+      vals.create_uid = user_id;
+    }
+
+    console.log("Final Odoo Payload:", JSON.stringify(vals, null, 2));
+
+    // 9️⃣ Create Record
+    const productId = await odooService.create(
+      "product.product",
+      vals,
+      client_id
+    );
+
+    console.log("Expense Category Created. ID:", productId);
+
+    return res.status(201).json({
+      status: "success",
+      message: "Expense category created successfully",
+      data: {
+        id: productId,
+        name
+      }
+    });
+
+  } catch (error) {
+    console.error("!!! ERROR in createExpenseCategory !!!");
+    console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
+
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to create expense category"
+    });
+  }
+}
 module.exports = {
   createEmployee,
   updateEmployee,
@@ -2122,5 +3016,12 @@ module.exports = {
   deleteAttendancePolicy,
   getAllAttendancePolicies,
   getAttendancePolicyById,
-  getEmployeeDashboard
+  getEmployeeDashboard,
+  createExpense,
+  getExpense,
+  updateExpense,
+  createCalendarEvent,
+  getCalendarEvent,
+  createExpenseCategory,
+  getExpenseCategories
 };

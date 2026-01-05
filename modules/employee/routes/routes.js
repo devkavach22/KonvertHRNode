@@ -19,10 +19,18 @@ const {
   deleteAttendancePolicy,
   getAllAttendancePolicies,
   getAttendancePolicyById,
-  getEmployeeDashboard
+  getEmployeeDashboard,
+  createExpense,
+  getExpense,
+  updateExpense,
+  createCalendarEvent,
+  getCalendarEvent,
+  createExpenseCategory,
+  getExpenseCategories
 } = require("../controller/controller.js");
 const authenticate = require("../../../Masters/middleware/auth.middleware.js");
-
+const multer = require("multer");
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 router.post(
@@ -73,4 +81,12 @@ router.put(
 router.get("/employees", authenticate, getEmployees);
 router.delete('/:id', deleteEmployee);
 router.get("/employee-dashboard",authenticate,getEmployeeDashboard);
+
+router.post("/create/expense",authenticate, upload.single("attachment"),createExpense);
+router.get("/expense",authenticate,getExpense);
+router.put("/update-expense/:id",authenticate,updateExpense);
+router.post("/create/calendar",authenticate,createCalendarEvent);
+router.get("/calendar",authenticate,getCalendarEvent);
+router.post("/create/expense-categroy",authenticate,createExpenseCategory);
+router.get("/expense-category",authenticate,getExpenseCategories);
 module.exports = router;
