@@ -10,10 +10,13 @@ module.exports = {
         user_id,
         product_id,
         plan_id,
-        quantity = 1,
+        // quantity removed from destructuring - will be set automatically
         price_unit,
         transection_number,
       } = req.body;
+
+      // Automatically set quantity to 1
+      const quantity = 1;
 
       if (!user_id) {
         return res.status(400).json({
@@ -230,7 +233,7 @@ module.exports = {
             {
               product_id: product_id,
               name: productVariant[0].name || "Subscription Product",
-              product_uom_qty: quantity,
+              product_uom_qty: quantity, // Always 1
               price_unit: price_unit,
               recurring_invoice: true,
             },
@@ -307,7 +310,7 @@ module.exports = {
           partner_id: partner_id,
           invoice_date: todayDate,
           invoice_date_due: todayDate,
-          invoice_line_ids: [[0, 0, { product_id, quantity: 1, price_unit }]],
+          invoice_line_ids: [[0, 0, { product_id, quantity: 1, price_unit }]], // Quantity set to 1
           ref: subscription.name,
           transection_number: transection_number || "",
         };
@@ -438,36 +441,31 @@ module.exports = {
               <h1 style="margin: 0 0 10px 0; font-size: 32px; font-weight: 600; color: #1a1a1a;">Subscription Activated! ✓</h1>
               <p style="margin: 0 0 30px 0; font-size: 14px; color: #4CAF50; font-weight: 600;">Payment Successful</p>
               <p style="margin: 0 0 20px 0; font-size: 16px; color: #333333;">Hi ${customerName},</p>
-              <p style="margin: 0 0 25px 0; font-size: 16px; color: #333333;">Your subscription <strong>${
-                subscription.name
-              }</strong> has been activated and payment of <strong>₹${paymentAmount.toFixed(
-            2
-          )}</strong> has been processed successfully.</p>
+              <p style="margin: 0 0 25px 0; font-size: 16px; color: #333333;">Your subscription <strong>${subscription.name
+            }</strong> has been activated and payment of <strong>₹${paymentAmount.toFixed(
+              2
+            )}</strong> has been processed successfully.</p>
               
               <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8f9fa; border-radius: 6px; margin: 25px 0;">
                 <tr><td style="padding: 25px;">
                     <p style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #666;">SUBSCRIPTION DETAILS</p>
                     <table width="100%" cellpadding="8" cellspacing="0">
-                      <tr><td style="font-size: 15px; color: #666;">Subscription:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${
-                        subscription.name
-                      }</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Plan:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${
-                        recurringPlan[0].name
-                      }</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Product:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${
-                        productVariant[0].name
-                      }</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Invoice:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${
-                        invoice.name
-                      }</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Subscription:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${subscription.name
+            }</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Plan:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${recurringPlan[0].name
+            }</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Product:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${productVariant[0].name
+            }</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Invoice:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${invoice.name
+            }</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Transaction Number:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${transection_number}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Amount:</td><td style="font-size: 15px; color: #4CAF50; font-weight: 700; text-align: right;">₹${paymentAmount.toFixed(
-                        2
-                      )}</td></tr>
+              2
+            )}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Payment Date:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${new Date().toLocaleDateString(
-                        "en-IN",
-                        { year: "numeric", month: "long", day: "numeric" }
-                      )}</td></tr>
+              "en-IN",
+              { year: "numeric", month: "long", day: "numeric" }
+            )}</td></tr>
                     </table>
                   </td></tr>
               </table>
@@ -543,6 +541,7 @@ module.exports = {
           product_id: product_id,
           product_template_id: product_template_id,
           product_name: productVariant[0].name,
+          quantity: quantity, // Always returns 1
           amount_total: subscription.amount_total,
           subscription_state: subscription.subscription_state,
           start_date: todayDate,
