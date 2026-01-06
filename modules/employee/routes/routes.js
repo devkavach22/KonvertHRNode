@@ -18,7 +18,6 @@ const {
   updateAttendancePolicy,
   deleteAttendancePolicy,
   getAllAttendancePolicies,
-  getAttendancePolicyById,
   getEmployeeDashboard,
   createExpense,
   getExpense,
@@ -26,7 +25,12 @@ const {
   createCalendarEvent,
   getCalendarEvent,
   createExpenseCategory,
-  getExpenseCategories
+  getExpenseCategories,
+  getExpenseAccounts,
+  getSalesTaxes,
+  getPurchaseTaxes,
+  getProductCategory
+
 } = require("../controller/controller.js");
 const authenticate = require("../../../Masters/middleware/auth.middleware.js");
 const multer = require("multer");
