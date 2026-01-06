@@ -2903,97 +2903,109 @@ const getCalendarEvent = async (req, res) => {
 
 const getExpenseCategories = async (req, res) => {
 try {
-console.log("------------------------------------------------");
-console.log("API Called: getExpenseCategories");
+console.log("══════════════════════════════════════");
+console.log("🚀 API CALLED → FETCH EXPENSE CATEGORIES");
+console.log("📥 Request Query:", req.query);
+console.log("📥 Request Body:", req.body);
 
-// 1️⃣ Fetch Client Context (Odoo-style optional client_id)
-console.log("Fetching client context from request...");
-const context = await getClientFromRequest(req);
+// ───────── 1. RESOLVE CLIENT ─────────
+console.log("🔍 Resolving client from request...");
+const { client_id } = await getClientFromRequest(req);
+console.log("🏢 Resolved client_id:", client_id);
 
-const client_id = context?.client_id || null;
-console.log(`Context Extracted - Client ID: ${client_id || "NOT PROVIDED"}`);
-
-// 2️⃣ Define Search Domain (STRICTLY AS PER ODOO METHOD)
-let domain = [["can_be_expensed", "=", true]];
-
-if (client_id) {
-domain.push(["client_id", "=", client_id]);
+if (!client_id) {
+console.error("❌ client_id not found");
+return res.status(400).json({
+status: "error",
+message: "client_id not found"
+});
 }
 
-// Optional Search Filter (Odoo ilike)
+// ───────── 2. PREPARE SEARCH DOMAIN ─────────
+// We search 'product.product' where 'can_be_expensed' is true.
+// We MUST filter by client_id to match the logic used in createExpenseCategory.
+const domain = [
+["can_be_expensed", "=", true],
+["client_id", "=", client_id]
+];
+
+// Optional: If a search term is provided in query
 if (req.query.search) {
 domain.push(["name", "ilike", req.query.search]);
 }
 
-// 3️⃣ Define Fields to Retrieve (Odoo-native)
+// ───────── 3. DEFINE FIELDS ─────────
 const fields = [
 "id",
 "name",
-"standard_price",
-"default_code",
-"categ_id",
-"description",
-"expense_policy",
-"property_account_expense_id",
-"taxes_id",
-"supplier_taxes_id"
+"standard_price", // Cost
+"default_code", // Reference
+"categ_id", // Product Category
+"property_account_expense_id", // Expense Account
+"expense_policy", // Re-invoice Policy
+"description"
 ];
 
-// 4️⃣ Fetch Data from Odoo (search_read equivalent)
-console.log("Fetching expense categories from Odoo...");
-const expenses = await odooService.searchRead(
+// ───────── 4. FETCH CATEGORIES ─────────
+console.log("🔄 Fetching expense categories (product.product)...");
+console.log("🔍 Search Domain:", JSON.stringify(domain));
+
+const categories = await odooService.searchRead(
 "product.product",
 domain,
 fields,
-req.query.limit ? Number(req.query.limit) : 50,
-req.query.offset ? Number(req.query.offset) : 0,
-client_id
+0, // offset
+0, // limit (0 = all)
+null, // order
+client_id // context
 );
 
-console.log(`Fetched ${expenses.length} records.`);
+console.log("📄 Categories fetched:", categories.length);
 
-// 5️⃣ Map Odoo Response for Frontend
-const mappedExpenses = expenses.map(item => ({
+if (!categories || categories.length === 0) {
+console.log("ℹ️ No expense categories found");
+return res.status(200).json({
+status: "success",
+message: "No expense categories found",
+count: 0,
+data: []
+});
+}
+
+// ───────── 5. FORMAT DATA ─────────
+// Odoo returns Many2one fields as [id, "Name"]. We clean this up.
+const finalData = categories.map(item => ({
 id: item.id,
 name: item.name,
 cost: item.standard_price,
 reference: item.default_code || "",
-description: item.description || "",
-
-// Many2one handling
-category_id: Array.isArray(item.categ_id) ? item.categ_id[0] : null,
 category_name: Array.isArray(item.categ_id) ? item.categ_id[1] : null,
-
-expense_account_name: Array.isArray(item.property_account_expense_id)
-? item.property_account_expense_id[1]
-: null,
-
+category_id: Array.isArray(item.categ_id) ? item.categ_id[0] : null,
+expense_account_name: Array.isArray(item.property_account_expense_id) ? item.property_account_expense_id[1] : null,
+expense_account_id: Array.isArray(item.property_account_expense_id) ? item.property_account_expense_id[0] : null,
 re_invoice_policy: item.expense_policy,
-
-// Many2many fields
-sales_tax_ids: item.taxes_id || [],
-purchase_tax_ids: item.supplier_taxes_id || []
+description: item.description || ""
 }));
 
-// 6️⃣ Final Response
+console.log("✅ Expense categories fetched successfully");
+console.log("══════════════════════════════════════");
+
 return res.status(200).json({
 status: "success",
 message: "Expense categories retrieved successfully",
-count: mappedExpenses.length,
-data: mappedExpenses
+count: finalData.length,
+data: finalData
 });
 
 } catch (error) {
-console.error("!!! ERROR in getExpenseCategories !!!");
-console.error("Error Message:", error.message);
-console.error("Error Stack:", error.stack);
-
-return res.status(error.status || 500).json({
+console.error("❌ GET EXPENSE CATEGORIES ERROR:", error);
+return res.status(500).json({
 status: "error",
 message: error.message || "Failed to fetch expense categories"
 });
 }
 };
+
 
 const createExpenseCategory = async (req, res) => {
 try {

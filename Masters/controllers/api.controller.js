@@ -6107,343 +6107,462 @@ class ApiController {
   // }
 
 
-async approveAttendanceRegularization(req, res) {
-  try {
-    const { approval_request_id, user_id } = req.body;
+  async approveAttendanceRegularization(req, res) {
+    try {
+      const { approval_request_id, user_id } = req.body;
 
-    if (!approval_request_id) {
-      return res
-        .status(400)
-        .json({ status: "error", message: "approval_request_id is required" });
-    }
+      if (!approval_request_id) {
+        return res
+          .status(400)
+          .json({ status: "error", message: "approval_request_id is required" });
+      }
 
-    console.log(
-      `🔍 Searching for Approval Request with ID = ${approval_request_id}`
-    );
+      console.log(
+        `🔍 Searching for Approval Request with ID = ${approval_request_id}`
+      );
 
-    const approvalRecords = await odooService.searchRead(
-      "approval.request",
-      [["id", "=", parseInt(approval_request_id)]],
-      ["id", "state", "attendance_regulzie_id", "hr_leave_id"],
-      1
-    );
-
-    if (!approvalRecords || approvalRecords.length === 0) {
-      return res.status(404).json({
-        status: "error",
-        message: `No approval request found with ID ${approval_request_id}`,
-      });
-    }
-
-    const approvalRecord = approvalRecords[0];
-    const approvalId = approvalRecord.id;
-    
-    // Check current state
-    console.log(`📊 Current approval state: ${approvalRecord.state}`);
-    
-    if (approvalRecord.state === "approved") {
-      return res.status(400).json({
-        status: "error",
-        message: "This request is already approved",
-      });
-    }
-    
-    if (approvalRecord.state === "refused") {
-      return res.status(400).json({
-        status: "error",
-        message: "This request has been rejected",
-      });
-    }
-    
-    console.log(
-      `✅ Found Approval ID: ${approvalId}. Processing...`
-    );
-
-    // ========== LEAVE REQUEST HANDLING ==========
-    if (approvalRecord.hr_leave_id) {
-      const leaveId = approvalRecord.hr_leave_id[0];
-      console.log(`🏖️ Processing Leave Request (ID: ${leaveId})`);
-      
-      // Get leave details with more fields
-      const leaveRecord = await odooService.searchRead(
-        "hr.leave",
-        [["id", "=", leaveId]],
-        ["id", "state", "validation_type"],
+      const approvalRecords = await odooService.searchRead(
+        "approval.request",
+        [["id", "=", parseInt(approval_request_id)]],
+        ["id", "state", "attendance_regulzie_id", "hr_leave_id"],
         1
       );
-      
-      if (!leaveRecord || leaveRecord.length === 0) {
+
+      if (!approvalRecords || approvalRecords.length === 0) {
         return res.status(404).json({
           status: "error",
-          message: "Leave record not found",
+          message: `No approval request found with ID ${approval_request_id}`,
         });
       }
 
-      const currentLeaveState = leaveRecord[0].state;
-      console.log(`📊 Current leave state: ${currentLeaveState}`);
-      console.log(`📊 Validation type: ${leaveRecord[0].validation_type}`);
-      
-      // Try-catch for leave approval to handle state issues gracefully
-      try {
-        if (currentLeaveState === "refuse") {
-          return res.status(400).json({
+      const approvalRecord = approvalRecords[0];
+      const approvalId = approvalRecord.id;
+
+      // Check current state
+      console.log(`📊 Current approval state: ${approvalRecord.state}`);
+
+      if (approvalRecord.state === "approved") {
+        return res.status(400).json({
+          status: "error",
+          message: "This request is already approved",
+        });
+      }
+
+      if (approvalRecord.state === "refused") {
+        return res.status(400).json({
+          status: "error",
+          message: "This request has been rejected",
+        });
+      }
+
+      console.log(
+        `✅ Found Approval ID: ${approvalId}. Processing...`
+      );
+
+      // ========== LEAVE REQUEST HANDLING ==========
+      if (approvalRecord.hr_leave_id) {
+        const leaveId = approvalRecord.hr_leave_id[0];
+        console.log(`🏖️ Processing Leave Request (ID: ${leaveId})`);
+
+        // Get leave details with more fields
+        const leaveRecord = await odooService.searchRead(
+          "hr.leave",
+          [["id", "=", leaveId]],
+          ["id", "state", "validation_type"],
+          1
+        );
+
+        if (!leaveRecord || leaveRecord.length === 0) {
+          return res.status(404).json({
             status: "error",
-            message: "This leave request has already been refused",
+            message: "Leave record not found",
           });
         }
-        
-        if (currentLeaveState === "draft") {
-          console.log(`🔄 Step 1: Confirming leave from draft...`);
-          await odooService.callMethod("hr.leave", "action_confirm", [
-            parseInt(leaveId),
-          ]);
-          
-          console.log(`🔄 Step 2: Approving leave...`);
-          await odooService.callMethod("hr.leave", "action_approve", [
-            parseInt(leaveId),
-          ]);
-        } 
-        else if (currentLeaveState === "confirm") {
-          console.log(`✅ Approving confirmed leave...`);
-          await odooService.callMethod("hr.leave", "action_approve", [
-            parseInt(leaveId),
-          ]);
-        } 
-        else if (currentLeaveState === "validate" || currentLeaveState === "validate1") {
-          console.log(`✅ Validating leave (double validation)...`);
-          await odooService.callMethod("hr.leave", "action_validate", [
-            parseInt(leaveId),
-          ]);
+
+        const currentLeaveState = leaveRecord[0].state;
+        console.log(`📊 Current leave state: ${currentLeaveState}`);
+        console.log(`📊 Validation type: ${leaveRecord[0].validation_type}`);
+
+        // Try-catch for leave approval to handle state issues gracefully
+        try {
+          if (currentLeaveState === "refuse") {
+            return res.status(400).json({
+              status: "error",
+              message: "This leave request has already been refused",
+            });
+          }
+
+          if (currentLeaveState === "draft") {
+            console.log(`🔄 Step 1: Confirming leave from draft...`);
+            await odooService.callMethod("hr.leave", "action_confirm", [
+              parseInt(leaveId),
+            ]);
+
+            console.log(`🔄 Step 2: Approving leave...`);
+            await odooService.callMethod("hr.leave", "action_approve", [
+              parseInt(leaveId),
+            ]);
+          }
+          else if (currentLeaveState === "confirm") {
+            console.log(`✅ Approving confirmed leave...`);
+            await odooService.callMethod("hr.leave", "action_approve", [
+              parseInt(leaveId),
+            ]);
+          }
+          else if (currentLeaveState === "validate" || currentLeaveState === "validate1") {
+            console.log(`✅ Validating leave (double validation)...`);
+            await odooService.callMethod("hr.leave", "action_validate", [
+              parseInt(leaveId),
+            ]);
+          }
+          else if (currentLeaveState === "approved") {
+            console.log(`ℹ️ Leave already approved, no action needed`);
+          }
+          else {
+            console.log(`⚠️ Unknown leave state: ${currentLeaveState}, will approve approval.request only`);
+          }
+        } catch (leaveError) {
+          console.error(`⚠️ Leave action failed: ${leaveError.message}`);
+          console.log(`📝 Continuing to approve approval.request anyway...`);
+          // Don't return error - continue to approve the approval request
         }
-        else if (currentLeaveState === "approved") {
-          console.log(`ℹ️ Leave already approved, no action needed`);
-        }
-        else {
-          console.log(`⚠️ Unknown leave state: ${currentLeaveState}, will approve approval.request only`);
-        }
-      } catch (leaveError) {
-        console.error(`⚠️ Leave action failed: ${leaveError.message}`);
-        console.log(`📝 Continuing to approve approval.request anyway...`);
-        // Don't return error - continue to approve the approval request
+
+        // Always try to approve the approval request
+        console.log(`✅ Approving the approval.request...`);
+        await odooService.callMethod("approval.request", "approve_request", [
+          parseInt(approvalId),
+        ]);
+
+        return res.status(200).json({
+          status: "success",
+          message: "Leave Request approved successfully",
+          data: {
+            approval_id: approvalId,
+            leave_id: leaveId,
+            leave_state: currentLeaveState,
+            type: "Leave Request"
+          },
+        });
       }
-      
-      // Always try to approve the approval request
-      console.log(`✅ Approving the approval.request...`);
+
+      // ========== ATTENDANCE REGULARIZATION HANDLING ==========
+      if (approvalRecord.attendance_regulzie_id) {
+        console.log(`📅 Processing Attendance Regularization`);
+
+        await odooService.callMethod("approval.request", "approve_request", [
+          parseInt(approvalId),
+        ]);
+
+        return res.status(200).json({
+          status: "success",
+          message: "Attendance Regularization approved successfully",
+          data: {
+            approval_id: approvalId,
+            type: "Attendance Regularization"
+          },
+        });
+      }
+
+      // ========== GENERAL/EXPENSE REQUEST HANDLING ==========
+      console.log(`💰 Processing General/Expense Request`);
+
       await odooService.callMethod("approval.request", "approve_request", [
         parseInt(approvalId),
       ]);
-      
-      return res.status(200).json({
-        status: "success",
-        message: "Leave Request approved successfully",
-        data: { 
-          approval_id: approvalId,
-          leave_id: leaveId,
-          leave_state: currentLeaveState,
-          type: "Leave Request" 
-        },
-      });
-    }
-    
-    // ========== ATTENDANCE REGULARIZATION HANDLING ==========
-    if (approvalRecord.attendance_regulzie_id) {
-      console.log(`📅 Processing Attendance Regularization`);
-      
-      await odooService.callMethod("approval.request", "approve_request", [
-        parseInt(approvalId),
-      ]);
 
       return res.status(200).json({
         status: "success",
-        message: "Attendance Regularization approved successfully",
-        data: { 
+        message: "Request approved successfully",
+        data: {
           approval_id: approvalId,
-          type: "Attendance Regularization" 
+          type: "General Request"
         },
       });
+
+    } catch (error) {
+      console.error("❌ Odoo Error:", error.message);
+      return res.status(500).json({
+        status: "error",
+        message: `Odoo Error: ${error.message}`,
+      });
     }
-    
-    // ========== GENERAL/EXPENSE REQUEST HANDLING ==========
-    console.log(`💰 Processing General/Expense Request`);
-    
-    await odooService.callMethod("approval.request", "approve_request", [
-      parseInt(approvalId),
-    ]);
-
-    return res.status(200).json({
-      status: "success",
-      message: "Request approved successfully",
-      data: { 
-        approval_id: approvalId,
-        type: "General Request" 
-      },
-    });
-
-  } catch (error) {
-    console.error("❌ Odoo Error:", error.message);
-    return res.status(500).json({
-      status: "error",
-      message: `Odoo Error: ${error.message}`,
-    });
   }
-}
+
+  // async rejectAttendanceRegularization(req, res) {
+  //   try {
+  //     const { approval_request_id, user_id, remarks } = req.body;
+
+  //     if (!approval_request_id || !user_id) {
+  //       return res
+  //         .status(400)
+  //         .json({ status: "error", message: "approval_request_id and user_id are required" });
+  //     }
+
+  //     console.log(
+  //       `🔍 Searching for approval.request with ID = ${approval_request_id}...`
+  //     );
+
+  //     const approvalRecords = await odooService.searchRead(
+  //       "approval.request",
+  //       [["id", "=", parseInt(approval_request_id)]],
+  //       ["id", "name", "state", "attendance_regulzie_id", "hr_leave_id"],
+  //       1
+  //     );
+
+  //     if (!approvalRecords?.length) {
+  //       console.log(
+  //         `❌ FAILED: No approval found for ID ${approval_request_id}`
+  //       );
+  //       return res
+  //         .status(404)
+  //         .json({ status: "error", message: "Approval record not found" });
+  //     }
+
+  //     const approvalRecord = approvalRecords[0];
+  //     const approvalId = approvalRecord.id;
+  //     const managerUID = parseInt(user_id);
+
+  //     // Check if already rejected or approved
+  //     console.log(`📊 Current approval state: ${approvalRecord.state}`);
+
+  //     if (approvalRecord.state === "refused") {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "This request is already rejected",
+  //       });
+  //     }
+
+  //     if (approvalRecord.state === "approved") {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Cannot reject an approved request",
+  //       });
+  //     }
+
+  //     // Create reject wizard with ADMIN UID (uid: 2)
+  //     console.log(`📝 Creating reject wizard with admin privileges...`);
+  //     const wizardId = await odooService.create(
+  //       "request.reject.wizard",
+  //       { remarks: remarks || "Rejected via App" },
+  //       { uid: 2 }  // ✅ Use admin UID for wizard creation
+  //     );
+  //     console.log(`✅ WIZARD CREATED: ID ${wizardId}`);
+
+  //     console.log(`🚀 STEP 2: Triggering 'action_reject_request'...`);
+  //     await odooService.callMethod(
+  //       "request.reject.wizard",
+  //       "action_reject_request",
+  //       [parseInt(wizardId)],
+  //       {
+  //         active_id: approvalId,
+  //         active_model: "approval.request",
+  //         active_ids: [approvalId],
+  //       }
+  //     );
+  //     console.log(`✅ Wizard method executed successfully.`);
+
+  //     // Update the related record based on type
+  //     let updatedRecord = null;
+  //     let recordType = "General Request";
+
+  //     if (approvalRecord.attendance_regulzie_id) {
+  //       const regularizationId = approvalRecord.attendance_regulzie_id[0];
+  //       console.log(
+  //         `🔄 STEP 3: Updating Attendance Regularization (ID: ${regularizationId})`
+  //       );
+
+  //       try {
+  //         await odooService.write(
+  //           "attendance.regular",
+  //           [parseInt(regularizationId)],
+  //           { state_select: "reject" }
+  //         );
+  //         updatedRecord = { type: "attendance.regular", id: regularizationId };
+  //         recordType = "Attendance Regularization";
+  //       } catch (writeError) {
+  //         console.error(`⚠️ Failed to update attendance record: ${writeError.message}`);
+  //         // Continue anyway - wizard already rejected the approval
+  //       }
+
+  //     } else if (approvalRecord.hr_leave_id) {
+  //       const leaveId = approvalRecord.hr_leave_id[0];
+  //       console.log(
+  //         `🔄 STEP 3: Updating Leave Request (ID: ${leaveId})`
+  //       );
+
+  //       try {
+  //         // Use action_refuse method instead of direct state write
+  //         await odooService.callMethod(
+  //           "hr.leave",
+  //           "action_refuse",
+  //           [parseInt(leaveId)]
+  //         );
+  //         updatedRecord = { type: "hr.leave", id: leaveId };
+  //         recordType = "Leave Request";
+  //       } catch (leaveError) {
+  //         console.error(`⚠️ Failed to refuse leave: ${leaveError.message}`);
+  //         // Try direct write as fallback
+  //         try {
+  //           await odooService.write(
+  //             "hr.leave",
+  //             [parseInt(leaveId)],
+  //             { state: "refuse" }
+  //           );
+  //           updatedRecord = { type: "hr.leave", id: leaveId };
+  //           recordType = "Leave Request";
+  //         } catch (fallbackError) {
+  //           console.error(`⚠️ Fallback write also failed: ${fallbackError.message}`);
+  //         }
+  //       }
+  //     }
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: `${recordType} rejected successfully by manager (ID: ${managerUID})`,
+  //       data: {
+  //         approval_id: approvalId,
+  //         rejected_by: managerUID,
+  //         updated_record: updatedRecord,
+  //       },
+  //     });
+
+  //   } catch (error) {
+  //     console.error("❌ ERROR:", error.message);
+  //     return res.status(500).json({ status: "error", message: error.message });
+  //   }
+  // }
+
 
 async rejectAttendanceRegularization(req, res) {
   try {
-    const { approval_request_id, user_id, remarks } = req.body;
-    
-    if (!approval_request_id || !user_id) {
-      return res
-        .status(400)
-        .json({ status: "error", message: "approval_request_id and user_id are required" });
-    }
-    
-    console.log(
-      `🔍 Searching for approval.request with ID = ${approval_request_id}...`
-    );
+    const { approval_request_id, remarks } = req.body;
+    const { currentUser } = await getClientFromRequest(req);
+
+    // 1. Fields list se 'res_model' aur 'res_id' hata diya hai kyunki wo invalid hain
+    const fields = ["id", "name", "state", "attendance_regulzie_id", "hr_leave_id", "description"];
     
     const approvalRecords = await odooService.searchRead(
       "approval.request",
       [["id", "=", parseInt(approval_request_id)]],
-      ["id", "name", "attendance_regulzie_id", "hr_leave_id"],
+      fields,
       1
     );
 
     if (!approvalRecords?.length) {
-      console.log(
-        `❌ FAILED: No approval found for ID ${approval_request_id}`
-      );
-      return res
-        .status(404)
-        .json({ status: "error", message: "Approval record not found" });
+      return res.status(404).json({ status: "error", message: "Record not found" });
     }
 
     const approvalRecord = approvalRecords[0];
-    const approvalId = approvalRecord.id;
-    const managerUID = parseInt(user_id);
-    
-    // Create reject wizard
+
+    // 2. Wizard Trigger (Ye standard hai, isme change nahi chahiye)
     const wizardId = await odooService.create(
       "request.reject.wizard",
       { remarks: remarks || "Rejected via App" },
-      { uid: managerUID }
+      { uid: 2 }
     );
-    console.log(`✅ WIZARD CREATED: ID ${wizardId}`);
 
-    console.log(`🚀 STEP 2: Triggering 'action_reject_request'...`);
     await odooService.callMethod(
       "request.reject.wizard",
       "action_reject_request",
       [parseInt(wizardId)],
       {
-        active_id: approvalId,
+        active_id: approvalRecord.id,
         active_model: "approval.request",
-        active_ids: [approvalId],
+        active_ids: [approvalRecord.id],
       }
     );
-    console.log(`✅ Wizard method executed successfully.`);
-    
-    // Update the related record based on type
+
+    // 3. Status Update Logic (Based on valid fields)
     let updatedRecord = null;
-    let recordType = "General Request";
-    
+
     if (approvalRecord.attendance_regulzie_id) {
-      const regularizationId = approvalRecord.attendance_regulzie_id[0];
-      console.log(
-        `🔄 STEP 3: Updating Attendance Regularization (ID: ${regularizationId})`
-      );
-      await odooService.write(
-        "attendance.regular",
-        [parseInt(regularizationId)],
-        { state_select: "reject" }
-      );
-      updatedRecord = { type: "attendance.regular", id: regularizationId };
-      recordType = "Attendance Regularization";
+      // Attendance
+      const regId = approvalRecord.attendance_regulzie_id[0];
+      await odooService.write("attendance.regular", [regId], { state_select: "reject" });
+      updatedRecord = { model: "attendance.regular", id: regId };
+
     } else if (approvalRecord.hr_leave_id) {
+      // Leave
       const leaveId = approvalRecord.hr_leave_id[0];
-      console.log(
-        `🔄 STEP 3: Updating Leave Request (ID: ${leaveId})`
-      );
-      // Leave ko reject karne ke liye state update (usually 'refuse' hota hai)
-      await odooService.write(
-        "hr.leave",
-        [parseInt(leaveId)],
-        { state: "refuse" }
-      );
-      updatedRecord = { type: "hr.leave", id: leaveId };
-      recordType = "Leave Request";
+      await odooService.write("hr.leave", [leaveId], { state: "refuse" });
+      updatedRecord = { model: "hr.leave", id: leaveId };
+
+    } else if (approvalRecord.description && approvalRecord.description.includes("Expense")) {
+      /**
+       * Expense logic: Kyunki 'res_model' invalid field hai, 
+       * humein linked Expense Sheet dhundni hogi description ke zariye ya 
+       * direct approval record ko hi rely karna hoga.
+       */
+      console.log("📝 Expense detected via description. Approval state updated by wizard.");
+      updatedRecord = { model: "hr.expense.sheet", info: "Handled by Approval Wizard" };
     }
-    
+
     return res.status(200).json({
       status: "success",
-      message: `${recordType} rejected successfully by manager (ID: ${managerUID})`,
-      data: {
-        approval_id: approvalId,
-        rejected_by: managerUID,
-        updated_record: updatedRecord,
-      },
+      message: "Rejected successfully",
+      data: { approval_id: approvalRecord.id, updated_record: updatedRecord }
     });
+
   } catch (error) {
-    console.error("❌ ERROR:", error.message);
     return res.status(500).json({ status: "error", message: error.message });
   }
 }
 
-async getAllApprovalRequests(req, res) {
-  try {
-    console.log("========================================");
-    console.log("🔍 FETCHING APPROVAL REQUESTS WITH CLIENT VALIDATION");
+  async getAllApprovalRequests(req, res) {
+    try {
+      console.log("========================================");
+      console.log("🔍 FETCHING APPROVAL REQUESTS WITH CLIENT VALIDATION");
 
-    const { client_id, currentUser } = await getClientFromRequest(req);
+      const { client_id, currentUser } = await getClientFromRequest(req);
 
-    if (!currentUser.is_client_employee_admin) {
-      return res.status(403).json({
+      if (!currentUser.is_client_employee_admin) {
+        return res.status(403).json({
+          status: "error",
+          message: "Access Denied: You are not an admin of this client.",
+        });
+      }
+
+      console.log(`✅ Admin Validated: ${currentUser.partner_id[1]}`);
+      console.log(`📦 Filtering records for Client (Partner ID): ${client_id}`);
+
+      const domain = [["req_employee_id.address_id", "=", client_id]];
+
+      const fields = [
+        "name",
+        "req_employee_id",
+        "attendance_regulzie_id",
+        "hr_leave_id",
+        "description",
+        "state",
+      ];
+
+      const requests = await odooService.searchRead(
+        "approval.request",
+        domain,
+        fields,
+        0,
+        100,
+        "id desc",
+        currentUser.id
+      );
+
+      console.log(`🎉 Found ${requests.length} requests for your client.`);
+      console.log("========================================");
+
+      return res.status(200).json({
+        status: "success",
+        total: requests.length,
+        client_name: currentUser.partner_id[1],
+        data: requests,
+      });
+    } catch (error) {
+      console.error("❌ API ERROR:", error.message || error);
+      const statusCode = error.status || 500;
+      return res.status(statusCode).json({
         status: "error",
-        message: "Access Denied: You are not an admin of this client.",
+        message: error.message || "Internal Server Error",
       });
     }
-
-    console.log(`✅ Admin Validated: ${currentUser.partner_id[1]}`);
-    console.log(`📦 Filtering records for Client (Partner ID): ${client_id}`);
-
-    const domain = [["req_employee_id.address_id", "=", client_id]];
-
-    const fields = [
-      "name",
-      "req_employee_id",
-      "attendance_regulzie_id",
-      "hr_leave_id",
-      "description",
-      "state",
-    ];
-
-    const requests = await odooService.searchRead(
-      "approval.request",
-      domain,
-      fields,
-      0,
-      100,
-      "id desc",
-      currentUser.id
-    );
-
-    console.log(`🎉 Found ${requests.length} requests for your client.`);
-    console.log("========================================");
-
-    return res.status(200).json({
-      status: "success",
-      total: requests.length,
-      client_name: currentUser.partner_id[1],
-      data: requests,
-    });
-  } catch (error) {
-    console.error("❌ API ERROR:", error.message || error);
-    const statusCode = error.status || 500;
-    return res.status(statusCode).json({
-      status: "error",
-      message: error.message || "Internal Server Error",
-    });
   }
-}
 }
 module.exports = new ApiController();
