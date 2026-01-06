@@ -1377,16 +1377,27 @@ const createEmployee = async (req, res) => {
 };
 const getEmployees = async (req, res) => {
   try {
-    const { client_id } = await getClientFromRequest(req);
+    const { client_id, currentUser } = await getClientFromRequest(req);
     console.log("API Called get");
+    
+    let employeeSearchDomain;
+    
+    if (currentUser.is_client_employee_user && !currentUser.is_client_employee_admin) {
+      employeeSearchDomain = [
+        ["address_id", "=", client_id],
+        ["user_id", "=", currentUser.id]
+      ];
+    } else {
+      employeeSearchDomain = [["address_id", "=", client_id]];
+    }
+    
     const employeeIds = await odooHelpers.searchRead(
       "hr.employee",
-      [["address_id", "=", client_id]],
+      employeeSearchDomain,
       ["id"]
     );
-
+    
     const employees = [];
-
     for (let emp of employeeIds) {
       try {
         const employeeData = await odooHelpers.searchRead(
@@ -1474,29 +1485,27 @@ const getEmployees = async (req, res) => {
             "device_platform",
           ]
         );
-
+        
         if (employeeData.length > 0) {
           const employee = employeeData[0];
-
           const approvalDetails = await odooHelpers.searchRead(
             "employee.approval.user.details",
             [["employee_id", "=", employee.id]],
             ["group_id", "user_id", "approval_sequance"]
           );
-
+          
           if (approvalDetails.length > 0) {
             employee.group_id = approvalDetails[0].group_id;
             employee.approval_user_id = approvalDetails[0].user_id;
             employee.approval_sequance = approvalDetails[0].approval_sequance;
           }
-
           employees.push(employee);
         }
       } catch (empError) {
         console.error(`Error fetching employee ${emp.id}:`, empError);
       }
     }
-
+    
     return res.status(200).json({
       status: "success",
       count: employees.length,

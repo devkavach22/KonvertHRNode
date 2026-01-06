@@ -675,12 +675,14 @@ class ApiController {
     try {
       console.log("🔥 Login API called of the Register");
       const { email, password } = req.body;
+
       if (!email || !password) {
         return res.status(400).json({
           status: "error",
           message: "Email and Password are required",
         });
       }
+
       const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!validEmailRegex.test(email)) {
         return res.status(400).json({
@@ -688,6 +690,7 @@ class ApiController {
           message: "Invalid email format",
         });
       }
+
       const userRecord = await odooService.searchRead(
         "res.users",
         [["login", "=", email]],
@@ -748,10 +751,50 @@ class ApiController {
       });
 
       if (!uid) return;
+
+      // Determine the partner ID to check for plan
+      let planCheckPartnerId = partnerId;
+      let adminUserId = null;
+
+      // If employee user, get admin's partner_id from hr.employee.address_id
+      if (isEmployeeUser) {
+        const employeeRecord = await odooService.searchRead(
+          "hr.employee",
+          [["user_id", "=", user.id]],
+          ["id", "address_id"],
+          1
+        );
+
+        if (employeeRecord && employeeRecord.length > 0) {
+          const employeeData = employeeRecord[0];
+
+          // Use admin's partner_id (address_id) for plan check
+          if (employeeData.address_id && employeeData.address_id[0]) {
+            planCheckPartnerId = employeeData.address_id[0];
+
+            // Now find the admin user by partner_id
+            const adminUser = await odooService.searchRead(
+              "res.users",
+              [
+                ["partner_id", "=", employeeData.address_id[0]],
+                ["is_client_employee_admin", "=", true]
+              ],
+              ["id"],
+              1
+            );
+
+            if (adminUser && adminUser.length > 0) {
+              adminUserId = adminUser[0].id;
+            }
+          }
+        }
+      }
+
+      // Check plan using the correct partner_id
       const plan = await odooService.searchRead(
         "client.plan.details",
         [
-          ["partner_id", "=", partnerId],
+          ["partner_id", "=", planCheckPartnerId],
           ["is_expier", "=", true],
         ],
         ["id", "product_id", "start_date", "end_date"],
@@ -762,6 +805,7 @@ class ApiController {
       if (plan && plan.length > 0) {
         planData = plan[0];
       }
+
       let employeeId = null;
       if (isEmployeeUser) {
         const employeeRecord = await odooService.searchRead(
@@ -787,10 +831,14 @@ class ApiController {
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
       );
+
+      // Determine plan status message
+      const planStatusMessage = planData ? "Plan is active." : "Plan has expired.";
+
       if (isAdminUser) {
         return res.status(200).json({
           status: "success",
-          message: "You are logged in as a Register Admin. Plan is active.",
+          message: `You are logged in as a Register Admin. ${planStatusMessage}`,
           unique_user_id: user.unique_user_id,
           user_id: uid,
           email,
@@ -807,7 +855,7 @@ class ApiController {
       } else {
         return res.status(200).json({
           status: "success",
-          message: "You are logged in as an Employee User. Plan is active.",
+          message: `You are logged in as an Employee User. ${planStatusMessage}`,
           user_id: uid,
           email,
           full_name,
@@ -815,6 +863,7 @@ class ApiController {
           plan_status: planData ? "ACTIVE" : "EXPIRED",
           is_client_employee_user: true,
           employee_id: employeeId,
+          admin_user_id: adminUserId, // Admin ka user ID
         });
       }
 
@@ -914,7 +963,6 @@ class ApiController {
 
         valid_department_id = department_id;
       }
-
 
       let valid_skill_ids = [];
 
@@ -1024,7 +1072,7 @@ class ApiController {
           "industry_id",
           "contract_type_id",
           "is_published",
-          "skill_ids"
+          "skill_ids",
         ]
       );
 
@@ -1039,7 +1087,7 @@ class ApiController {
         contract_type_id: job.contract_type_id?.[0] || null,
         contract_type_name: job.contract_type_id?.[1] || null,
         is_published: job.is_published,
-        skill_ids: job.skill_ids || []
+        skill_ids: job.skill_ids || [],
       }));
 
       return res.status(200).json({
@@ -1223,8 +1271,7 @@ class ApiController {
       if (department_id) vals.department_id = valid_department_id;
       if (no_of_recruitment !== undefined)
         vals.no_of_recruitment = no_of_recruitment;
-      if (Array.isArray(skill_ids))
-        vals.skill_ids = [[6, 0, valid_skill_ids]];
+      if (Array.isArray(skill_ids)) vals.skill_ids = [[6, 0, valid_skill_ids]];
       if (industry_id) vals.industry_id = valid_industry_id;
       if (contract_type_id) vals.contract_type_id = valid_contract_type_id;
 
@@ -1234,7 +1281,6 @@ class ApiController {
         status: "success",
         message: "Job Position updated successfully",
       });
-
     } catch (error) {
       console.error("❌ Update Job Error:", error);
       return res.status(500).json({
@@ -1243,7 +1289,6 @@ class ApiController {
       });
     }
   }
-
 
   async deleteJobPosition(req, res) {
     try {
@@ -3559,7 +3604,6 @@ class ApiController {
         resource_calendar_id: resource_calendar_id || null,
       };
 
-
       const rosterId = await odooService.create("hr.shift.roster", payload);
 
       return res.status(201).json({
@@ -3696,7 +3740,7 @@ class ApiController {
         vals.email = email;
       }
 
-      console.log("partner branch payload --:", vals)
+      console.log("partner branch payload --:", vals);
       const partnerId = await odooService.create("res.partner", vals);
 
       return res.status(200).json({
@@ -3704,7 +3748,6 @@ class ApiController {
         message: "branch created successfully",
         partnerId,
       });
-
     } catch (error) {
       console.error("Create branch Error:", error);
       return res.status(error.status || 500).json({
@@ -3715,14 +3758,12 @@ class ApiController {
   }
   async getPartners(req, res) {
     try {
-      console.log("API Called getPartners Branches .......")
+      console.log("API Called getPartners Branches .......");
       const { client_id } = await getClientFromRequest(req);
 
       const partners = await odooService.searchRead(
         "res.partner",
-        [
-          ["parent_id", "=", client_id]
-        ],
+        [["parent_id", "=", client_id]],
         [
           "id",
           "name",
@@ -3747,7 +3788,6 @@ class ApiController {
         message: "Branches fetched successfully",
         data: partners,
       });
-
     } catch (error) {
       console.error("Get Branch Error:", error);
 
@@ -3801,7 +3841,7 @@ class ApiController {
         "state_id",
         "zip",
         "country_id",
-        "email"
+        "email",
       ];
 
       const vals = {};
@@ -3821,7 +3861,6 @@ class ApiController {
         status: "success",
         message: "Branch updated successfully",
       });
-
     } catch (error) {
       console.error("Update Partner Error:", error);
       return res.status(error.status || 500).json({
@@ -3853,14 +3892,13 @@ class ApiController {
         });
       }
       await odooService.update("res.partner", parseInt(id), {
-        active: false
+        active: false,
       });
 
       return res.status(200).json({
         status: "success",
         message: "Partner deleted successfully",
       });
-
     } catch (error) {
       console.error("Delete Partner Error:", error);
       return res.status(error.status || 500).json({
@@ -3944,7 +3982,7 @@ class ApiController {
         [
           ["employee_id", "=", employee_id],
           ["check_in", ">=", formatDateTimeForOdoo(todayStart)],
-          ["check_in", "<=", formatDateTimeForOdoo(todayEnd)]
+          ["check_in", "<=", formatDateTimeForOdoo(todayEnd)],
         ],
         ["id", "check_in", "check_out", "checkin_lat", "checkin_lon"],
         { order: "check_in desc", limit: 1 }
@@ -3955,14 +3993,18 @@ class ApiController {
         if (!todayAttendance || todayAttendance.length === 0) {
           return res.status(400).json({
             status: "error",
-            message: "No active check-in found for today. Please check-in first.",
+            message:
+              "No active check-in found for today. Please check-in first.",
           });
         }
 
         const currentAttendance = todayAttendance[0];
 
         // Check if already checked out
-        if (currentAttendance.check_out && currentAttendance.check_out !== false) {
+        if (
+          currentAttendance.check_out &&
+          currentAttendance.check_out !== false
+        ) {
           return res.status(400).json({
             status: "error",
             message: "Already checked out. Please check-in again to continue.",
@@ -3982,15 +4024,11 @@ class ApiController {
         }
 
         // UPDATE with checkout details
-        await odooService.update(
-          "hr.attendance",
-          currentAttendance.id,
-          {
-            check_out: formatDateTimeForOdoo(check_out),  // ✅ Correct checkout time
-            checkout_lat: checkout_lat || false,
-            checkout_lon: checkout_lon || false,
-          }
-        );
+        await odooService.update("hr.attendance", currentAttendance.id, {
+          check_out: formatDateTimeForOdoo(check_out), // ✅ Correct checkout time
+          checkout_lat: checkout_lat || false,
+          checkout_lon: checkout_lon || false,
+        });
 
         return res.status(200).json({
           status: "success",
@@ -4009,7 +4047,10 @@ class ApiController {
         const currentAttendance = todayAttendance[0];
 
         // If currently working (not checked out yet)
-        if (!currentAttendance.check_out || currentAttendance.check_out === false) {
+        if (
+          !currentAttendance.check_out ||
+          currentAttendance.check_out === false
+        ) {
           return res.status(400).json({
             status: "error",
             message: "Already checked in. Please check-out first.",
@@ -4030,25 +4071,21 @@ class ApiController {
         }
 
         // UPDATE same record with new check-in
-        await odooService.update(
-          "hr.attendance",
-          currentAttendance.id,
-          {
-            check_in: formatDateTimeForOdoo(check_in),  // ✅ Update to latest check-in
-            checkin_lat: checkin_lat || currentAttendance.checkin_lat,
-            checkin_lon: checkin_lon || currentAttendance.checkin_lon,
-            check_out: false,  // Reset to "Currently Working"
-            checkout_lat: false,
-            checkout_lon: false,
-            // Update device info
-            system_version: system_version || "",
-            user_agent: user_agent || "",
-            application_name: application_name || "",
-            device_id: device_id || "",
-            location: location || "",
-            ip_address: ip_address || "",
-          }
-        );
+        await odooService.update("hr.attendance", currentAttendance.id, {
+          check_in: formatDateTimeForOdoo(check_in), // ✅ Update to latest check-in
+          checkin_lat: checkin_lat || currentAttendance.checkin_lat,
+          checkin_lon: checkin_lon || currentAttendance.checkin_lon,
+          check_out: false, // Reset to "Currently Working"
+          checkout_lat: false,
+          checkout_lon: false,
+          // Update device info
+          system_version: system_version || "",
+          user_agent: user_agent || "",
+          application_name: application_name || "",
+          device_id: device_id || "",
+          location: location || "",
+          ip_address: ip_address || "",
+        });
 
         return res.status(200).json({
           status: "success",
@@ -4104,7 +4141,6 @@ class ApiController {
         attendance_id: attendanceId,
         check_in: formatDateTimeForOdoo(check_in),
       });
-
     } catch (error) {
       console.error("Error in attendance operation:", error);
       return res.status(500).json({
@@ -4248,15 +4284,10 @@ class ApiController {
   }
 
   async createGeoLocation(req, res) {
-    console.log("Called")
+    console.log("Called");
     try {
-      const {
-        name,
-        latitude,
-        longitude,
-        radius_km,
-        hr_employee_ids,
-      } = req.body;
+      const { name, latitude, longitude, radius_km, hr_employee_ids } =
+        req.body;
       console.log("GEO Location api called with this ", req.body);
       const { client_id } = await getClientFromRequest(req);
       const requiredFields = {
@@ -4286,9 +4317,7 @@ class ApiController {
         ["id"]
       );
       const validIds = employees.map((e) => e.id);
-      const missingIds = hr_employee_ids.filter(
-        (id) => !validIds.includes(id)
-      );
+      const missingIds = hr_employee_ids.filter((id) => !validIds.includes(id));
       if (missingIds.length > 0) {
         return res.status(404).json({
           status: "error",
@@ -4344,17 +4373,10 @@ class ApiController {
       const geoLocations = await odooService.searchRead(
         "geo.config",
         [["client_id", "=", client_id]],
-        [
-          "id",
-          "name",
-          "latitude",
-          "longitude",
-          "radius_km",
-          "hr_employee_ids",
-        ]
+        ["id", "name", "latitude", "longitude", "radius_km", "hr_employee_ids"]
       );
       let allEmployeeIds = [];
-      geoLocations.forEach(loc => {
+      geoLocations.forEach((loc) => {
         if (Array.isArray(loc.hr_employee_ids)) {
           allEmployeeIds.push(...loc.hr_employee_ids);
         }
@@ -4367,13 +4389,13 @@ class ApiController {
           ["id", "name"]
         );
         console.log("👥 Employees Fetched:", employees);
-        employees.forEach(emp => {
+        employees.forEach((emp) => {
           employeeMap[emp.id] = emp.name;
         });
       }
-      const finalData = geoLocations.map(loc => ({
+      const finalData = geoLocations.map((loc) => ({
         ...loc,
-        employees: (loc.hr_employee_ids || []).map(empId => ({
+        employees: (loc.hr_employee_ids || []).map((empId) => ({
           id: empId,
           name: employeeMap[empId] || null,
         })),
@@ -4395,13 +4417,8 @@ class ApiController {
       console.log("API Called: updateGeoLocation");
 
       const { id } = req.params;
-      const {
-        name,
-        latitude,
-        longitude,
-        radius_km,
-        hr_employee_ids,
-      } = req.body;
+      const { name, latitude, longitude, radius_km, hr_employee_ids } =
+        req.body;
 
       const { client_id } = await getClientFromRequest(req);
       const existing = await odooService.searchRead(
@@ -4435,7 +4452,9 @@ class ApiController {
         );
 
         const validIds = employees.map((e) => e.id);
-        const missingIds = hr_employee_ids.filter((id) => !validIds.includes(id));
+        const missingIds = hr_employee_ids.filter(
+          (id) => !validIds.includes(id)
+        );
 
         if (missingIds.length > 0) {
           return res.status(404).json({
@@ -4461,7 +4480,6 @@ class ApiController {
         status: "success",
         message: "Geo location updated successfully",
       });
-
     } catch (error) {
       console.error("Update Geo Location Error:", error);
       return res.status(error.status || 500).json({
@@ -4499,7 +4517,6 @@ class ApiController {
         status: "success",
         message: "Geo location deleted successfully",
       });
-
     } catch (error) {
       console.error("Delete Geo Location Error:", error);
       return res.status(error.status || 500).json({
@@ -4514,13 +4531,8 @@ class ApiController {
       console.log("API Called createAttendanceRegularization");
       console.log("========================================");
 
-      const {
-        employee_id,
-        reg_reason,
-        from_date,
-        to_date,
-        reg_category,
-      } = req.body;
+      const { employee_id, reg_reason, from_date, to_date, reg_category } =
+        req.body;
 
       const { client_id } = await getClientFromRequest(req);
 
@@ -4557,7 +4569,10 @@ class ApiController {
           1
         );
 
-        console.log("🔎 Category search result:", JSON.stringify(categoryExists, null, 2));
+        console.log(
+          "🔎 Category search result:",
+          JSON.stringify(categoryExists, null, 2)
+        );
 
         if (!categoryExists || categoryExists.length === 0) {
           console.log("❌ Category not found!");
@@ -4569,7 +4584,6 @@ class ApiController {
 
         console.log("✅ Valid category found:", categoryExists[0]);
         console.log("========================================");
-
       } catch (categoryError) {
         console.error("❌ Category validation error:", categoryError);
         console.error("Error details:", categoryError.message);
@@ -4587,7 +4601,7 @@ class ApiController {
           ["employee_id", "=", employee_id],
           ["from_date", "=", from_date],
           ["to_date", "=", to_date],
-          ["client_id", "=", client_id]
+          ["client_id", "=", client_id],
         ],
         ["id"],
         1
@@ -4617,7 +4631,10 @@ class ApiController {
         client_id: client_id,
       };
 
-      console.log("📤 Attendance Regularization Payload:", JSON.stringify(vals, null, 2));
+      console.log(
+        "📤 Attendance Regularization Payload:",
+        JSON.stringify(vals, null, 2)
+      );
       console.log("========================================");
 
       // Create regularization
@@ -4643,7 +4660,6 @@ class ApiController {
         console.log("Submit result:", submitResult);
         console.log("✅ Regularization submitted successfully!");
         console.log("==========================================");
-
       } catch (submitError) {
         console.error("❌ ERROR submitting regularization:", submitError);
         console.error("Submit error details:", submitError.message);
@@ -4666,10 +4682,10 @@ class ApiController {
 
       return res.status(200).json({
         status: "success",
-        message: "Attendance regularization request created and submitted successfully",
+        message:
+          "Attendance regularization request created and submitted successfully",
         regId,
       });
-
     } catch (error) {
       console.error("==========================================");
       console.error("❌ ATTENDANCE REGULARIZATION ERROR");
@@ -4678,16 +4694,21 @@ class ApiController {
       console.error("==========================================");
 
       // ✅ Handle specific foreign key constraint errors
-      if (error.message && error.message.includes("attendance_regular_reg_category_fkey")) {
+      if (
+        error.message &&
+        error.message.includes("attendance_regular_reg_category_fkey")
+      ) {
         return res.status(400).json({
           status: "error",
-          message: "Category not found. The provided reg_category does not exist in the system.",
+          message:
+            "Category not found. The provided reg_category does not exist in the system.",
         });
       }
 
       return res.status(error.status || 500).json({
         status: "error",
-        message: error.message || "Failed to create attendance regularization request",
+        message:
+          error.message || "Failed to create attendance regularization request",
       });
     }
   }
@@ -4833,7 +4854,7 @@ class ApiController {
         "reg.categories",
         [
           ["id", "=", parseInt(id)],
-          ["client_id", "=", client_id]
+          ["client_id", "=", client_id],
         ],
         ["id"],
         1
@@ -4885,7 +4906,6 @@ class ApiController {
         status: "success",
         message: "Category updated successfully",
       });
-
     } catch (error) {
       console.error("Update category error:", error);
       return res.status(error.status || 500).json({
@@ -4915,7 +4935,7 @@ class ApiController {
         "reg.categories",
         [
           ["id", "=", parseInt(id)],
-          ["client_id", "=", client_id]
+          ["client_id", "=", client_id],
         ],
         ["id"],
         1
@@ -4929,10 +4949,9 @@ class ApiController {
       }
 
       // 3️⃣ Delete record
-      const success = await odooService.unlink(
-        "reg.categories",
-        [parseInt(id)]
-      );
+      const success = await odooService.unlink("reg.categories", [
+        parseInt(id),
+      ]);
 
       if (!success) {
         return res.status(500).json({
@@ -4945,7 +4964,6 @@ class ApiController {
         status: "success",
         message: "Category deleted successfully",
       });
-
     } catch (error) {
       console.error("Delete category error:", error);
 
@@ -5112,7 +5130,7 @@ class ApiController {
         });
       }
 
-      const employeeIds = allEmployees.map(e => e.id);
+      const employeeIds = allEmployees.map((e) => e.id);
 
       let domain = [["employee_id", "in", employeeIds]];
       if (date_from) domain.push(["check_in", ">=", date_from]);
@@ -5147,13 +5165,13 @@ class ApiController {
 
       const convertToIST = (utcDateStr) => {
         if (!utcDateStr) return null;
-        const utcDate = new Date(utcDateStr + ' UTC');
+        const utcDate = new Date(utcDateStr + " UTC");
         const istOffset = 5.5 * 60 * 60 * 1000;
         const istDate = new Date(utcDate.getTime() + istOffset);
-        return istDate.toISOString().slice(0, 19).replace('T', ' ');
+        return istDate.toISOString().slice(0, 19).replace("T", " ");
       };
 
-      const attendanceIds = attendances.map(a => a.id);
+      const attendanceIds = attendances.map((a) => a.id);
 
       let breakLines = [];
       if (attendanceIds.length > 0) {
@@ -5165,13 +5183,13 @@ class ApiController {
       }
 
       const breakMap = {};
-      breakLines.forEach(line => {
+      breakLines.forEach((line) => {
         const attId = line.attendance_id?.[0];
         breakMap[attId] = line;
       });
 
       const attendancesByEmployee = {};
-      attendances.forEach(att => {
+      attendances.forEach((att) => {
         const empId = att.employee_id?.[0];
         if (!attendancesByEmployee[empId]) {
           attendancesByEmployee[empId] = [];
@@ -5179,74 +5197,78 @@ class ApiController {
         attendancesByEmployee[empId].push(att);
       });
 
-      const finalData = allEmployees.map(emp => {
-        const empAttendances = attendancesByEmployee[emp.id] || [];
+      const finalData = allEmployees
+        .map((emp) => {
+          const empAttendances = attendancesByEmployee[emp.id] || [];
 
-        if (empAttendances.length > 0) {
-          return empAttendances.map(att => {
-            const breakLine = breakMap[att.id];
-            return {
-              id: att.id,
-              employee_id: att.employee_id,
+          if (empAttendances.length > 0) {
+            return empAttendances.map((att) => {
+              const breakLine = breakMap[att.id];
+              return {
+                id: att.id,
+                employee_id: att.employee_id,
 
-              check_in: convertToIST(att.check_in),
-              checkin_lat: att.checkin_lat,
-              checkin_lon: att.checkin_lon,
+                check_in: convertToIST(att.check_in),
+                checkin_lat: att.checkin_lat,
+                checkin_lon: att.checkin_lon,
 
-              check_out: convertToIST(att.check_out),
-              checkout_lat: att.checkout_lat,
-              checkout_lon: att.checkout_lon,
+                check_out: convertToIST(att.check_out),
+                checkout_lat: att.checkout_lat,
+                checkout_lon: att.checkout_lon,
 
-              worked_hours: att.worked_hours,
-              early_out_minutes: att.early_out_minutes,
-              overtime_hours: att.overtime_hours,
-              validated_overtime_hours: att.validated_overtime_hours,
+                worked_hours: att.worked_hours,
+                early_out_minutes: att.early_out_minutes,
+                overtime_hours: att.overtime_hours,
+                validated_overtime_hours: att.validated_overtime_hours,
 
-              is_late_in: att.is_late_in,
-              late_time_display: att.late_time_display,
-              is_early_out: att.is_early_out,
-              status_code: att.status_code,
+                is_late_in: att.is_late_in,
+                late_time_display: att.late_time_display,
+                is_early_out: att.is_early_out,
+                status_code: att.status_code,
 
-              break_start: convertToIST(breakLine?.break_start),
-              break_end: convertToIST(breakLine?.break_end),
-              break_hours: breakLine?.break_hours || null,
+                break_start: convertToIST(breakLine?.break_start),
+                break_end: convertToIST(breakLine?.break_end),
+                break_hours: breakLine?.break_hours || null,
 
-              job_id: emp.job_id || null,
-              job_name: emp.job_id ? emp.job_id[1] : null,
-            };
-          });
-        } else {
-          return [{
-            id: null,
-            employee_id: [emp.id, emp.name],
+                job_id: emp.job_id || null,
+                job_name: emp.job_id ? emp.job_id[1] : null,
+              };
+            });
+          } else {
+            return [
+              {
+                id: null,
+                employee_id: [emp.id, emp.name],
 
-            check_in: null,
-            checkin_lat: null,
-            checkin_lon: null,
+                check_in: null,
+                checkin_lat: null,
+                checkin_lon: null,
 
-            check_out: null,
-            checkout_lat: null,
-            checkout_lon: null,
+                check_out: null,
+                checkout_lat: null,
+                checkout_lon: null,
 
-            worked_hours: null,
-            early_out_minutes: null,
-            overtime_hours: null,
-            validated_overtime_hours: null,
+                worked_hours: null,
+                early_out_minutes: null,
+                overtime_hours: null,
+                validated_overtime_hours: null,
 
-            is_late_in: null,
-            late_time_display: null,
-            is_early_out: null,
-            status_code: null,
+                is_late_in: null,
+                late_time_display: null,
+                is_early_out: null,
+                status_code: null,
 
-            break_start: null,
-            break_end: null,
-            break_hours: null,
+                break_start: null,
+                break_end: null,
+                break_hours: null,
 
-            job_id: emp.job_id || null,
-            job_name: emp.job_id ? emp.job_id[1] : null,
-          }];
-        }
-      }).flat();
+                job_id: emp.job_id || null,
+                job_name: emp.job_id ? emp.job_id[1] : null,
+              },
+            ];
+          }
+        })
+        .flat();
 
       return res.status(200).json({
         success: true,
@@ -5265,10 +5287,9 @@ class ApiController {
           TotalLateemployee: TotalLateemployee,
           Ununiformendemployee: Ununiformendemployee,
           TodayAbsetEmployee: TodayAbsetEmployee,
-          ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee
+          ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee,
         },
       });
-
     } catch (error) {
       console.error("🔥 Admin Attendance Error:", error);
       return res.status(500).json({
@@ -5292,8 +5313,8 @@ class ApiController {
       }
 
       const { check_in, check_out, late_minutes } = req.body;
-      console.log("Payload from Frontend :", req.body)
-      const toOdooUTC = dt =>
+      console.log("Payload from Frontend :", req.body);
+      const toOdooUTC = (dt) =>
         new Date(dt).toISOString().slice(0, 19).replace("T", " ");
 
       const payload = {
@@ -5317,7 +5338,6 @@ class ApiController {
         successMessage: "Attendance updated successfully",
         data: updated,
       });
-
     } catch (error) {
       console.error("🔥 Update Attendance Error:", error);
       return res.status(500).json({
@@ -5337,7 +5357,7 @@ class ApiController {
         ["id", "name"]
       );
 
-      const data = groups.map(g => ({
+      const data = groups.map((g) => ({
         group_id: g.id,
         group_name: g.name,
       }));
@@ -5347,7 +5367,6 @@ class ApiController {
         message: "Group list fetched",
         data,
       });
-
     } catch (error) {
       console.error("❌ Get Group List Error:", error);
       return res.status(500).json({
@@ -5444,7 +5463,6 @@ class ApiController {
           users: finalUsers,
         },
       });
-
     } catch (error) {
       console.error("❌ Get Group Users Error:", error);
       return res.status(500).json({
@@ -5478,7 +5496,10 @@ class ApiController {
 
       const formatDatetime = (datetime) => {
         if (!datetime) return null;
-        return moment.utc(datetime).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss");
+        return moment
+          .utc(datetime)
+          .tz("Asia/Kolkata")
+          .format("YYYY-MM-DD HH:mm:ss");
       };
 
       const employee = await odooService.searchRead(
@@ -5522,7 +5543,7 @@ class ApiController {
         "late_time_display",
         "status_code",
         "overtime_start",
-        "overtime_end"
+        "overtime_end",
       ];
 
       const attendances = await odooService.searchRead(
@@ -5538,17 +5559,25 @@ class ApiController {
 
       const todayDate = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
 
-      const attendanceIds = attendances.map(att => att.id);
+      const attendanceIds = attendances.map((att) => att.id);
       let attendanceLinesByAttendance = {};
 
       if (attendanceIds.length > 0) {
         const allAttendanceLines = await odooService.searchRead(
           "hr.attendance.line",
           [["attendance_id", "in", attendanceIds]],
-          ["attendance_id", "check_in", "check_out", "break_start", "break_end", "break_hours", "productive_hours"]
+          [
+            "attendance_id",
+            "check_in",
+            "check_out",
+            "break_start",
+            "break_end",
+            "break_hours",
+            "productive_hours",
+          ]
         );
 
-        allAttendanceLines.forEach(line => {
+        allAttendanceLines.forEach((line) => {
           const attId = line.attendance_id?.[0];
           if (attId) {
             if (!attendanceLinesByAttendance[attId]) {
@@ -5559,8 +5588,11 @@ class ApiController {
         });
       }
 
-      const finalAttendance = attendances.map(att => {
-        const checkInDate = moment.utc(att.check_in).tz("Asia/Kolkata").format("YYYY-MM-DD");
+      const finalAttendance = attendances.map((att) => {
+        const checkInDate = moment
+          .utc(att.check_in)
+          .tz("Asia/Kolkata")
+          .format("YYYY-MM-DD");
         const isToday = checkInDate === todayDate;
 
         const formatted = {
@@ -5611,21 +5643,54 @@ class ApiController {
 
         if (calendar.length) {
           const allowedHoursPerDay = calendar[0].hours_per_day || 0;
-          const allowedOvertimePerDay = calendar[0].total_overtime_hours_allowed || 0;
-          const targetDate = date || moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
+          const allowedOvertimePerDay =
+            calendar[0].total_overtime_hours_allowed || 0;
+          const targetDate =
+            date || moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
 
           const getDateRanges = (dateString) => {
             const tz = "Asia/Kolkata";
-            const todayStart = moment.tz(dateString, tz).startOf("day").utc().format("YYYY-MM-DD HH:mm:ss");
-            const todayEnd = moment.tz(dateString, tz).endOf("day").utc().format("YYYY-MM-DD HH:mm:ss");
+            const todayStart = moment
+              .tz(dateString, tz)
+              .startOf("day")
+              .utc()
+              .format("YYYY-MM-DD HH:mm:ss");
+            const todayEnd = moment
+              .tz(dateString, tz)
+              .endOf("day")
+              .utc()
+              .format("YYYY-MM-DD HH:mm:ss");
 
-            const weekStart = moment.tz(dateString, tz).startOf("week").utc().format("YYYY-MM-DD HH:mm:ss");
-            const weekEnd = moment.tz(dateString, tz).endOf("week").utc().format("YYYY-MM-DD HH:mm:ss");
+            const weekStart = moment
+              .tz(dateString, tz)
+              .startOf("week")
+              .utc()
+              .format("YYYY-MM-DD HH:mm:ss");
+            const weekEnd = moment
+              .tz(dateString, tz)
+              .endOf("week")
+              .utc()
+              .format("YYYY-MM-DD HH:mm:ss");
 
-            const monthStart = moment.tz(dateString, tz).startOf("month").utc().format("YYYY-MM-DD HH:mm:ss");
-            const monthEnd = moment.tz(dateString, tz).endOf("month").utc().format("YYYY-MM-DD HH:mm:ss");
+            const monthStart = moment
+              .tz(dateString, tz)
+              .startOf("month")
+              .utc()
+              .format("YYYY-MM-DD HH:mm:ss");
+            const monthEnd = moment
+              .tz(dateString, tz)
+              .endOf("month")
+              .utc()
+              .format("YYYY-MM-DD HH:mm:ss");
 
-            return { todayStart, todayEnd, weekStart, weekEnd, monthStart, monthEnd };
+            return {
+              todayStart,
+              todayEnd,
+              weekStart,
+              weekEnd,
+              monthStart,
+              monthEnd,
+            };
           };
 
           const getWorkingDaysInMonth = (dateString) => {
@@ -5652,23 +5717,38 @@ class ApiController {
           const [todayLogs, weekLogs, monthLogs] = await Promise.all([
             odooService.searchRead(
               "hr.attendance",
-              [["employee_id", "=", employeeId], ["check_in", ">=", ranges.todayStart], ["check_in", "<=", ranges.todayEnd]],
+              [
+                ["employee_id", "=", employeeId],
+                ["check_in", ">=", ranges.todayStart],
+                ["check_in", "<=", ranges.todayEnd],
+              ],
               ["id", "total_working_hours"]
             ),
             odooService.searchRead(
               "hr.attendance",
-              [["employee_id", "=", employeeId], ["check_in", ">=", ranges.weekStart], ["check_in", "<=", ranges.weekEnd]],
+              [
+                ["employee_id", "=", employeeId],
+                ["check_in", ">=", ranges.weekStart],
+                ["check_in", "<=", ranges.weekEnd],
+              ],
               ["id", "total_working_hours"]
             ),
             odooService.searchRead(
               "hr.attendance",
-              [["employee_id", "=", employeeId], ["check_in", ">=", ranges.monthStart], ["check_in", "<=", ranges.monthEnd]],
+              [
+                ["employee_id", "=", employeeId],
+                ["check_in", ">=", ranges.monthStart],
+                ["check_in", "<=", ranges.monthEnd],
+              ],
               ["id", "total_working_hours"]
-            )
+            ),
           ]);
 
           const sumWorkingHours = (records) =>
-            records.reduce((sum, rec) => sum + (parseFloat(rec.total_working_hours) || 0), 0);
+            records.reduce(
+              (sum, rec) => sum + (parseFloat(rec.total_working_hours) || 0),
+              0
+            );
 
           const workedToday = sumWorkingHours(todayLogs);
           const workedWeek = sumWorkingHours(weekLogs);
@@ -5678,11 +5758,19 @@ class ApiController {
           let todayAttendanceLineDetails = [];
 
           if (todayLogs.length > 0) {
-            const todayIds = todayLogs.map(att => att.id);
+            const todayIds = todayLogs.map((att) => att.id);
             const breakLines = await odooService.searchRead(
               "hr.attendance.line",
               [["attendance_id", "in", todayIds]],
-              ["attendance_id", "check_in", "check_out", "break_start", "break_end", "break_hours", "productive_hours"]
+              [
+                "attendance_id",
+                "check_in",
+                "check_out",
+                "break_start",
+                "break_end",
+                "break_hours",
+                "productive_hours",
+              ]
             );
 
             breakHoursToday = breakLines.reduce(
@@ -5690,40 +5778,60 @@ class ApiController {
               0
             );
 
-            todayAttendanceLineDetails = breakLines.map(line => ({
+            todayAttendanceLineDetails = breakLines.map((line) => ({
               attendance_id: line.attendance_id?.[0] || null,
               check_in: formatDatetime(line.check_in),
               check_out: formatDatetime(line.check_out),
               break_start: formatDatetime(line.break_start),
               break_end: formatDatetime(line.break_end),
               break_hours: parseFloat((line.break_hours || 0).toFixed(2)),
-              productive_hours: parseFloat((line.productive_hours || 0).toFixed(2))
+              productive_hours: parseFloat(
+                (line.productive_hours || 0).toFixed(2)
+              ),
             }));
           }
           const workingDaysInMonth = getWorkingDaysInMonth(targetDate);
           const allowedWeek = allowedHoursPerDay * 5;
           const allowedMonth = allowedHoursPerDay * workingDaysInMonth;
           const allowedOvertimeWeek = allowedOvertimePerDay * 5;
-          const allowedOvertimeMonth = allowedOvertimePerDay * workingDaysInMonth;
+          const allowedOvertimeMonth =
+            allowedOvertimePerDay * workingDaysInMonth;
           const sumOvertimeHours = (records) =>
-            records.reduce((sum, rec) => sum + (parseFloat(rec.validated_overtime_hours) || 0), 0);
-          const [todayOvertimeLogs, weekOvertimeLogs, monthOvertimeLogs] = await Promise.all([
-            odooService.searchRead(
-              "hr.attendance",
-              [["employee_id", "=", employeeId], ["check_in", ">=", ranges.todayStart], ["check_in", "<=", ranges.todayEnd]],
-              ["id", "validated_overtime_hours"]
-            ),
-            odooService.searchRead(
-              "hr.attendance",
-              [["employee_id", "=", employeeId], ["check_in", ">=", ranges.weekStart], ["check_in", "<=", ranges.weekEnd]],
-              ["id", "validated_overtime_hours"]
-            ),
-            odooService.searchRead(
-              "hr.attendance",
-              [["employee_id", "=", employeeId], ["check_in", ">=", ranges.monthStart], ["check_in", "<=", ranges.monthEnd]],
-              ["id", "validated_overtime_hours"]
-            )
-          ]);
+            records.reduce(
+              (sum, rec) =>
+                sum + (parseFloat(rec.validated_overtime_hours) || 0),
+              0
+            );
+          const [todayOvertimeLogs, weekOvertimeLogs, monthOvertimeLogs] =
+            await Promise.all([
+              odooService.searchRead(
+                "hr.attendance",
+                [
+                  ["employee_id", "=", employeeId],
+                  ["check_in", ">=", ranges.todayStart],
+                  ["check_in", "<=", ranges.todayEnd],
+                ],
+                ["id", "validated_overtime_hours"]
+              ),
+              odooService.searchRead(
+                "hr.attendance",
+                [
+                  ["employee_id", "=", employeeId],
+                  ["check_in", ">=", ranges.weekStart],
+                  ["check_in", "<=", ranges.weekEnd],
+                ],
+                ["id", "validated_overtime_hours"]
+              ),
+              odooService.searchRead(
+                "hr.attendance",
+                [
+                  ["employee_id", "=", employeeId],
+                  ["check_in", ">=", ranges.monthStart],
+                  ["check_in", "<=", ranges.monthEnd],
+                ],
+                ["id", "validated_overtime_hours"]
+              ),
+            ]);
           const overtimeToday = sumOvertimeHours(todayOvertimeLogs);
           const overtimeWeek = sumOvertimeHours(weekOvertimeLogs);
           const overtimeMonth = sumOvertimeHours(monthOvertimeLogs);
@@ -5736,36 +5844,57 @@ class ApiController {
               date: targetDate,
               worked_hours: parseFloat(workedToday.toFixed(2)),
               allowed_hours: allowedHoursPerDay,
-              remaining_hours: parseFloat(Math.max(0, allowedHoursPerDay - workedToday).toFixed(2)),
-              percentage: parseFloat(Math.min(100, (workedToday / allowedHoursPerDay) * 100).toFixed(2)),
+              remaining_hours: parseFloat(
+                Math.max(0, allowedHoursPerDay - workedToday).toFixed(2)
+              ),
+              percentage: parseFloat(
+                Math.min(100, (workedToday / allowedHoursPerDay) * 100).toFixed(
+                  2
+                )
+              ),
               is_completed: workedToday >= allowedHoursPerDay,
               attendance_records: todayLogs.length,
               total_break_hours: parseFloat(breakHoursToday.toFixed(2)),
-              total_overtime_hours_allowed: parseFloat(allowedOvertimePerDay.toFixed(2)),
+              total_overtime_hours_allowed: parseFloat(
+                allowedOvertimePerDay.toFixed(2)
+              ),
               total_overtime_hours_worked: parseFloat(overtimeToday.toFixed(2)),
               attendance_line_details: todayAttendanceLineDetails,
-              message: todayLogs.length === 0 ? "Not checked in till now" : null
+              message:
+                todayLogs.length === 0 ? "Not checked in till now" : null,
             },
 
             week: {
               worked_hours: parseFloat(workedWeek.toFixed(2)),
               allowed_hours: allowedWeek,
-              remaining_hours: parseFloat(Math.max(0, allowedWeek - workedWeek).toFixed(2)),
-              percentage: parseFloat(Math.min(100, (workedWeek / allowedWeek) * 100).toFixed(2)),
+              remaining_hours: parseFloat(
+                Math.max(0, allowedWeek - workedWeek).toFixed(2)
+              ),
+              percentage: parseFloat(
+                Math.min(100, (workedWeek / allowedWeek) * 100).toFixed(2)
+              ),
               attendance_records: weekLogs.length,
-              total_overtime_hours_allowed: parseFloat(allowedOvertimeWeek.toFixed(2)),
-              total_overtime_hours_worked: parseFloat(overtimeWeek.toFixed(2))
+              total_overtime_hours_allowed: parseFloat(
+                allowedOvertimeWeek.toFixed(2)
+              ),
+              total_overtime_hours_worked: parseFloat(overtimeWeek.toFixed(2)),
             },
 
             month: {
               worked_hours: parseFloat(workedMonth.toFixed(2)),
               allowed_hours: allowedMonth,
-              remaining_hours: parseFloat(Math.max(0, allowedMonth - workedMonth).toFixed(2)),
-              percentage: parseFloat(Math.min(100, (workedMonth / allowedMonth) * 100).toFixed(2)),
+              remaining_hours: parseFloat(
+                Math.max(0, allowedMonth - workedMonth).toFixed(2)
+              ),
+              percentage: parseFloat(
+                Math.min(100, (workedMonth / allowedMonth) * 100).toFixed(2)
+              ),
               attendance_records: monthLogs.length,
-              total_overtime_hours_allowed: parseFloat(allowedOvertimeMonth.toFixed(2)),
-              total_overtime_hours_worked: parseFloat(overtimeMonth.toFixed(2))
-            }
+              total_overtime_hours_allowed: parseFloat(
+                allowedOvertimeMonth.toFixed(2)
+              ),
+              total_overtime_hours_worked: parseFloat(overtimeMonth.toFixed(2)),
+            },
           };
         }
       }
@@ -5789,7 +5918,6 @@ class ApiController {
           offset: parseInt(offset),
         },
       });
-
     } catch (error) {
       console.error("🔥 Error fetching employee attendance data:", error);
       return res.status(500).json({
@@ -5799,17 +5927,20 @@ class ApiController {
         statuscode: 500,
       });
     }
-
   }
   async approveAttendanceRegularization(req, res) {
     try {
       const { regularization_id, user_id } = req.body;
 
       if (!regularization_id) {
-        return res.status(400).json({ status: "error", message: "regularization_id is required" });
+        return res
+          .status(400)
+          .json({ status: "error", message: "regularization_id is required" });
       }
 
-      console.log(`🔍 Searching for Approval Request where attendance_regulzie_id = ${regularization_id}`);
+      console.log(
+        `🔍 Searching for Approval Request where attendance_regulzie_id = ${regularization_id}`
+      );
 
       const approvalRecords = await odooService.searchRead(
         "approval.request",
@@ -5821,30 +5952,29 @@ class ApiController {
       if (!approvalRecords || approvalRecords.length === 0) {
         return res.status(404).json({
           status: "error",
-          message: `No approval request found linked to regularization ID ${regularization_id}. Please check the field name 'attendance_regulzie_id' in Odoo.`
+          message: `No approval request found linked to regularization ID ${regularization_id}. Please check the field name 'attendance_regulzie_id' in Odoo.`,
         });
       }
 
       const approvalId = approvalRecords[0].id;
-      console.log(`✅ Found Approval ID: ${approvalId}. Calling 'approve_request' method...`);
-
-      await odooService.callMethod(
-        "approval.request",
-        "approve_request",
-        [parseInt(approvalId)]
+      console.log(
+        `✅ Found Approval ID: ${approvalId}. Calling 'approve_request' method...`
       );
+
+      await odooService.callMethod("approval.request", "approve_request", [
+        parseInt(approvalId),
+      ]);
 
       return res.status(200).json({
         status: "success",
         message: "Attendance regularization approved successfully",
-        data: { approval_id: approvalId }
+        data: { approval_id: approvalId },
       });
-
     } catch (error) {
       console.error("❌ Odoo Error:", error.message);
       return res.status(500).json({
         status: "error",
-        message: `Odoo Error: ${error.message}`
+        message: `Odoo Error: ${error.message}`,
       });
     }
   }
@@ -5852,9 +5982,13 @@ class ApiController {
     try {
       const { regularization_id, user_id, remarks } = req.body;
       if (!regularization_id || !user_id) {
-        return res.status(400).json({ status: "error", message: "IDs are required" });
+        return res
+          .status(400)
+          .json({ status: "error", message: "IDs are required" });
       }
-      console.log(`🔍 Searching for linked approval.request where attendance_regulzie_id = ${regularization_id}...`);
+      console.log(
+        `🔍 Searching for linked approval.request where attendance_regulzie_id = ${regularization_id}...`
+      );
       const approvalRecords = await odooService.searchRead(
         "approval.request",
         [["attendance_regulzie_id", "=", parseInt(regularization_id)]],
@@ -5863,15 +5997,19 @@ class ApiController {
       );
 
       if (!approvalRecords?.length) {
-        console.log(`❌ FAILED: No linked approval found for Regularization ID ${regularization_id}`);
-        return res.status(404).json({ status: "error", message: "Approval record not found" });
+        console.log(
+          `❌ FAILED: No linked approval found for Regularization ID ${regularization_id}`
+        );
+        return res
+          .status(404)
+          .json({ status: "error", message: "Approval record not found" });
       }
 
       const approvalId = approvalRecords[0].id;
       const managerUID = parseInt(user_id);
       const wizardId = await odooService.create(
         "request.reject.wizard",
-        { "remarks": remarks || "Rejected via App" },
+        { remarks: remarks || "Rejected via App" },
         { uid: 2 }
       );
       console.log(`✅ WIZARD CREATED: ID ${wizardId}`);
@@ -5882,17 +6020,19 @@ class ApiController {
         "action_reject_request",
         [parseInt(wizardId)],
         {
-          "active_id": approvalId,
-          "active_model": "approval.request",
-          "active_ids": [approvalId]
+          active_id: approvalId,
+          active_model: "approval.request",
+          active_ids: [approvalId],
         }
       );
       console.log(`✅ Wizard method executed successfully.`);
-      console.log(`🔄 STEP 3: Manually updating Attendance Regularization (ID: ${regularization_id})`);
+      console.log(
+        `🔄 STEP 3: Manually updating Attendance Regularization (ID: ${regularization_id})`
+      );
       await odooService.write(
         "attendance.regular",
         [parseInt(regularization_id)],
-        { "state_select": "reject" }
+        { state_select: "reject" }
       );
       return res.status(200).json({
         status: "success",
@@ -5900,75 +6040,70 @@ class ApiController {
         data: {
           regularization_id: regularization_id,
           field_updated: "state_select",
-          rejected_by: managerUID
-        }
+          rejected_by: managerUID,
+        },
       });
-
     } catch (error) {
       return res.status(500).json({ status: "error", message: error.message });
     }
   }
 
- async getAllApprovalRequests(req, res) {
-  try {
-    console.log("========================================");
-    console.log("🔍 FETCHING APPROVAL REQUESTS WITH CLIENT VALIDATION");
-    
-    const { client_id, currentUser } = await getClientFromRequest(req);
+  async getAllApprovalRequests(req, res) {
+    try {
+      console.log("========================================");
+      console.log("🔍 FETCHING APPROVAL REQUESTS WITH CLIENT VALIDATION");
 
-    if (!currentUser.is_client_employee_admin) {
-      return res.status(403).json({
+      const { client_id, currentUser } = await getClientFromRequest(req);
+
+      if (!currentUser.is_client_employee_admin) {
+        return res.status(403).json({
+          status: "error",
+          message: "Access Denied: You are not an admin of this client.",
+        });
+      }
+
+      console.log(`✅ Admin Validated: ${currentUser.partner_id[1]}`);
+      console.log(`📦 Filtering records for Client (Partner ID): ${client_id}`);
+
+      const domain = [["req_employee_id.address_id", "=", client_id]];
+
+      const fields = [
+        "name",
+        "req_employee_id",
+        "attendance_regulzie_id",
+        "hr_leave_id",
+        "description",
+        "state",
+      ];
+
+      const requests = await odooService.searchRead(
+        "approval.request",
+        domain,
+        fields,
+        0,
+        100,
+        "id desc",
+        currentUser.id
+      );
+
+      console.log(`🎉 Found ${requests.length} requests for your client.`);
+      console.log("========================================");
+
+      return res.status(200).json({
+        status: "success",
+        total: requests.length,
+        client_name: currentUser.partner_id[1],
+        data: requests,
+      });
+    } catch (error) {
+      // Agar helper error throw karega (e.g., "User not found"), toh wo yahan pakda jayega
+      console.error("❌ API ERROR:", error.message || error);
+      const statusCode = error.status || 500;
+      return res.status(statusCode).json({
         status: "error",
-        message: "Access Denied: You are not an admin of this client."
+        message: error.message || "Internal Server Error",
       });
     }
-
-    console.log(`✅ Admin Validated: ${currentUser.partner_id[1]}`);
-    console.log(`📦 Filtering records for Client (Partner ID): ${client_id}`);
-
-  
-    const domain = [
-      ["req_employee_id.address_id", "=", client_id]
-    ];
-
-    const fields = [
-      "name", 
-      "req_employee_id", 
-      "attendance_regulzie_id", 
-      "hr_leave_id", 
-      "description", 
-      "state"
-    ];
-
-    const requests = await odooService.searchRead(
-      "approval.request",
-      domain,
-      fields,
-      0,
-      100,
-      "id desc",
-      currentUser.id 
-    );
-
-    console.log(`🎉 Found ${requests.length} requests for your client.`);
-    console.log("========================================");
-
-    return res.status(200).json({
-      status: "success",
-      total: requests.length,
-      client_name: currentUser.partner_id[1],
-      data: requests
-    });
-
-  } catch (error) {
-    // Agar helper error throw karega (e.g., "User not found"), toh wo yahan pakda jayega
-    console.error("❌ API ERROR:", error.message || error);
-    const statusCode = error.status || 500;
-    return res.status(statusCode).json({
-      status: "error",
-      message: error.message || "Internal Server Error"
-    });
   }
-}
 }
 module.exports = new ApiController();
