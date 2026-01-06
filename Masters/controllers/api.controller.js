@@ -5909,41 +5909,66 @@ class ApiController {
     }
   }
 
-  async getAllApprovalRequests(req, res) {
-    try {
-      const { user_id } = req.query;
-      if (!user_id) {
-        return res.status(400).json({ status: "error", message: "Admin user_id is required in query params" });
-      }
-      const adminUID = parseInt(user_id);
-      console.log(`🔍 Fetching all requests for Admin/Manager UID: ${adminUID}`);
-      const fields = [
-        "name",
-        "req_employee_id",
-        "attendance_regulzie_id",
-        "hr_leave_id",
-        "description",
-        "state"
-      ];
-      const requests = await odooService.searchRead(
-        "approval.request",
-        [],
-        fields,
-        0,
-        50,
-        "id desc",
-        adminUID
-      );
-      console.log(`✅ Successfully fetched ${requests.length} requests for UID ${adminUID}`);
-      return res.status(200).json({
-        status: "success",
-        total: requests.length,
-        data: requests
+ async getAllApprovalRequests(req, res) {
+  try {
+    console.log("========================================");
+    console.log("🔍 FETCHING APPROVAL REQUESTS WITH CLIENT VALIDATION");
+    
+    const { client_id, currentUser } = await getClientFromRequest(req);
+
+    if (!currentUser.is_client_employee_admin) {
+      return res.status(403).json({
+        status: "error",
+        message: "Access Denied: You are not an admin of this client."
       });
-    } catch (error) {
-      console.error("❌ GET ALL ERROR:", error.message);
-      return res.status(500).json({ status: "error", message: error.message });
     }
+
+    console.log(`✅ Admin Validated: ${currentUser.partner_id[1]}`);
+    console.log(`📦 Filtering records for Client (Partner ID): ${client_id}`);
+
+  
+    const domain = [
+      ["req_employee_id.address_id", "=", client_id]
+    ];
+
+    const fields = [
+      "name", 
+      "req_employee_id", 
+      "attendance_regulzie_id", 
+      "hr_leave_id", 
+      "description", 
+      "state"
+    ];
+
+    const requests = await odooService.searchRead(
+      "approval.request",
+      domain,
+      fields,
+      0,
+      100,
+      "id desc",
+      currentUser.id 
+    );
+
+    console.log(`🎉 Found ${requests.length} requests for your client.`);
+    console.log("========================================");
+
+    return res.status(200).json({
+      status: "success",
+      total: requests.length,
+      client_name: currentUser.partner_id[1],
+      data: requests
+    });
+
+  } catch (error) {
+    // Agar helper error throw karega (e.g., "User not found"), toh wo yahan pakda jayega
+    console.error("❌ API ERROR:", error.message || error);
+    const statusCode = error.status || 500;
+    return res.status(statusCode).json({
+      status: "error",
+      message: error.message || "Internal Server Error"
+    });
   }
+}
 }
 module.exports = new ApiController();
