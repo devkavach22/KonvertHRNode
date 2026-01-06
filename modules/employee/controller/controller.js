@@ -2787,8 +2787,8 @@ const getExpenseCategories = async (req, res) => {
       expense_account_name: rec.property_account_expense_id ? rec.property_account_expense_id[1] : null,
 
       // Many2Many Fields (Odoo returns array of IDs)
-      sales_tax_ids: rec.taxes_id || [],
-      purchase_tax_ids: rec.supplier_taxes_id || []
+      sales_tax_ids: rec.taxes_id,
+      purchase_tax_ids: rec.supplier_taxes_id
     }));
 
     return res.status(200).json({
@@ -2809,7 +2809,9 @@ const getExpenseCategories = async (req, res) => {
 const createExpenseCategory = async (req, res) => {
   try {
     console.log("------------------------------------------------");
+
     console.log("API Called: createExpenseCategory");
+
     console.log("Request Body:", JSON.stringify(req.body, null, 2));
 
     const {
@@ -2960,9 +2962,9 @@ const createExpenseCategory = async (req, res) => {
     };
 
     // 🔥 FIX: create_uid only if available
-    if (user_id) {
-      vals.create_uid = user_id;
-    }
+    // if (user_id) {
+    //   vals.create_uid = user_id;
+    // }
 
     console.log("Final Odoo Payload:", JSON.stringify(vals, null, 2));
 

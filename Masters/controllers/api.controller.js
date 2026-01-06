@@ -5850,33 +5850,162 @@ class ApiController {
       });
     }
   }
+  // async rejectAttendanceRegularization(req, res) {
+  //   try {
+  //     const { regularization_id, user_id, remarks } = req.body;
+
+  //     console.log(`📥 REJECT REQUEST - Reg ID: ${regularization_id} | Manager UID: ${user_id}`);
+
+  //     // 1. Linked Approval Record dhoondo
+  //     const approvalRecords = await odooService.searchRead(
+  //       "approval.request",
+  //       [["attendance_regulzie_id", "=", parseInt(regularization_id)]],
+  //       ["id"],
+  //       1
+  //     );
+
+  //     if (!approvalRecords?.length) {
+  //       return res.status(404).json({ status: "error", message: "Approval record not found" });
+  //     }
+
+  //     const approvalId = approvalRecords[0].id;
+
+  //     // 2. CREATE WIZARD (Admin UID 2 se taaki permissions ka issue na ho)
+  //     console.log(`📝 STEP 1: Creating wizard...`);
+  //     const wizardId = await odooService.create(
+  //       "request.reject.wizard",
+  //       { "remarks": remarks || "Rejected via App" },
+  //       { uid: 2 }
+  //     );
+
+  //     // 3. EXECUTE REJECT WIZARD
+  //     console.log(`🚀 STEP 2: Triggering action_reject_request...`);
+  //     await odooService.callMethod(
+  //       "request.reject.wizard",
+  //       "action_reject_request",
+  //       [parseInt(wizardId)],
+  //       {
+  //         "active_id": approvalId,
+  //         "active_model": "approval.request",
+  //         "active_ids": [approvalId]
+  //       }
+  //     );
+
+  //     // 4. Manual Status Update - AB SAHI FIELD NAME KE SAATH
+  //     console.log(`🔄 STEP 3: Updating Attendance Regularization (ID: ${regularization_id})`);
+
+  //     // Aapki image 'image_b60b40.png' ke mutabiq field 'state_select' hai aur value 'reject'
+  //     await odooService.write(
+  //       "attendance.regular",
+  //       [parseInt(regularization_id)],
+  //       { "state_select": "reject" }
+  //     );
+
+  //     console.log(`✅ REJECTION & STATUS UPDATE (state_select) SUCCESSFUL`);
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Rejected and status updated successfully",
+  //       data: { regularization_id, field_updated: "state_select" }
+  //     });
+
+  //   } catch (error) {
+  //     console.error("❌ REJECTION ERROR:", error.message);
+  //     return res.status(500).json({ status: "error", message: error.message });
+  //   }
+  // }
+
   async rejectAttendanceRegularization(req, res) {
-    try {
-      const { regularization_id } = req.body;
+  try {
+    const { regularization_id, user_id, remarks } = req.body;
 
-      if (!regularization_id) {
-        return res.status(400).json({
-          status: "error",
-          message: "regularization_id is required"
-        });
-      }
+    // Log: Incoming Request Data
+    console.log("========================================");
+    console.log(`📥 INCOMING REJECT REQUEST`);
+    console.log(`🔹 Regularization ID: ${regularization_id}`);
+    console.log(`🔹 Manager User ID: ${user_id}`);
+    console.log(`🔹 Remarks: ${remarks || "No remarks provided"}`);
+    console.log("========================================");
 
-      await odooService.callMethod(
-        "attendance.regular",
-        "action_regular_rejection",
-        [parseInt(regularization_id)]
-      );
-
-      return res.status(200).json({
-        status: "success",
-        message: "Rejected successfully"
-      });
-    } catch (error) {
-      return res.status(500).json({
-        status: "error",
-        message: error.message || "Failed to reject"
-      });
+    if (!regularization_id || !user_id) {
+      return res.status(400).json({ status: "error", message: "IDs are required" });
     }
+
+    // 1. Linked Approval Record dhoondo
+    console.log(`🔍 Searching for linked approval.request where attendance_regulzie_id = ${regularization_id}...`);
+    const approvalRecords = await odooService.searchRead(
+      "approval.request",
+      [["attendance_regulzie_id", "=", parseInt(regularization_id)]],
+      ["id", "name"],
+      1
+    );
+
+    if (!approvalRecords?.length) {
+      console.log(`❌ FAILED: No linked approval found for Regularization ID ${regularization_id}`);
+      return res.status(404).json({ status: "error", message: "Approval record not found" });
+    }
+
+    const approvalId = approvalRecords[0].id;
+    const approvalName = approvalRecords[0].name || "N/A";
+    const managerUID = parseInt(user_id);
+
+    console.log(`✅ FOUND: Linked Approval ID: ${approvalId} (${approvalName})`);
+
+    // 2. CREATE WIZARD (Admin UID 2 se taaki permissions ka issue na ho)
+    console.log(`📝 STEP 1: Creating 'request.reject.wizard' using Admin UID for speed...`);
+    const wizardId = await odooService.create(
+      "request.reject.wizard",
+      { "remarks": remarks || "Rejected via App" },
+      { uid: 2 } 
+    );
+    console.log(`✅ WIZARD CREATED: ID ${wizardId}`);
+
+    // 3. EXECUTE REJECT WIZARD
+    console.log(`🚀 STEP 2: Triggering 'action_reject_request'...`);
+    await odooService.callMethod(
+      "request.reject.wizard",
+      "action_reject_request",
+      [parseInt(wizardId)],
+      {
+        "active_id": approvalId,
+        "active_model": "approval.request",
+        "active_ids": [approvalId] 
+      }
+    );
+    console.log(`✅ Wizard method executed successfully.`);
+
+    // 4. Manual Status Update - Sahi field 'state_select' ke saath
+    console.log(`🔄 STEP 3: Manually updating Attendance Regularization (ID: ${regularization_id})`);
+    
+    // Image image_b60b40.png ke mutabiq field 'state_select' hai aur value 'reject' hai
+    await odooService.write(
+      "attendance.regular",
+      [parseInt(regularization_id)],
+      { "state_select": "reject" } 
+    );
+
+    // --- Final Rejection Log (As per your request) ---
+    console.log("========================================");
+    console.log(`🚫 Reject by Manager ID: ${managerUID}`); // Aapka requested console log
+    console.log(`🎉 REJECTION & STATUS UPDATE (state_select) SUCCESSFUL!`);
+    console.log("========================================");
+
+    return res.status(200).json({
+      status: "success",
+      message: `Rejected and status updated successfully by manager (ID: ${managerUID})`,
+      data: { 
+          regularization_id: regularization_id, 
+          field_updated: "state_select",
+          rejected_by: managerUID 
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ REJECTION ERROR LOG:");
+    console.error(`- Error Message: ${error.message}`);
+    console.error(`- Involved Regularization ID: ${req.body.regularization_id}`);
+    return res.status(500).json({ status: "error", message: error.message });
   }
+}
 }
 module.exports = new ApiController();
