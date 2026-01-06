@@ -30,6 +30,22 @@ app.use((err, req, res, next) => {
   res.status(500).json({ status: "error", message: "Internal Server Error" });
 });
 
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: "success",
+    message: "Welcome to the API Server 🚀",
+    serverTime: new Date()
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    message: "Server is healthy",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server is running on port ${PORT}`);
 });
