@@ -8,6 +8,8 @@ const PORT = process.env.PORT || 4000;
 
 const allowedOrigins = [
   "https://konverthr-marketing.onrender.com/",
+  "http://178.236.185.232:4000",
+  "http://178.236.185.232"
 ];
 
 app.use(
