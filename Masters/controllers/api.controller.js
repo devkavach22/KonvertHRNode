@@ -5801,8 +5801,6 @@ class ApiController {
     }
 
   }
-
-
   async approveAttendanceRegularization(req, res) {
     try {
       const { regularization_id, user_id } = req.body;
@@ -5850,16 +5848,9 @@ class ApiController {
       });
     }
   }
-
   async rejectAttendanceRegularization(req, res) {
     try {
       const { regularization_id, user_id, remarks } = req.body;
-      console.log("========================================");
-      console.log(`📥 INCOMING REJECT REQUEST`);
-      console.log(`🔹 Regularization ID: ${regularization_id}`);
-      console.log(`🔹 Manager User ID: ${user_id}`);
-      console.log(`🔹 Remarks: ${remarks || "No remarks provided"}`);
-      console.log("========================================");
       if (!regularization_id || !user_id) {
         return res.status(400).json({ status: "error", message: "IDs are required" });
       }
@@ -5877,11 +5868,7 @@ class ApiController {
       }
 
       const approvalId = approvalRecords[0].id;
-      const approvalName = approvalRecords[0].name || "N/A";
       const managerUID = parseInt(user_id);
-
-      console.log(`✅ FOUND: Linked Approval ID: ${approvalId} (${approvalName})`);
-      console.log(`📝 STEP 1: Creating 'request.reject.wizard' using Admin UID for speed...`);
       const wizardId = await odooService.create(
         "request.reject.wizard",
         { "remarks": remarks || "Rejected via App" },
@@ -5907,11 +5894,6 @@ class ApiController {
         [parseInt(regularization_id)],
         { "state_select": "reject" }
       );
-      console.log("========================================");
-      console.log(`🚫 Reject by Manager ID: ${managerUID}`);
-      console.log(`🎉 REJECTION & STATUS UPDATE (state_select) SUCCESSFUL!`);
-      console.log("========================================");
-
       return res.status(200).json({
         status: "success",
         message: `Rejected and status updated successfully by manager (ID: ${managerUID})`,
@@ -5923,9 +5905,43 @@ class ApiController {
       });
 
     } catch (error) {
-      console.error("❌ REJECTION ERROR LOG:");
-      console.error(`- Error Message: ${error.message}`);
-      console.error(`- Involved Regularization ID: ${req.body.regularization_id}`);
+      return res.status(500).json({ status: "error", message: error.message });
+    }
+  }
+
+  async getAllApprovalRequests(req, res) {
+    try {
+      const { user_id } = req.query;
+      if (!user_id) {
+        return res.status(400).json({ status: "error", message: "Admin user_id is required in query params" });
+      }
+      const adminUID = parseInt(user_id);
+      console.log(`🔍 Fetching all requests for Admin/Manager UID: ${adminUID}`);
+      const fields = [
+        "name",
+        "req_employee_id",
+        "attendance_regulzie_id",
+        "hr_leave_id",
+        "description",
+        "state"
+      ];
+      const requests = await odooService.searchRead(
+        "approval.request",
+        [],
+        fields,
+        0,
+        50,
+        "id desc",
+        adminUID
+      );
+      console.log(`✅ Successfully fetched ${requests.length} requests for UID ${adminUID}`);
+      return res.status(200).json({
+        status: "success",
+        total: requests.length,
+        data: requests
+      });
+    } catch (error) {
+      console.error("❌ GET ALL ERROR:", error.message);
       return res.status(500).json({ status: "error", message: error.message });
     }
   }

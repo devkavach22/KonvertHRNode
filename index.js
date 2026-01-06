@@ -6,15 +6,16 @@ const employeeRoutes = require("./modules/employee/routes/routes");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-const allowedOrigins = [
-  "https://konverthr-marketing.onrender.com/",
-  "http://178.236.185.232:4000",
-  "http://178.236.185.232"
-];
+// const allowedOrigins = [
+//   "https://konverthr-marketing.onrender.com/",
+//   "http://178.236.185.232:4000",
+//   "http://178.236.185.232",
+//   "*"
+// ];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: true,
     credentials: true
   })
 );

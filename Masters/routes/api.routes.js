@@ -502,8 +502,10 @@ router.post(
 router.get("/regularization", apiController.getAttendanceRegularization.bind(apiController));
 router.put("/regularization/:id", authenticate, apiController.updateAttendanceRegularization.bind(apiController));
 
-router.post("/attendance/regularization/approve", authenticate, apiController.approveAttendanceRegularization.bind(apiController));
-router.post("/attendance/regularization/reject", authenticate, apiController.rejectAttendanceRegularization.bind(apiController));
+router.post("/admin/approve", authenticate, apiController.approveAttendanceRegularization.bind(apiController));
+router.post("/admin/reject", authenticate, apiController.rejectAttendanceRegularization.bind(apiController));
+
+router.get("/admin/requests",authenticate,apiController.getAllApprovalRequests.bind(apiController));
 
 router.post(
   "/create/regcategory",
