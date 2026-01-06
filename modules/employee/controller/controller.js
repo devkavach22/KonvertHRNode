@@ -2326,7 +2326,11 @@ console.log("🚀 API CALLED → FETCH EXPENSES");
 console.log("📥 Request Query:", req.query);
 console.log("📥 Request Body:", req.body);
 
-// ───────── 1. RESOLVE CLIENT ─────────
+// ───────── 1. GET USER ID ─────────
+const user_id = req.query.user_id || req.body.user_id;
+console.log("👤 Resolved user_id:", user_id);
+
+// ───────── 2. RESOLVE CLIENT ─────────
 console.log("🔍 Resolving client from request...");
 const { client_id } = await getClientFromRequest(req);
 console.log("🏢 Resolved client_id:", client_id);
@@ -2339,10 +2343,6 @@ message: "client_id not found"
 });
 }
 
-// ───────── 2. GET USER ID ─────────
-const user_id = req.query.user_id || req.body.user_id;
-console.log("👤 Resolved user_id:", user_id);
-
 if (!user_id) {
 console.error("❌ Missing user_id");
 return res.status(400).json({
@@ -2351,104 +2351,102 @@ message: "Missing user_id"
 });
 }
 
-// ───────── 3. FETCH EMPLOYEE (User → Employee) ─────────
-// ⚠️ FIXED: Removed ['client_id', '=', client_id] as hr.employee does not have this field.
-console.log("🔄 Fetching employee for user_id:", user_id);
-
-let employee = await odooService.searchRead(
-"hr.employee",
-[["user_id", "=", Number(user_id)]], // Standard domain only
-["id", "name"],
-1,
-0,
-null,
-client_id // Context handles tenant isolation
-);
-
-// Fallback: If not found by user_id, try finding by Partner ID
-if (!employee.length) {
-console.log("⚠️ Employee not found by user_id. resolving Partner...");
-
+// ───────── 3. FETCH USER (user_id → partner_id) ─────────
+console.log("🔄 Fetching user from res.users...");
 const user = await odooService.searchRead(
 "res.users",
 [["id", "=", Number(user_id)]],
 ["partner_id"],
 1,
-0,
-null,
 client_id
 );
 
-if (user.length && user[0].partner_id) {
+console.log("📄 User result:", user);
+
+if (!user.length || !user[0].partner_id) {
+console.error("❌ Invalid user_id or partner_id missing");
+return res.status(400).json({
+status: "error",
+message: "Invalid user_id or Partner not found"
+});
+}
+
 const partnerId = user[0].partner_id[0];
 console.log("🔗 Resolved partner_id:", partnerId);
 
+// ───────── 4. FETCH EMPLOYEE (CRITICAL FIX) ─────────
+let employee = [];
+
+console.log("🔄 Attempt 1: Fetch employee using user_id...");
 employee = await odooService.searchRead(
 "hr.employee",
-[["address_id", "=", partnerId]], // Standard domain only
-["id", "name"],
+[["user_id", "=", Number(user_id)]],
+["id", "name", "company_id"],
 1,
-0,
-null,
 client_id
 );
-}
+
+if (!employee.length) {
+console.log("⚠️ No employee via user_id. Trying partner_id...");
+employee = await odooService.searchRead(
+"hr.employee",
+[["address_id", "=", partnerId]],
+["id", "name", "company_id"],
+1,
+client_id
+);
 }
 
 console.log("📄 Employee result:", employee);
 
 if (!employee.length) {
-console.error("❌ Employee not found for this user");
+console.error("❌ Employee not found for user");
 return res.status(400).json({
 status: "error",
-message: "Employee profile not found for this user."
+message: "Employee not found for this user"
 });
 }
 
 const employee_id = employee[0].id;
 console.log("👨‍💼 Final resolved employee_id:", employee_id);
 
-// ───────── 4. FETCH EXPENSES ─────────
-// ⚠️ FIXED: Removed ['client_id', '=', client_id] as hr.expense does not have this field.
+// ───────── 5. FETCH EXPENSES (EMPLOYEE-BOUND) ─────────
 console.log("🔄 Fetching expenses for employee_id:", employee_id);
-
 const expenses = await odooService.searchRead(
 "hr.expense",
-[["employee_id", "=", employee_id]], // Standard domain only
+[["employee_id", "=", employee_id]],
 [
 "id",
 "name",
-"product_id", // Category
-"total_amount_currency",
-"date",
-"state",
+"product_id",
+"account_id",
 "payment_mode",
-"description",
+"total_amount_currency",
+"state",
+"date",
 "currency_id"
 ],
-0, // Offset
-0, // Limit (0 = All)
-null, // Order
-client_id // Context handles tenant isolation
+0,
+0,
+null,
+client_id
 );
 
 console.log("📄 Expenses fetched:", expenses.length);
 
 if (!expenses || expenses.length === 0) {
-console.log("ℹ️ No expenses found");
+console.log("ℹ️ No expenses found for this employee");
 return res.status(200).json({
 status: "success",
 message: "No expenses found",
-count: 0,
 data: []
 });
 }
 
-// ───────── 5. FETCH ATTACHMENTS ─────────
+// ───────── 6. FETCH ATTACHMENTS ─────────
 const expenseIds = expenses.map(exp => exp.id);
-console.log("📎 Fetching attachments for expense IDs:", expenseIds.length);
+console.log("📎 Fetching attachments for expense IDs:", expenseIds);
 
-// ⚠️ FIXED: Removed ['client_id', '=', client_id] as ir.attachment usually does not have this field.
 const attachments = await odooService.searchRead(
 "ir.attachment",
 [
@@ -2464,9 +2462,8 @@ client_id
 
 console.log("📎 Attachments fetched:", attachments.length);
 
-// ───────── 6. MERGE & FORMAT DATA ─────────
+// ───────── 7. MERGE EXPENSE + ATTACHMENTS ─────────
 const finalData = expenses.map(exp => {
-// Find attachments for this specific expense
 const expAttachments = attachments
 .filter(att => att.res_id === exp.id)
 .map(att => ({
@@ -2475,18 +2472,8 @@ name: att.name,
 url: att.local_url
 }));
 
-// Return clean object
 return {
-id: exp.id,
-name: exp.name, // Description/Title
-category: Array.isArray(exp.product_id) ? exp.product_id[1] : null,
-category_id: Array.isArray(exp.product_id) ? exp.product_id[0] : null,
-amount: exp.total_amount_currency,
-currency: Array.isArray(exp.currency_id) ? exp.currency_id[1] : null,
-date: exp.date,
-status: exp.state, // draft, reported, approved, done, refused
-payment_mode: exp.payment_mode, // own_account, company_account
-description: exp.description || "",
+...exp,
 attachment_ids: expAttachments
 };
 });
@@ -2497,7 +2484,6 @@ console.log("══════════════════════�
 return res.status(200).json({
 status: "success",
 message: "Expenses fetched successfully",
-count: finalData.length,
 data: finalData
 });
 
@@ -2509,6 +2495,7 @@ message: error.message || "Failed to fetch expenses"
 });
 }
 };
+
 
 
 
