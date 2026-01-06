@@ -2,6 +2,7 @@ const odooService = require("../services/odoo.service");
 const { getClientFromRequest } = require("../services/plan.helper");
 class BankController {
   async createBank(req, res) {
+    console.log("Bank API Called.Created One ....")
     try {
       const {
         name,
@@ -61,6 +62,7 @@ class BankController {
       };
 
       const id = await odooService.create("res.bank", data);
+      console.log("My Payload", data)
       return res.status(201).json({
         status: "success",
         message: "Bank created successfully",
@@ -322,7 +324,7 @@ class BankController {
       };
 
       const id = await odooService.create("res.partner.bank", data);
-
+      console.log("bank Account Data", data);
       return res.status(201).json({
         status: "success",
         message: "Bank account created successfully",
