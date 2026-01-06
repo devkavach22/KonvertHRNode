@@ -89,4 +89,8 @@ router.post("/create/calendar",authenticate,createCalendarEvent);
 router.get("/calendar",authenticate,getCalendarEvent);
 router.post("/create/expense-categroy",authenticate,createExpenseCategory);
 router.get("/expense-category",authenticate,getExpenseCategories);
+router.get("/expense-account",authenticate,getExpenseAccounts);
+router.get("/sales-tax",authenticate,getSalesTaxes);
+router.get("/purchase-tax",authenticate,getPurchaseTaxes);
+router.get("/product-category",authenticate,getProductCategory);
 module.exports = router;
