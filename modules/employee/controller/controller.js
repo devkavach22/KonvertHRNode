@@ -2122,7 +2122,7 @@ const createExpense = async (req, res) => {
     console.log("══════════════════════════════════════");
     console.log("🚀 API CALLED → CREATE EXPENSE");
 
-    const user_id = req.body.user_id || req.query.user_id;
+    const user_id = req.body.user_id || req.query.user_id; // This is 3138
     console.log("👤 Resolved user_id:", user_id);
 
     let {
@@ -2138,49 +2138,31 @@ const createExpense = async (req, res) => {
 
     // ───────── 1. RESOLVE CLIENT ─────────
     const { client_id } = await getClientFromRequest(req);
-    console.log("🏢 Resolved client_id:", client_id);
 
     if (!client_id) {
-      return res.status(400).json({
-        status: "error",
-        message: "client_id not found",
-      });
+      return res.status(400).json({ status: "error", message: "client_id not found" });
     }
 
-    // ───────── 2. NORMALIZE IDS (STRICT) ─────────
+    // ───────── 2. NORMALIZE IDS ─────────
     product_id = typeof product_id === "object" ? product_id?.id : product_id;
     account_id = typeof account_id === "object" ? account_id?.id : account_id;
 
     // ───────── 3. VALIDATIONS ─────────
-    const missingFields = [];
-    if (!user_id) missingFields.push("user_id");
-    if (!name) missingFields.push("name");
-    if (!product_id) missingFields.push("product_id");
-    if (!account_id) missingFields.push("account_id");
-    if (!total_amount_currency) missingFields.push("total_amount_currency");
-    if (!payment_mode) missingFields.push("payment_mode");
-
-    if (missingFields.length) {
-      return res.status(400).json({
-        status: "error",
-        message: `Missing fields: ${missingFields.join(", ")}`,
-      });
+    if (!user_id || !name || !product_id || !account_id || !total_amount_currency || !payment_mode) {
+      return res.status(400).json({ status: "error", message: "Missing required fields" });
     }
 
     // ───────── 4. USER FETCH ─────────
     const user = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
-      ["partner_id"],
+      ["partner_id", "company_id"],
       0,
       1
     );
 
     if (!user.length) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid user_id",
-      });
+      return res.status(400).json({ status: "error", message: "Invalid user_id" });
     }
 
     const partnerId = user[0].partner_id?.[0];
@@ -2205,53 +2187,50 @@ const createExpense = async (req, res) => {
     }
 
     if (!employee.length) {
-      return res.status(400).json({
-        status: "error",
-        message: "Employee not found for this user",
-      });
+      return res.status(400).json({ status: "error", message: "Employee not found" });
     }
 
-    const employee_id = employee[0].id;
-    const companyId = employee[0].company_id?.[0];
+    const employee_id = employee[0].id; // This is 17565
+    const companyId = employee[0].company_id?.[0] || user[0].company_id?.[0];
 
     // ───────── 6. CREATE EXPENSE ─────────
     const vals = {
       name,
-      employee_id,
+      employee_id: Number(employee_id), 
       product_id: Number(product_id),
       account_id: Number(account_id),
       payment_mode,
       total_amount_currency: Number(total_amount_currency),
       date: date || new Date().toISOString().split("T")[0],
       company_id: companyId,
-      client_id,
     };
 
     const expenseId = await odooService.create("hr.expense", vals, client_id);
 
-    // ───────── 7. ATTACHMENT ─────────
+    // ───────── 7. ATTACHMENT (FIXED) ─────────
     if (attachment && fileName) {
+      // FIX 1: Ensure we only send the base64 part
+      const base64Data = attachment.split(",").pop();
+
+      // FIX 2: Create attachment with explicit mapping
       const attachmentId = await odooService.create(
         "ir.attachment",
         {
           name: fileName,
-          datas: attachment.replace(/^data:.*;base64,/, ""),
+          datas: base64Data,
           type: "binary",
           res_model: "hr.expense",
-          res_id: expenseId,
+          res_id: Number(expenseId), // Ensure this is a number
+          company_id: companyId,     // Ensure it belongs to the same company
         },
         client_id
       );
 
-      await odooService.write(
-        "hr.expense",
-        expenseId,
-        { attachment_ids: [[4, attachmentId]] },
-        client_id
-      );
+      // FIX 3: Removed the 'write' to attachment_ids. 
+      // In Odoo, setting res_model/res_id on the attachment is enough to link it.
+      // Writing to hr.expense sometimes triggers a re-check of the user context, causing your error.
     }
 
-    // ✅ FINAL RESPONSE (no read/search)
     return res.status(201).json({
       status: "success",
       message: "Expense created successfully",
