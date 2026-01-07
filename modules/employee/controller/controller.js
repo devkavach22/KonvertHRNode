@@ -1382,10 +1382,13 @@ const getEmployees = async (req, res) => {
 
     let employeeSearchDomain;
 
-    if (currentUser.is_client_employee_user && !currentUser.is_client_employee_admin) {
+    if (
+      currentUser.is_client_employee_user &&
+      !currentUser.is_client_employee_admin
+    ) {
       employeeSearchDomain = [
         ["address_id", "=", client_id],
-        ["user_id", "=", currentUser.id]
+        ["user_id", "=", currentUser.id],
       ];
     } else {
       employeeSearchDomain = [["address_id", "=", client_id]];
@@ -2160,7 +2163,7 @@ const createExpense = async (req, res) => {
       payment_mode,
       date,
       attachment,
-      fileName
+      fileName,
     } = req.body;
 
     // ───────── 1. RESOLVE CLIENT ─────────
@@ -2170,7 +2173,7 @@ const createExpense = async (req, res) => {
     if (!client_id) {
       return res.status(400).json({
         status: "error",
-        message: "client_id not found"
+        message: "client_id not found",
       });
     }
 
@@ -2190,7 +2193,7 @@ const createExpense = async (req, res) => {
     if (missingFields.length) {
       return res.status(400).json({
         status: "error",
-        message: `Missing fields: ${missingFields.join(", ")}`
+        message: `Missing fields: ${missingFields.join(", ")}`,
       });
     }
 
@@ -2208,7 +2211,7 @@ const createExpense = async (req, res) => {
     if (!user.length) {
       return res.status(400).json({
         status: "error",
-        message: "Invalid user_id"
+        message: "Invalid user_id",
       });
     }
 
@@ -2237,7 +2240,7 @@ const createExpense = async (req, res) => {
     if (!employee.length) {
       return res.status(400).json({
         status: "error",
-        message: "Employee not found for this user"
+        message: "Employee not found for this user",
       });
     }
 
@@ -2254,14 +2257,10 @@ const createExpense = async (req, res) => {
       total_amount_currency: Number(total_amount_currency),
       date: date || new Date().toISOString().split("T")[0],
       company_id: companyId,
-      client_id
+      client_id,
     };
 
-    const expenseId = await odooService.create(
-      "hr.expense",
-      vals,
-      client_id
-    );
+    const expenseId = await odooService.create("hr.expense", vals, client_id);
 
     // ───────── 7. ATTACHMENT ─────────
     if (attachment && fileName) {
@@ -2272,7 +2271,7 @@ const createExpense = async (req, res) => {
           datas: attachment.replace(/^data:.*;base64,/, ""),
           type: "binary",
           res_model: "hr.expense",
-          res_id: expenseId
+          res_id: expenseId,
         },
         client_id
       );
@@ -2298,7 +2297,7 @@ const createExpense = async (req, res) => {
         "payment_mode",
         "total_amount_currency",
         "state",
-        "date"
+        "date",
       ],
       0,
       1
@@ -2307,18 +2306,16 @@ const createExpense = async (req, res) => {
     return res.status(201).json({
       status: "success",
       message: "Expense created successfully",
-      data: finalExpense[0]
+      data: finalExpense[0],
     });
-
   } catch (error) {
     console.error("❌ CREATE EXPENSE ERROR:", error);
     return res.status(500).json({
       status: "error",
-      message: error.message || "Failed to create expense"
+      message: error.message || "Failed to create expense",
     });
   }
 };
-
 
 const getExpense = async (req, res) => {
   try {
@@ -2340,7 +2337,7 @@ const getExpense = async (req, res) => {
       console.error("❌ client_id not found");
       return res.status(400).json({
         status: "error",
-        message: "client_id not found"
+        message: "client_id not found",
       });
     }
 
@@ -2348,7 +2345,7 @@ const getExpense = async (req, res) => {
       console.error("❌ Missing user_id");
       return res.status(400).json({
         status: "error",
-        message: "Missing user_id"
+        message: "Missing user_id",
       });
     }
 
@@ -2369,10 +2366,12 @@ const getExpense = async (req, res) => {
     console.log("📄 User result:", JSON.stringify(user, null, 2));
 
     if (!user || user.length === 0 || !user[0].partner_id) {
-      console.error(`❌ User Resolution Failed: User ID ${user_id} not found or has no partner_id linked.`);
+      console.error(
+        `❌ User Resolution Failed: User ID ${user_id} not found or has no partner_id linked.`
+      );
       return res.status(400).json({
         status: "error",
-        message: "Invalid user_id or Partner not found"
+        message: "Invalid user_id or Partner not found",
       });
     }
 
@@ -2394,7 +2393,9 @@ const getExpense = async (req, res) => {
     );
 
     if (!employee.length) {
-      console.log("⚠️ No employee via user_id. Trying partner_id (address_id)...");
+      console.log(
+        "⚠️ No employee via user_id. Trying partner_id (address_id)..."
+      );
       employee = await odooService.searchRead(
         "hr.employee",
         [["address_id", "=", partnerId]],
@@ -2409,10 +2410,12 @@ const getExpense = async (req, res) => {
     console.log("📄 Employee result:", JSON.stringify(employee, null, 2));
 
     if (!employee || !employee.length) {
-      console.error(`❌ Employee not found for User ID: ${user_id} and Partner ID: ${partnerId}`);
+      console.error(
+        `❌ Employee not found for User ID: ${user_id} and Partner ID: ${partnerId}`
+      );
       return res.status(400).json({
         status: "error",
-        message: "Employee not found for this user"
+        message: "Employee not found for this user",
       });
     }
 
@@ -2433,7 +2436,7 @@ const getExpense = async (req, res) => {
         "total_amount_currency",
         "state",
         "date",
-        "currency_id"
+        "currency_id",
       ],
       0, // offset
       0, // limit (0 for all)
@@ -2448,19 +2451,19 @@ const getExpense = async (req, res) => {
       return res.status(200).json({
         status: "success",
         message: "No expenses found",
-        data: []
+        data: [],
       });
     }
 
     // ───────── 6. FETCH ATTACHMENTS ─────────
-    const expenseIds = expenses.map(exp => exp.id);
+    const expenseIds = expenses.map((exp) => exp.id);
     console.log("📎 Fetching attachments for expense IDs:", expenseIds);
 
     const attachments = await odooService.searchRead(
       "ir.attachment",
       [
         ["res_model", "=", "hr.expense"],
-        ["res_id", "in", expenseIds]
+        ["res_id", "in", expenseIds],
       ],
       ["id", "name", "local_url", "res_id"],
       0,
@@ -2469,21 +2472,24 @@ const getExpense = async (req, res) => {
       client_id
     );
 
-    console.log("📎 Attachments fetched count:", attachments ? attachments.length : 0);
+    console.log(
+      "📎 Attachments fetched count:",
+      attachments ? attachments.length : 0
+    );
 
     // ───────── 7. MERGE EXPENSE + ATTACHMENTS ─────────
-    const finalData = expenses.map(exp => {
+    const finalData = expenses.map((exp) => {
       const expAttachments = (attachments || [])
-        .filter(att => att.res_id === exp.id)
-        .map(att => ({
+        .filter((att) => att.res_id === exp.id)
+        .map((att) => ({
           id: att.id,
           name: att.name,
-          url: att.local_url
+          url: att.local_url,
         }));
 
       return {
         ...exp,
-        attachment_ids: expAttachments
+        attachment_ids: expAttachments,
       };
     });
 
@@ -2493,14 +2499,13 @@ const getExpense = async (req, res) => {
     return res.status(200).json({
       status: "success",
       message: "Expenses fetched successfully",
-      data: finalData
+      data: finalData,
     });
-
   } catch (error) {
     console.error("❌ GET EXPENSE ERROR:", error);
     return res.status(500).json({
       status: "error",
-      message: error.message || "Failed to fetch expenses"
+      message: error.message || "Failed to fetch expenses",
     });
   }
 };
@@ -2553,12 +2558,10 @@ const updateExpense = async (req, res) => {
     );
 
     if (!employee.length) {
-      return res
-        .status(404)
-        .json({
-          status: "error",
-          message: "Employee not found for this user.",
-        });
+      return res.status(404).json({
+        status: "error",
+        message: "Employee not found for this user.",
+      });
     }
 
     const employee_id = employee[0].id;
@@ -2576,13 +2579,10 @@ const updateExpense = async (req, res) => {
     );
 
     if (!existingExpense.length) {
-      return res
-        .status(404)
-        .json({
-          status: "error",
-          message:
-            "Expense not found or you do not have permission to edit it.",
-        });
+      return res.status(404).json({
+        status: "error",
+        message: "Expense not found or you do not have permission to edit it.",
+      });
     }
 
     // ───────── 7. UPDATE FIELDS ─────────
@@ -2700,12 +2700,10 @@ const createCalendarEvent = async (req, res) => {
     if (!stop) missingFields.push("stop");
 
     if (missingFields.length) {
-      return res
-        .status(400)
-        .json({
-          status: "error",
-          message: `Missing fields: ${missingFields.join(", ")}`,
-        });
+      return res.status(400).json({
+        status: "error",
+        message: `Missing fields: ${missingFields.join(", ")}`,
+      });
     }
 
     // ───────── 3. RESOLVE USER (Preserved Logic) ─────────
@@ -2925,14 +2923,14 @@ const getExpenseCategories = async (req, res) => {
       console.error("❌ client_id not found");
       return res.status(400).json({
         status: "error",
-        message: "client_id not found"
+        message: "client_id not found",
       });
     }
 
     // ───────── 2. PREPARE SEARCH DOMAIN ─────────
     const domain = [
       ["can_be_expensed", "=", true],
-      ["client_id", "=", client_id]
+      ["client_id", "=", client_id],
     ];
 
     if (req.query.search) {
@@ -2948,7 +2946,7 @@ const getExpenseCategories = async (req, res) => {
       "categ_id",
       "property_account_expense_id",
       "expense_policy",
-      "description"
+      "description",
     ];
 
     // ───────── 4. FETCH CATEGORIES ─────────
@@ -2972,23 +2970,25 @@ const getExpenseCategories = async (req, res) => {
         status: "success",
         message: "No expense categories found",
         count: 0,
-        data: []
+        data: [],
       });
     }
 
     // ───────── 5. PROPER DUPLICATION HANDLING (ODOO-CORRECT) ─────────
     /**
-    * Deduplicate based on:
-    * - Product Name
-    * - Category
-    * - Expense Account
-    *
-    * This prevents duplicates caused by variants or overlapping rules.
-    */
+     * Deduplicate based on:
+     * - Product Name
+     * - Category
+     * - Expense Account
+     *
+     * This prevents duplicates caused by variants or overlapping rules.
+     */
     const uniqueMap = new Map();
 
     for (const item of categories) {
-      const categoryId = Array.isArray(item.categ_id) ? item.categ_id[0] : "null";
+      const categoryId = Array.isArray(item.categ_id)
+        ? item.categ_id[0]
+        : "null";
       const expenseAccountId = Array.isArray(item.property_account_expense_id)
         ? item.property_account_expense_id[0]
         : "null";
@@ -3007,7 +3007,7 @@ const getExpenseCategories = async (req, res) => {
     );
 
     // ───────── 6. FORMAT DATA ─────────
-    const finalData = uniqueCategories.map(item => ({
+    const finalData = uniqueCategories.map((item) => ({
       id: item.id,
       name: item.name,
       cost: item.standard_price,
@@ -3021,7 +3021,7 @@ const getExpenseCategories = async (req, res) => {
         ? item.property_account_expense_id[0]
         : null,
       re_invoice_policy: item.expense_policy,
-      description: item.description || ""
+      description: item.description || "",
     }));
 
     console.log("✅ Expense categories fetched successfully");
@@ -3031,18 +3031,16 @@ const getExpenseCategories = async (req, res) => {
       status: "success",
       message: "Expense categories retrieved successfully",
       count: finalData.length,
-      data: finalData
+      data: finalData,
     });
-
   } catch (error) {
     console.error("❌ GET EXPENSE CATEGORIES ERROR:", error);
     return res.status(500).json({
       status: "error",
-      message: error.message || "Failed to fetch expense categories"
+      message: error.message || "Failed to fetch expense categories",
     });
   }
 };
-
 
 const createExpenseCategory = async (req, res) => {
   try {
@@ -3059,7 +3057,7 @@ const createExpenseCategory = async (req, res) => {
       expense_account_name, // Expense Account (property_account_expense_id)
       sales_tax_names,
       purchase_tax_names,
-      re_invoice_policy
+      re_invoice_policy,
     } = req.body;
 
     // ───────── 1️⃣ FETCH CLIENT CONTEXT ─────────
@@ -3073,7 +3071,9 @@ const createExpenseCategory = async (req, res) => {
     }
 
     const { user_id, client_id } = context;
-    console.log(`✅ Context resolved → user_id: ${user_id}, client_id: ${client_id}`);
+    console.log(
+      `✅ Context resolved → user_id: ${user_id}, client_id: ${client_id}`
+    );
 
     if (!client_id) {
       throw new Error("Invalid client context: client_id missing");
@@ -3084,7 +3084,7 @@ const createExpenseCategory = async (req, res) => {
     if (!name) {
       return res.status(400).json({
         status: "error",
-        message: "Expense Category name is required"
+        message: "Expense Category name is required",
       });
     }
     console.log("✅ Validation passed");
@@ -3096,7 +3096,7 @@ const createExpenseCategory = async (req, res) => {
       [
         ["name", "=", name],
         ["can_be_expensed", "=", true],
-        ["client_id", "=", client_id]
+        ["client_id", "=", client_id],
       ],
       ["id"],
       1,
@@ -3108,7 +3108,7 @@ const createExpenseCategory = async (req, res) => {
     if (existingProduct.length) {
       return res.status(409).json({
         status: "error",
-        message: "An expense category with this name already exists."
+        message: "An expense category with this name already exists.",
       });
     }
 
@@ -3144,7 +3144,10 @@ const createExpenseCategory = async (req, res) => {
 
       if (account.length) {
         property_account_expense_id = account[0].id;
-        console.log("✅ Expense Account resolved:", property_account_expense_id);
+        console.log(
+          "✅ Expense Account resolved:",
+          property_account_expense_id
+        );
       } else {
         console.warn("⚠️ Expense Account name provided but not found");
       }
@@ -3163,7 +3166,7 @@ const createExpenseCategory = async (req, res) => {
           "account.tax",
           [
             ["name", "=", taxName],
-            ["type_tax_use", "=", "sale"]
+            ["type_tax_use", "=", "sale"],
           ],
           ["id"],
           1,
@@ -3183,7 +3186,7 @@ const createExpenseCategory = async (req, res) => {
           "account.tax",
           [
             ["name", "=", taxName],
-            ["type_tax_use", "=", "purchase"]
+            ["type_tax_use", "=", "purchase"],
           ],
           ["id"],
           1,
@@ -3205,7 +3208,7 @@ const createExpenseCategory = async (req, res) => {
       expense_policy: re_invoice_policy || "no",
       taxes_id,
       supplier_taxes_id,
-      client_id
+      client_id,
     };
 
     // ✅ Only include if explicitly resolved
@@ -3235,10 +3238,9 @@ const createExpenseCategory = async (req, res) => {
       message: "Expense category created successfully",
       data: {
         id: productId,
-        name
-      }
+        name,
+      },
     });
-
   } catch (error) {
     console.error("❌ ERROR in createExpenseCategory");
     console.error("Message:", error.message);
@@ -3246,11 +3248,10 @@ const createExpenseCategory = async (req, res) => {
 
     return res.status(error.status || 500).json({
       status: "error",
-      message: error.message || "Failed to create expense category"
+      message: error.message || "Failed to create expense category",
     });
   }
 };
-
 
 const getExpenseAccounts = async (req, res) => {
   try {
@@ -3258,15 +3259,12 @@ const getExpenseAccounts = async (req, res) => {
     console.log("API Called: getExpenseAccounts");
 
     // 1. Read user_id safely (GET request compatible)
-    const user_id =
-      req.query?.user_id ||
-      req.body?.user_id ||
-      req.user_id;
+    const user_id = req.query?.user_id || req.body?.user_id || req.user_id;
 
     if (!user_id) {
       return res.status(400).json({
         status: "error",
-        message: "user_id is required"
+        message: "user_id is required",
       });
     }
 
@@ -3288,7 +3286,7 @@ const getExpenseAccounts = async (req, res) => {
     if (!userRecords || userRecords.length === 0) {
       return res.status(404).json({
         status: "error",
-        message: "User not found in Odoo"
+        message: "User not found in Odoo",
       });
     }
 
@@ -3299,7 +3297,7 @@ const getExpenseAccounts = async (req, res) => {
     if (!company_id) {
       return res.status(400).json({
         status: "error",
-        message: "Company not assigned to this user"
+        message: "Company not assigned to this user",
       });
     }
 
@@ -3309,13 +3307,7 @@ const getExpenseAccounts = async (req, res) => {
     const domain = [["company_ids", "=", company_id]];
 
     // 4. Define fields (XML-RPC safe)
-    const fields = [
-      "code",
-      "name",
-      "account_type",
-      "reconcile",
-      "currency_id"
-    ];
+    const fields = ["code", "name", "account_type", "reconcile", "currency_id"];
 
     console.log("Fetching expense accounts...");
 
@@ -3333,27 +3325,26 @@ const getExpenseAccounts = async (req, res) => {
     console.log(`Accounts found: ${records?.length || 0}`);
 
     // 6. Map response
-    const data = records.map(rec => ({
+    const data = records.map((rec) => ({
       id: rec.id,
       code: rec.code,
       name: rec.name,
       type: rec.account_type,
       allow_reconciliation: rec.reconcile,
       currency_id: rec.currency_id ? rec.currency_id[0] : null,
-      currency_name: rec.currency_id ? rec.currency_id[1] : null
+      currency_name: rec.currency_id ? rec.currency_id[1] : null,
     }));
 
     return res.status(200).json({
       status: "success",
       total: data.length,
-      data
+      data,
     });
-
   } catch (error) {
     console.error("❌ Get Accounts Error:", error);
     return res.status(500).json({
       status: "error",
-      message: error.message || "Failed to fetch accounts"
+      message: error.message || "Failed to fetch accounts",
     });
   }
 };
@@ -3544,6 +3535,53 @@ const getProductCategory = async (req, res) => {
     });
   }
 };
+
+const getEmployeesBasicInfo = async (req, res) => {
+  try {
+    const { client_id, currentUser } = await getClientFromRequest(req);
+    console.log("API Called - Get Employees Basic Info");
+
+    let employeeSearchDomain;
+
+    if (
+      currentUser.is_client_employee_user &&
+      !currentUser.is_client_employee_admin
+    ) {
+      employeeSearchDomain = [
+        ["address_id", "=", client_id],
+        ["user_id", "=", currentUser.id],
+      ];
+    } else {
+      employeeSearchDomain = [["address_id", "=", client_id]];
+    }
+
+    const employeeData = await odooHelpers.searchRead(
+      "hr.employee",
+      employeeSearchDomain,
+      ["id", "name", "job_id", "reporting_manager_id"]
+    );
+    const formattedEmployees = employeeData.map((employee) => ({
+      id: employee.id,
+      name: employee.name,
+      job_position: employee.job_id ? employee.job_id[1] : null,
+      reporting_manager: employee.reporting_manager_id
+        ? employee.reporting_manager_id[1]
+        : null,
+    }));
+
+    return res.status(200).json({
+      status: "success",
+      count: formattedEmployees.length,
+      data: formattedEmployees,
+    });
+  } catch (error) {
+    console.error("Error fetching employees basic info:", error);
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to fetch employees basic info",
+    });
+  }
+};
 module.exports = {
   createEmployee,
   updateEmployee,
@@ -3577,4 +3615,5 @@ module.exports = {
   getProductCategory,
   getPurchaseTaxes,
   getSalesTaxes,
+  getEmployeesBasicInfo,
 };
