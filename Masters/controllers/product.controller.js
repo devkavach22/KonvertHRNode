@@ -434,4 +434,210 @@ module.exports = {
       });
     }
   },
+  async getCustomerSubscriptions(req, res) {
+    try {
+      console.log("Customer Subscriptions API called .......");
+
+      const { user_id } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "user_id is required",
+        });
+      }
+
+      /* --------------------------------------------------
+STEP 1: user → customer (partner_id)
+-------------------------------------------------- */
+      const users = await odooService.searchRead(
+        "res.users",
+        [["id", "=", Number(user_id)]],
+        ["id", "partner_id"]
+      );
+
+      if (!users.length || !users[0].partner_id) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer not linked with this user",
+        });
+      }
+
+      const customerId = users[0].partner_id[0];
+
+      /* --------------------------------------------------
+STEP 2: Fetch subscription orders WITH invoice_ids
+-------------------------------------------------- */
+      const orders = await odooService.searchRead(
+        "sale.order",
+        [
+          ["is_subscription", "=", true],
+          ["partner_id", "=", customerId],
+        ],
+        [
+          "id",
+          "name",
+          "date_order",
+          "subscription_state",
+          "next_invoice_date",
+          "amount_total",
+          "currency_id",
+          "plan_id",
+          "invoice_ids", // ⭐ IMPORTANT
+        ]
+      );
+
+      if (!orders.length) {
+        return res.status(200).json({
+          status: "success",
+          count: 0,
+          data: [],
+        });
+      }
+
+      /* --------------------------------------------------
+STEP 3: Fetch invoice details
+-------------------------------------------------- */
+      const invoiceIds = orders.flatMap((o) => o.invoice_ids);
+
+      let invoices = [];
+      if (invoiceIds.length) {
+        invoices = await odooService.searchRead(
+          "account.move",
+          [
+            ["id", "in", invoiceIds],
+            ["move_type", "=", "out_invoice"],
+          ],
+          ["id", "name", "invoice_date", "amount_total", "state"]
+        );
+      }
+
+      /* --------------------------------------------------
+STEP 4: Final response
+-------------------------------------------------- */
+      const data = orders.map((order) => {
+        const orderInvoices = invoices
+          .filter((inv) => order.invoice_ids.includes(inv.id))
+          .map((inv) => ({
+            invoice_id: inv.id, // ✅ THIS IS WHAT YOU WANT
+            invoice_number: inv.name,
+            invoice_date: inv.invoice_date,
+            amount: inv.amount_total,
+            state: inv.state,
+            download_url: `/api/invoice/download/${inv.id}`,
+          }));
+
+        return {
+          subscription_id: order.id,
+          order_number: order.name,
+          order_date: order.date_order, // ✅ HERE
+
+          plan_id: order.plan_id?.[0],
+          plan_name: order.plan_id?.[1],
+          status: order.subscription_state,
+          next_invoice_date: order.next_invoice_date,
+          total_amount: order.amount_total,
+          currency: order.currency_id?.[1],
+
+          // 🔥 invoices linked via invoice_ids
+          invoices: orderInvoices,
+        };
+      });
+
+      return res.status(200).json({
+        status: "success",
+        count: data.length,
+        data,
+      });
+    } catch (error) {
+      console.error("❌ Error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to fetch subscriptions",
+        error: error.message,
+      });
+    }
+  },
+  async downloadInvoicePDF(req, res) {
+    try {
+      const { invoice_id } = req.body;
+      if (!invoice_id) {
+        return res.status(400).json({
+          success: false,
+          error: "invoice_id is required",
+        });
+      }
+
+      console.log("📄 Generating PDF for invoice ID:", invoice_id);
+
+      const invoiceExists = await odooService.searchRead(
+        "account.move",
+        [["id", "=", invoice_id]],
+        ["id", "name", "state"]
+      );
+
+      if (!invoiceExists || invoiceExists.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "Invoice not found",
+        });
+      }
+
+      const invoice = invoiceExists[0];
+      if (invoice.state !== "posted") {
+        return res.status(400).json({
+          success: false,
+          error: "Invoice must be confirmed/posted to generate PDF",
+          current_state: invoice.state,
+        });
+      }
+
+      const axios = require("axios");
+      const loginResponse = await axios.post(
+        `${process.env.ODOO_URL}/web/session/authenticate`,
+        {
+          jsonrpc: "2.0",
+          params: {
+            db: process.env.ODOO_DB,
+            login: process.env.ODOO_ADMIN,
+            password: process.env.ODOO_ADMIN_PASSWORD,
+          },
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      const sessionId = loginResponse.headers["set-cookie"];
+      const pdfResponse = await axios.get(
+        `${process.env.ODOO_URL}/report/pdf/account.report_invoice/${invoice_id}`,
+        {
+          headers: {
+            Cookie: sessionId,
+          },
+          responseType: "arraybuffer",
+        }
+      );
+
+      const pdfBuffer = Buffer.from(pdfResponse.data);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="Invoice_${invoice.name.replace(/\//g, "_")}.pdf"`
+      );
+      res.setHeader("Content-Length", pdfBuffer.length);
+
+      console.log("✅ PDF generated successfully");
+      return res.send(pdfBuffer);
+    } catch (error) {
+      console.error("❌ Error generating invoice PDF:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to generate invoice PDF",
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
+    }
+  },
 };

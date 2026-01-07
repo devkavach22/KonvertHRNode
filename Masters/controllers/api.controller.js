@@ -5932,275 +5932,271 @@ class ApiController {
       });
     }
   }
-  async approveAttendanceRegularization(req, res) {
-    try {
-      const { approval_request_id, user_id } = req.body;
+  // async approveAttendanceRegularization(req, res) {
+  //   try {
+  //     const { approval_request_id, user_id } = req.body;
 
-      if (!approval_request_id) {
-        return res
-          .status(400)
-          .json({
-            status: "error",
-            message: "approval_request_id is required",
-          });
-      }
+  //     if (!approval_request_id) {
+  //       return res
+  //         .status(400)
+  //         .json({
+  //           status: "error",
+  //           message: "approval_request_id is required",
+  //         });
+  //     }
 
-      console.log(
-        `🔍 Searching for Approval Request with ID = ${approval_request_id}`
-      );
+  //     console.log(
+  //       `🔍 Searching for Approval Request with ID = ${approval_request_id}`
+  //     );
 
-      const approvalRecords = await odooService.searchRead(
-        "approval.request",
-        [["id", "=", parseInt(approval_request_id)]],
-        ["id", "state", "attendance_regulzie_id", "hr_leave_id"],
-        1
-      );
+  //     const approvalRecords = await odooService.searchRead(
+  //       "approval.request",
+  //       [["id", "=", parseInt(approval_request_id)]],
+  //       ["id", "state", "attendance_regulzie_id", "hr_leave_id"],
+  //       1
+  //     );
 
-      if (!approvalRecords || approvalRecords.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: `No approval request found with ID ${approval_request_id}`,
-        });
-      }
+  //     if (!approvalRecords || approvalRecords.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: `No approval request found with ID ${approval_request_id}`,
+  //       });
+  //     }
 
-      const approvalRecord = approvalRecords[0];
-      const approvalId = approvalRecord.id;
+  //     const approvalRecord = approvalRecords[0];
+  //     const approvalId = approvalRecord.id;
 
-      // Check current state
-      console.log(`📊 Current approval state: ${approvalRecord.state}`);
+  //     // Check current state
+  //     console.log(`📊 Current approval state: ${approvalRecord.state}`);
 
-      if (approvalRecord.state === "approved") {
-        return res.status(400).json({
-          status: "error",
-          message: "This request is already approved",
-        });
-      }
+  //     if (approvalRecord.state === "approved") {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "This request is already approved",
+  //       });
+  //     }
 
-      if (approvalRecord.state === "refused") {
-        return res.status(400).json({
-          status: "error",
-          message: "This request has been rejected",
-        });
-      }
+  //     if (approvalRecord.state === "refused") {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "This request has been rejected",
+  //       });
+  //     }
 
-      console.log(`✅ Found Approval ID: ${approvalId}. Processing...`);
+  //     console.log(`✅ Found Approval ID: ${approvalId}. Processing...`);
 
-      // ========== LEAVE REQUEST HANDLING ==========
-      if (approvalRecord.hr_leave_id) {
-        const leaveId = approvalRecord.hr_leave_id[0];
-        console.log(`🏖️ Processing Leave Request (ID: ${leaveId})`);
+  //     // ========== LEAVE REQUEST HANDLING ==========
+  //     if (approvalRecord.hr_leave_id) {
+  //       const leaveId = approvalRecord.hr_leave_id[0];
+  //       console.log(`🏖️ Processing Leave Request (ID: ${leaveId})`);
 
-        // Get leave details with more fields
-        const leaveRecord = await odooService.searchRead(
-          "hr.leave",
-          [["id", "=", leaveId]],
-          ["id", "state", "validation_type"],
-          1
-        );
+  //       // Get leave details with more fields
+  //       const leaveRecord = await odooService.searchRead(
+  //         "hr.leave",
+  //         [["id", "=", leaveId]],
+  //         ["id", "state", "validation_type"],
+  //         1
+  //       );
 
-        if (!leaveRecord || leaveRecord.length === 0) {
-          return res.status(404).json({
-            status: "error",
-            message: "Leave record not found",
-          });
-        }
+  //       if (!leaveRecord || leaveRecord.length === 0) {
+  //         return res.status(404).json({
+  //           status: "error",
+  //           message: "Leave record not found",
+  //         });
+  //       }
 
-        const currentLeaveState = leaveRecord[0].state;
-        console.log(`📊 Current leave state: ${currentLeaveState}`);
-        console.log(`📊 Validation type: ${leaveRecord[0].validation_type}`);
+  //       const currentLeaveState = leaveRecord[0].state;
+  //       console.log(`📊 Current leave state: ${currentLeaveState}`);
+  //       console.log(`📊 Validation type: ${leaveRecord[0].validation_type}`);
 
-        // Try-catch for leave approval to handle state issues gracefully
-        try {
-          if (currentLeaveState === "refuse") {
-            return res.status(400).json({
-              status: "error",
-              message: "This leave request has already been refused",
-            });
-          }
+  //       // Try-catch for leave approval to handle state issues gracefully
+  //       try {
+  //         if (currentLeaveState === "refuse") {
+  //           return res.status(400).json({
+  //             status: "error",
+  //             message: "This leave request has already been refused",
+  //           });
+  //         }
 
-          if (currentLeaveState === "draft") {
-            console.log(`🔄 Step 1: Confirming leave from draft...`);
-            await odooService.callMethod("hr.leave", "action_confirm", [
-              parseInt(leaveId),
-            ]);
+  //         if (currentLeaveState === "draft") {
+  //           console.log(`🔄 Step 1: Confirming leave from draft...`);
+  //           await odooService.callMethod("hr.leave", "action_confirm", [
+  //             parseInt(leaveId),
+  //           ]);
 
-            console.log(`🔄 Step 2: Approving leave...`);
-            await odooService.callMethod("hr.leave", "action_approve", [
-              parseInt(leaveId),
-            ]);
-          } else if (currentLeaveState === "confirm") {
-            console.log(`✅ Approving confirmed leave...`);
-            await odooService.callMethod("hr.leave", "action_approve", [
-              parseInt(leaveId),
-            ]);
-          } else if (
-            currentLeaveState === "validate" ||
-            currentLeaveState === "validate1"
-          ) {
-            console.log(`✅ Validating leave (double validation)...`);
-            await odooService.callMethod("hr.leave", "action_validate", [
-              parseInt(leaveId),
-            ]);
-          } else if (currentLeaveState === "approved") {
-            console.log(`ℹ️ Leave already approved, no action needed`);
-          } else {
-            console.log(
-              `⚠️ Unknown leave state: ${currentLeaveState}, will approve approval.request only`
-            );
-          }
-        } catch (leaveError) {
-          console.error(`⚠️ Leave action failed: ${leaveError.message}`);
-          console.log(`📝 Continuing to approve approval.request anyway...`);
-          // Don't return error - continue to approve the approval request
-        }
+  //           console.log(`🔄 Step 2: Approving leave...`);
+  //           await odooService.callMethod("hr.leave", "action_approve", [
+  //             parseInt(leaveId),
+  //           ]);
+  //         } else if (currentLeaveState === "confirm") {
+  //           console.log(`✅ Approving confirmed leave...`);
+  //           await odooService.callMethod("hr.leave", "action_approve", [
+  //             parseInt(leaveId),
+  //           ]);
+  //         } else if (
+  //           currentLeaveState === "validate" ||
+  //           currentLeaveState === "validate1"
+  //         ) {
+  //           console.log(`✅ Validating leave (double validation)...`);
+  //           await odooService.callMethod("hr.leave", "action_validate", [
+  //             parseInt(leaveId),
+  //           ]);
+  //         } else if (currentLeaveState === "approved") {
+  //           console.log(`ℹ️ Leave already approved, no action needed`);
+  //         } else {
+  //           console.log(
+  //             `⚠️ Unknown leave state: ${currentLeaveState}, will approve approval.request only`
+  //           );
+  //         }
+  //       } catch (leaveError) {
+  //         console.error(`⚠️ Leave action failed: ${leaveError.message}`);
+  //         console.log(`📝 Continuing to approve approval.request anyway...`);
+  //         // Don't return error - continue to approve the approval request
+  //       }
 
-        // Always try to approve the approval request
-        console.log(`✅ Approving the approval.request...`);
-        await odooService.callMethod("approval.request", "approve_request", [
-          parseInt(approvalId),
-        ]);
+  //       // Always try to approve the approval request
+  //       console.log(`✅ Approving the approval.request...`);
+  //       await odooService.callMethod("approval.request", "approve_request", [
+  //         parseInt(approvalId),
+  //       ]);
 
-        return res.status(200).json({
-          status: "success",
-          message: "Leave Request approved successfully",
-          data: {
-            approval_id: approvalId,
-            leave_id: leaveId,
-            leave_state: currentLeaveState,
-            type: "Leave Request",
-          },
-        });
-      }
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Leave Request approved successfully",
+  //         data: {
+  //           approval_id: approvalId,
+  //           leave_id: leaveId,
+  //           leave_state: currentLeaveState,
+  //           type: "Leave Request",
+  //         },
+  //       });
+  //     }
 
-      // ========== ATTENDANCE REGULARIZATION HANDLING ==========
-      if (approvalRecord.attendance_regulzie_id) {
-        console.log(`📅 Processing Attendance Regularization`);
+  //     // ========== ATTENDANCE REGULARIZATION HANDLING ==========
+  //     if (approvalRecord.attendance_regulzie_id) {
+  //       console.log(`📅 Processing Attendance Regularization`);
 
-        await odooService.callMethod("approval.request", "approve_request", [
-          parseInt(approvalId),
-        ]);
+  //       await odooService.callMethod("approval.request", "approve_request", [
+  //         parseInt(approvalId),
+  //       ]);
 
-        return res.status(200).json({
-          status: "success",
-          message: "Attendance Regularization approved successfully",
-          data: {
-            approval_id: approvalId,
-            type: "Attendance Regularization",
-          },
-        });
-      }
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Attendance Regularization approved successfully",
+  //         data: {
+  //           approval_id: approvalId,
+  //           type: "Attendance Regularization",
+  //         },
+  //       });
+  //     }
 
-      // ========== GENERAL/EXPENSE REQUEST HANDLING ==========
-      console.log(`💰 Processing General/Expense Request`);
+  //     // ========== GENERAL/EXPENSE REQUEST HANDLING ==========
+  //     console.log(`💰 Processing General/Expense Request`);
 
-      await odooService.callMethod("approval.request", "approve_request", [
-        parseInt(approvalId),
-      ]);
+  //     await odooService.callMethod("approval.request", "approve_request", [
+  //       parseInt(approvalId),
+  //     ]);
 
-      return res.status(200).json({
-        status: "success",
-        message: "Request approved successfully",
-        data: {
-          approval_id: approvalId,
-          type: "General Request",
-        },
-      });
-    } catch (error) {
-      console.error("❌ Odoo Error:", error.message);
-      return res.status(500).json({
-        status: "error",
-        message: `Odoo Error: ${error.message}`,
-      });
-    }
-  }
-  async rejectAttendanceRegularization(req, res) {
-    try {
-      const { approval_request_id, remarks } = req.body;
-      const { currentUser } = await getClientFromRequest(req);
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Request approved successfully",
+  //       data: {
+  //         approval_id: approvalId,
+  //         type: "General Request",
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("❌ Odoo Error:", error.message);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: `Odoo Error: ${error.message}`,
+  //     });
+  //   }
+  // }
+  // async rejectAttendanceRegularization(req, res) {
+  //   try {
+  //     const { approval_request_id, remarks } = req.body;
+  //     const { currentUser } = await getClientFromRequest(req);
 
-      const fields = [
-        "id",
-        "name",
-        "state",
-        "attendance_regulzie_id",
-        "hr_leave_id",
-        "description",
-      ];
+  //     const fields = [
+  //       "id",
+  //       "name",
+  //       "state",
+  //       "attendance_regulzie_id",
+  //       "hr_leave_id",
+  //       "description",
+  //     ];
 
-      const approvalRecords = await odooService.searchRead(
-        "approval.request",
-        [["id", "=", parseInt(approval_request_id)]],
-        fields,
-        1
-      );
+  //     const approvalRecords = await odooService.searchRead(
+  //       "approval.request",
+  //       [["id", "=", parseInt(approval_request_id)]],
+  //       fields,
+  //       1
+  //     );
 
-      if (!approvalRecords?.length) {
-        return res
-          .status(404)
-          .json({ status: "error", message: "Record not found" });
-      }
+  //     if (!approvalRecords?.length) {
+  //       return res
+  //         .status(404)
+  //         .json({ status: "error", message: "Record not found" });
+  //     }
 
-      const approvalRecord = approvalRecords[0];
+  //     const approvalRecord = approvalRecords[0];
 
-      const wizardId = await odooService.create(
-        "request.reject.wizard",
-        { remarks: remarks || "Rejected via App" },
-        { uid: 2 }
-      );
+  //     const wizardId = await odooService.create(
+  //       "request.reject.wizard",
+  //       { remarks: remarks || "Rejected via App" },
+  //       { uid: 2 }
+  //     );
 
-      await odooService.callMethod(
-        "request.reject.wizard",
-        "action_reject_request",
-        [parseInt(wizardId)],
-        {
-          active_id: approvalRecord.id,
-          active_model: "approval.request",
-          active_ids: [approvalRecord.id],
-        }
-      );
+  //     await odooService.callMethod(
+  //       "request.reject.wizard",
+  //       "action_reject_request",
+  //       [parseInt(wizardId)],
+  //       {
+  //         active_id: approvalRecord.id,
+  //         active_model: "approval.request",
+  //         active_ids: [approvalRecord.id],
+  //       }
+  //     );
 
-      let updatedRecord = null;
+  //     let updatedRecord = null;
 
-      if (approvalRecord.attendance_regulzie_id) {
-        const regId = approvalRecord.attendance_regulzie_id[0];
-        await odooService.write("attendance.regular", [regId], {
-          state_select: "reject",
-        });
-        updatedRecord = { model: "attendance.regular", id: regId };
-      } else if (approvalRecord.hr_leave_id) {
-        const leaveId = approvalRecord.hr_leave_id[0];
-        await odooService.write("hr.leave", [leaveId], { state: "refuse" });
-        updatedRecord = { model: "hr.leave", id: leaveId };
-      } else if (
-        approvalRecord.description &&
-        approvalRecord.description.includes("Expense")
-      ) {
-        console.log(
-          "📝 Expense detected via description. Approval state updated by wizard."
-        );
-        updatedRecord = {
-          model: "hr.expense.sheet",
-          info: "Handled by Approval Wizard",
-        };
-      }
+  //     if (approvalRecord.attendance_regulzie_id) {
+  //       const regId = approvalRecord.attendance_regulzie_id[0];
+  //       await odooService.write("attendance.regular", [regId], {
+  //         state_select: "reject",
+  //       });
+  //       updatedRecord = { model: "attendance.regular", id: regId };
+  //     } else if (approvalRecord.hr_leave_id) {
+  //       const leaveId = approvalRecord.hr_leave_id[0];
+  //       await odooService.write("hr.leave", [leaveId], { state: "refuse" });
+  //       updatedRecord = { model: "hr.leave", id: leaveId };
+  //     } else if (
+  //       approvalRecord.description &&
+  //       approvalRecord.description.includes("Expense")
+  //     ) {
+  //       console.log(
+  //         "📝 Expense detected via description. Approval state updated by wizard."
+  //       );
+  //       updatedRecord = {
+  //         model: "hr.expense.sheet",
+  //         info: "Handled by Approval Wizard",
+  //       };
+  //     }
 
-      return res.status(200).json({
-        status: "success",
-        message: "Rejected successfully",
-        data: { approval_id: approvalRecord.id, updated_record: updatedRecord },
-      });
-    } catch (error) {
-      return res.status(500).json({ status: "error", message: error.message });
-    }
-  }
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Rejected successfully",
+  //       data: { approval_id: approvalRecord.id, updated_record: updatedRecord },
+  //     });
+  //   } catch (error) {
+  //     return res.status(500).json({ status: "error", message: error.message });
+  //   }
+  // }
 
   async getAllApprovalRequests(req, res) {
     try {
-      console.log("========================================");
-      console.log("🔍 FETCHING APPROVAL REQUESTS WITH CLIENT VALIDATION");
-
       const { client_id, currentUser } = await getClientFromRequest(req);
-
       if (!currentUser.is_client_employee_admin) {
         return res.status(403).json({
           status: "error",
@@ -6208,11 +6204,7 @@ class ApiController {
         });
       }
 
-      console.log(`✅ Admin Validated: ${currentUser.partner_id[1]}`);
-      console.log(`📦 Filtering records for Client (Partner ID): ${client_id}`);
-
       const domain = [["req_employee_id.address_id", "=", client_id]];
-
       const fields = [
         "name",
         "req_employee_id",
@@ -6220,6 +6212,7 @@ class ApiController {
         "hr_leave_id",
         "description",
         "state",
+        "reason",
       ];
 
       const requests = await odooService.searchRead(
@@ -6232,14 +6225,28 @@ class ApiController {
         currentUser.id
       );
 
-      console.log(`🎉 Found ${requests.length} requests for your client.`);
+      // --- LOGIC TO DELETE 'REASON' KEY UNLESS STATE IS REJECT ---
+      const processedRequests = requests.map((item) => {
+        const newItem = { ...item }; // Copy the object
+
+        if (newItem.state !== "reject") {
+          delete newItem.reason; // Remove the reason key entirely
+        }
+
+        return newItem;
+      });
+      // ---------------------------------------------------------
+
+      console.log(
+        `🎉 Found ${requests.length} requests. Returning filtered keys.`
+      );
       console.log("========================================");
 
       return res.status(200).json({
         status: "success",
-        total: requests.length,
+        total: processedRequests.length,
         client_name: currentUser.partner_id[1],
-        data: requests,
+        data: processedRequests,
       });
     } catch (error) {
       console.error("❌ API ERROR:", error.message || error);
@@ -6279,7 +6286,7 @@ class ApiController {
         [["parent_id", "=", companyPartnerId]],
         ["id", "name", "email", "mobile", "phone", "type", "function"]
       );
-      const formattedContacts = contacts.map(contact => ({
+      const formattedContacts = contacts.map((contact) => ({
         id: contact.id,
         name: contact.name,
         email: contact.email || null,
@@ -6390,78 +6397,77 @@ class ApiController {
     }
   }
 
+  async sendOtp(req, res) {
+    try {
+      console.log("🔥 Send OTP API called");
 
-async sendOtp(req, res) {
-  try {
-    console.log("🔥 Send OTP API called");
+      const { user_id, type, value } = req.body;
 
-    const { user_id, type, value } = req.body;
+      // ------------------ 1️⃣ Basic Validation ------------------
+      if (!user_id || !type || !value) {
+        return res.status(400).json({
+          status: "error",
+          message: "user_id, type and value are required",
+        });
+      }
 
-    // ------------------ 1️⃣ Basic Validation ------------------
-    if (!user_id || !type || !value) {
-      return res.status(400).json({
-        status: "error",
-        message: "user_id, type and value are required",
+      if (!["email", "mobile"].includes(type)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid type",
+        });
+      }
+
+      if (type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid email format",
+        });
+      }
+
+      if (type === "mobile" && !/^[6-9]\d{9}$/.test(value)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid mobile number",
+        });
+      }
+
+      // ------------------ 2️⃣ Verify user exists ------------------
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", parseInt(user_id)]],
+        ["id"]
+      );
+
+      if (!userData || userData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+        });
+      }
+
+      // ------------------ 3️⃣ Generate OTP ------------------
+      const otp = Math.floor(100000 + Math.random() * 900000);
+
+      // ------------------ 4️⃣ Store OTP with expiry ------------------
+      const otpKey = `${user_id}_${type}_${value}`;
+      otpStore.set(otpKey, {
+        otp: otp.toString(),
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+        attempts: 0,
       });
-    }
 
-    if (!["email", "mobile"].includes(type)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid type",
-      });
-    }
+      // Auto-delete after 5 minutes
+      setTimeout(() => {
+        otpStore.delete(otpKey);
+      }, 5 * 60 * 1000);
 
-    if (type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid email format",
-      });
-    }
-
-    if (type === "mobile" && !/^[6-9]\d{9}$/.test(value)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid mobile number",
-      });
-    }
-
-    // ------------------ 2️⃣ Verify user exists ------------------
-    const userData = await odooService.searchRead(
-      "res.users",
-      [["id", "=", parseInt(user_id)]],
-      ["id"]
-    );
-
-    if (!userData || userData.length === 0) {
-      return res.status(404).json({
-        status: "error",
-        message: "User not found",
-      });
-    }
-
-    // ------------------ 3️⃣ Generate OTP ------------------
-    const otp = Math.floor(100000 + Math.random() * 900000);
-
-    // ------------------ 4️⃣ Store OTP with expiry ------------------
-    const otpKey = `${user_id}_${type}_${value}`;
-    otpStore.set(otpKey, {
-      otp: otp.toString(),
-      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
-      attempts: 0
-    });
-
-    // Auto-delete after 5 minutes
-    setTimeout(() => {
-      otpStore.delete(otpKey);
-    }, 5 * 60 * 1000);
-
-    // ------------------ 5️⃣ Send OTP ------------------
-    if (type === "email") {
-      await mailService.sendMail(
-        value,
-        "OTP Verification - Kavach Global",
-        `<!DOCTYPE html>
+      // ------------------ 5️⃣ Send OTP ------------------
+      if (type === "email") {
+        await mailService.sendMail(
+          value,
+          "OTP Verification - Kavach Global",
+          `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -6492,223 +6498,379 @@ async sendOtp(req, res) {
 </table>
 </body>
 </html>`
+        );
+      } else {
+        const transporter = mailService.transporter;
+        const smsEmail = `${value}@sms.gateway.com`;
+
+        await transporter.sendMail({
+          from: `"Kavach Global" <${process.env.SMTP_USER}>`,
+          to: smsEmail,
+          subject: "",
+          text: `Your OTP for updating your mobile is ${otp}. Valid for 5 minutes.`,
+        });
+      }
+
+      return res.status(200).json({
+        status: "OK",
+        message: "OTP sent successfully",
+        // otp, // ⚠️ Remove in production
+      });
+    } catch (error) {
+      console.error("Send OTP error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to send OTP",
+      });
+    }
+  }
+
+  // ------------------ ✅ VERIFY OTP API ------------------
+  async verifyOtp(req, res) {
+    try {
+      console.log("✅ Verify OTP API called");
+
+      const { user_id, type, value, otp } = req.body;
+
+      // ------------------ 1️⃣ Basic Validation ------------------
+      if (!user_id || !type || !value || !otp) {
+        return res.status(400).json({
+          status: "error",
+          message: "user_id, type, value and otp are required",
+        });
+      }
+
+      if (!["email", "mobile"].includes(type)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid type",
+        });
+      }
+
+      // ------------------ 2️⃣ Get stored OTP ------------------
+      const otpKey = `${user_id}_${type}_${value}`;
+      const storedOtpData = otpStore.get(otpKey);
+
+      if (!storedOtpData) {
+        return res.status(400).json({
+          status: "error",
+          message: "OTP not found or expired",
+        });
+      }
+
+      // ------------------ 3️⃣ Check expiry ------------------
+      if (Date.now() > storedOtpData.expiresAt) {
+        otpStore.delete(otpKey);
+        return res.status(400).json({
+          status: "error",
+          message: "OTP has expired",
+        });
+      }
+
+      // ------------------ 4️⃣ Check attempts (prevent brute force) ------------------
+      if (storedOtpData.attempts >= 3) {
+        otpStore.delete(otpKey);
+        return res.status(429).json({
+          status: "error",
+          message: "Too many failed attempts. Please request a new OTP",
+        });
+      }
+
+      // ------------------ 5️⃣ Verify OTP ------------------
+      if (storedOtpData.otp !== otp.toString()) {
+        storedOtpData.attempts += 1;
+        otpStore.set(otpKey, storedOtpData);
+
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid OTP",
+          remaining_attempts: 3 - storedOtpData.attempts,
+        });
+      }
+
+      // ------------------ 6️⃣ OTP verified successfully ------------------
+      otpStore.delete(otpKey); // Remove used OTP
+
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", parseInt(user_id)]],
+        ["id", "partner_id"]
       );
-    } else {
-      const transporter = mailService.transporter;
-      const smsEmail = `${value}@sms.gateway.com`;
 
-      await transporter.sendMail({
-        from: `"Kavach Global" <${process.env.SMTP_USER}>`,
-        to: smsEmail,
-        subject: "",
-        text: `Your OTP for updating your mobile is ${otp}. Valid for 5 minutes.`,
+      if (!userData || userData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+        });
+      }
+
+      const partnerId = userData[0].partner_id[0];
+      const updateVals = {};
+
+      if (type === "email") {
+        updateVals.email = value;
+      } else if (type === "mobile") {
+        updateVals.mobile = value;
+        updateVals.phone = value;
+      }
+
+      // Update partner in Odoo
+      await odooService.write("res.partner", [partnerId], updateVals);
+
+      return res.status(200).json({
+        status: "OK",
+        message: `${type === "email" ? "Email" : "Mobile"
+          } verified and updated successfully`,
+        user_id: parseInt(user_id),
+        [type]: value,
+      });
+    } catch (error) {
+      console.error("Verify OTP error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to verify OTP",
       });
     }
-
-    return res.status(200).json({
-      status: "OK",
-      message: "OTP sent successfully",
-      // otp, // ⚠️ Remove in production
-    });
-  } catch (error) {
-    console.error("Send OTP error:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Failed to send OTP",
-    });
   }
-}
 
-// ------------------ ✅ VERIFY OTP API ------------------
-async verifyOtp(req, res) {
-  try {
-    console.log("✅ Verify OTP API called");
+  // ------------------ 🔧 FIXED: UPDATE USER CONTACT ------------------
+  async updateUserContact(req, res) {
+    try {
+      console.log("✏️ Update User Contact API called");
 
-    const { user_id, type, value, otp } = req.body;
+      const { user_id, contact_id } = req.query;
+      const { name, email, mobile, phone, function: job_function } = req.body;
 
-    // ------------------ 1️⃣ Basic Validation ------------------
-    if (!user_id || !type || !value || !otp) {
-      return res.status(400).json({
+      if (!user_id || !contact_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "User ID and Contact ID are required",
+        });
+      }
+
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", parseInt(user_id)]],
+        ["id", "login", "name", "partner_id"]
+      );
+
+      if (!userData || userData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+        });
+      }
+
+      const companyPartnerId = userData[0].partner_id[0];
+
+      const contactData = await odooService.searchRead(
+        "res.partner",
+        [
+          ["id", "=", parseInt(contact_id)],
+          ["parent_id", "=", companyPartnerId],
+        ],
+        ["id"]
+      );
+
+      if (!contactData || contactData.length === 0) {
+        return res.status(403).json({
+          status: "error",
+          message: "Contact does not belong to this user/company",
+        });
+      }
+
+      const updateVals = {};
+
+      if (name) updateVals.name = name;
+      if (email) updateVals.email = email;
+      if (mobile) {
+        updateVals.mobile = mobile;
+        updateVals.phone = mobile;
+      }
+      if (phone) updateVals.phone = phone;
+      if (job_function) updateVals.function = job_function;
+
+      if (Object.keys(updateVals).length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "No fields provided for update",
+        });
+      }
+
+      await odooService.write(
+        "res.partner",
+        [parseInt(contact_id)],
+        updateVals
+      );
+
+      return res.status(200).json({
+        status: "OK",
+        message: "Contact updated successfully",
+        contact_id: parseInt(contact_id),
+        updated_fields: updateVals,
+      });
+    } catch (error) {
+      console.error("Update contact error:", error);
+      return res.status(500).json({
         status: "error",
-        message: "user_id, type, value and otp are required",
+        message: "Failed to update contact",
       });
     }
-
-    if (!["email", "mobile"].includes(type)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid type",
-      });
-    }
-
-    // ------------------ 2️⃣ Get stored OTP ------------------
-    const otpKey = `${user_id}_${type}_${value}`;
-    const storedOtpData = otpStore.get(otpKey);
-
-    if (!storedOtpData) {
-      return res.status(400).json({
-        status: "error",
-        message: "OTP not found or expired",
-      });
-    }
-
-    // ------------------ 3️⃣ Check expiry ------------------
-    if (Date.now() > storedOtpData.expiresAt) {
-      otpStore.delete(otpKey);
-      return res.status(400).json({
-        status: "error",
-        message: "OTP has expired",
-      });
-    }
-
-    // ------------------ 4️⃣ Check attempts (prevent brute force) ------------------
-    if (storedOtpData.attempts >= 3) {
-      otpStore.delete(otpKey);
-      return res.status(429).json({
-        status: "error",
-        message: "Too many failed attempts. Please request a new OTP",
-      });
-    }
-
-    // ------------------ 5️⃣ Verify OTP ------------------
-    if (storedOtpData.otp !== otp.toString()) {
-      storedOtpData.attempts += 1;
-      otpStore.set(otpKey, storedOtpData);
-
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid OTP",
-        remaining_attempts: 3 - storedOtpData.attempts,
-      });
-    }
-
-    // ------------------ 6️⃣ OTP verified successfully ------------------
-    otpStore.delete(otpKey); // Remove used OTP
-
-    const userData = await odooService.searchRead(
-      "res.users",
-      [["id", "=", parseInt(user_id)]],
-      ["id", "partner_id"]
-    );
-
-    if (!userData || userData.length === 0) {
-      return res.status(404).json({
-        status: "error",
-        message: "User not found",
-      });
-    }
-
-    const partnerId = userData[0].partner_id[0];
-    const updateVals = {};
-
-    if (type === "email") {
-      updateVals.email = value;
-    } else if (type === "mobile") {
-      updateVals.mobile = value;
-      updateVals.phone = value;
-    }
-
-    // Update partner in Odoo
-    await odooService.write("res.partner", [partnerId], updateVals);
-
-    return res.status(200).json({
-      status: "OK",
-      message: `${type === "email" ? "Email" : "Mobile"} verified and updated successfully`,
-      user_id: parseInt(user_id),
-      [type]: value,
-    });
-  } catch (error) {
-    console.error("Verify OTP error:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Failed to verify OTP",
-    });
   }
-}
 
-// ------------------ 🔧 FIXED: UPDATE USER CONTACT ------------------
-async updateUserContact(req, res) {
-  try {
-    console.log("✏️ Update User Contact API called");
+  async approveAttendanceRegularization(req, res) {
+    try {
+      const { approval_request_id, user_id } = req.body;
+      const { currentUser } = await getClientFromRequest(req);
+      const adminName = currentUser.partner_id[1];
 
-    const { user_id, contact_id } = req.query;
-    const { name, email, mobile, phone, function: job_function } = req.body;
+      if (!approval_request_id) {
+        return res
+          .status(400)
+          .json({
+            status: "error",
+            message: "approval_request_id is required",
+          });
+      }
 
-    if (!user_id || !contact_id) {
-      return res.status(400).json({
-        status: "error",
-        message: "User ID and Contact ID are required",
+      const approvalRecords = await odooService.searchRead(
+        "approval.request",
+        [["id", "=", parseInt(approval_request_id)]],
+        ["id", "state", "attendance_regulzie_id", "hr_leave_id"],
+        1
+      );
+
+      if (!approvalRecords || approvalRecords.length === 0) {
+        return res
+          .status(404)
+          .json({ status: "error", message: `No record found` });
+      }
+
+      const approvalRecord = approvalRecords[0];
+      const approvalId = approvalRecord.id;
+
+      if (approvalRecord.state === "approved") {
+        return res
+          .status(400)
+          .json({ status: "error", message: "Already approved" });
+      }
+
+      // Logic for Leave Request
+      if (approvalRecord.hr_leave_id) {
+        const leaveId = approvalRecord.hr_leave_id[0];
+        try {
+          await odooService.callMethod("hr.leave", "action_approve", [
+            parseInt(leaveId),
+          ]);
+        } catch (e) {
+          console.log("Leave logic handled internally");
+        }
+
+        await odooService.callMethod("approval.request", "approve_request", [
+          parseInt(approvalId),
+        ]);
+
+        return res.status(200).json({
+          status: "success",
+          message: `Leave Request approved successfully by ${adminName}`,
+          data: {
+            approval_id: approvalId,
+            approved_by: adminName, // Added this
+            type: "Leave Request",
+          },
+        });
+      }
+
+      // Logic for Attendance / General
+      await odooService.callMethod("approval.request", "approve_request", [
+        parseInt(approvalId),
+      ]);
+
+      return res.status(200).json({
+        status: "success",
+        message: `Approved successfully by ${adminName}`,
+        data: {
+          approval_id: approvalId,
+          approved_by: adminName, // Added this
+          type: approvalRecord.attendance_regulzie_id
+            ? "Attendance Regularization"
+            : "General Request",
+        },
       });
+    } catch (error) {
+      return res.status(500).json({ status: "error", message: error.message });
     }
-
-    const userData = await odooService.searchRead(
-      "res.users",
-      [["id", "=", parseInt(user_id)]],
-      ["id", "login", "name", "partner_id"]
-    );
-
-    if (!userData || userData.length === 0) {
-      return res.status(404).json({
-        status: "error",
-        message: "User not found",
-      });
-    }
-
-    const companyPartnerId = userData[0].partner_id[0];
-
-    const contactData = await odooService.searchRead(
-      "res.partner",
-      [
-        ["id", "=", parseInt(contact_id)],
-        ["parent_id", "=", companyPartnerId],
-      ],
-      ["id"]
-    );
-
-    if (!contactData || contactData.length === 0) {
-      return res.status(403).json({
-        status: "error",
-        message: "Contact does not belong to this user/company",
-      });
-    }
-
-    const updateVals = {};
-
-    if (name) updateVals.name = name;
-    if (email) updateVals.email = email;
-    if (mobile) {
-      updateVals.mobile = mobile;
-      updateVals.phone = mobile;
-    }
-    if (phone) updateVals.phone = phone;
-    if (job_function) updateVals.function = job_function;
-
-    if (Object.keys(updateVals).length === 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "No fields provided for update",
-      });
-    }
-
-    await odooService.write(
-      "res.partner",
-      [parseInt(contact_id)],
-      updateVals
-    );
-
-    return res.status(200).json({
-      status: "OK",
-      message: "Contact updated successfully",
-      contact_id: parseInt(contact_id),
-      updated_fields: updateVals,
-    });
-  } catch (error) {
-    console.error("Update contact error:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Failed to update contact",
-    });
   }
-}
+  async rejectAttendanceRegularization(req, res) {
+    try {
+      const { approval_request_id, remarks } = req.body;
+      const { currentUser } = await getClientFromRequest(req);
+
+      const adminName = currentUser.partner_id[1];
+      const adminId = currentUser.id;
+
+      const fields = ["id", "name", "state", "attendance_regulzie_id", "hr_leave_id", "description"];
+
+      const approvalRecords = await odooService.searchRead(
+        "approval.request",
+        [["id", "=", parseInt(approval_request_id)]],
+        fields,
+        1
+      );
+
+      if (!approvalRecords?.length) {
+        return res.status(404).json({ status: "error", message: "Record not found" });
+      }
+
+      const approvalRecord = approvalRecords[0];
+
+      const wizardId = await odooService.create(
+        "request.reject.wizard",
+        { remarks: remarks || `Rejected via App by ${adminName}` },
+        { uid: 2 }
+      );
+
+      await odooService.callMethod(
+        "request.reject.wizard",
+        "action_reject_request",
+        [parseInt(wizardId)],
+        {
+          active_id: approvalRecord.id,
+          active_model: "approval.request",
+          active_ids: [approvalRecord.id],
+        }
+      );
+
+      let updatedRecord = null;
+
+      if (approvalRecord.attendance_regulzie_id) {
+        const regId = approvalRecord.attendance_regulzie_id[0];
+        await odooService.write("attendance.regular", [regId], {
+          state_select: "reject",
+        });
+        updatedRecord = { model: "attendance.regular", id: regId };
+      } else if (approvalRecord.hr_leave_id) {
+        const leaveId = approvalRecord.hr_leave_id[0];
+        await odooService.write("hr.leave", [leaveId], { state: "refuse" });
+        updatedRecord = { model: "hr.leave", id: leaveId };
+      } else if (approvalRecord.description && approvalRecord.description.includes("Expense")) {
+        updatedRecord = { model: "hr.expense.sheet", info: "Handled by Approval Wizard" };
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: `Rejected successfully by ${adminName}`,
+        data: {
+          approval_id: approvalRecord.id,
+          rejected_by: adminName,
+          rejected_by_id: adminId,
+          updated_record: updatedRecord
+        },
+      });
+    } catch (error) {
+      console.error("❌ REJECT ERROR:", error.message);
+      return res.status(500).json({ status: "error", message: error.message });
+    }
+  }
 }
 module.exports = new ApiController();

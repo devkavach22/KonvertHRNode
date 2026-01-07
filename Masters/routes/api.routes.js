@@ -802,4 +802,19 @@ router.get(
   apiController.getUserContacts.bind(apiController)
 );
 
+router.get(
+  "/getCustomerSubscriptions",
+  authenticate,
+  productController.getCustomerSubscriptions.bind(productController)
+);
+router.post(
+  "/downloadInvoicePDF",
+  authenticate,
+  productController.downloadInvoicePDF.bind(productController)
+);
+router.get(
+  "/getCustomerSubscriptions",
+  authenticate,
+  productController.getCustomerSubscriptions.bind(productController)
+);
 module.exports = router;
