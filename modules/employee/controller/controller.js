@@ -2167,7 +2167,7 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // ───────── 4. USER FETCH (XML-RPC SAFE) ─────────
+    // ───────── 4. USER FETCH ─────────
     const user = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
@@ -2175,8 +2175,6 @@ const createExpense = async (req, res) => {
       0,
       1
     );
-
-    console.log("📄 User result:", user);
 
     if (!user.length) {
       return res.status(400).json({
@@ -2186,9 +2184,8 @@ const createExpense = async (req, res) => {
     }
 
     const partnerId = user[0].partner_id?.[0];
-    console.log("🔗 Resolved partner_id:", partnerId);
 
-    // ───────── 5. EMPLOYEE FETCH (XML-RPC SAFE) ─────────
+    // ───────── 5. EMPLOYEE FETCH ─────────
     let employee = await odooService.searchRead(
       "hr.employee",
       [["user_id", "=", Number(user_id)]],
@@ -2254,30 +2251,13 @@ const createExpense = async (req, res) => {
       );
     }
 
-    // ───────── 8. FINAL FETCH (XML-RPC SAFE) ─────────
-    const finalExpense = await odooService.searchRead(
-      "hr.expense",
-      [["id", "=", expenseId]],
-      [
-        "id",
-        "name",
-        "employee_id",
-        "product_id",
-        "account_id",
-        "payment_mode",
-        "total_amount_currency",
-        "state",
-        "date",
-      ],
-      0,
-      1
-    );
-
+    // ✅ FINAL RESPONSE (no read/search)
     return res.status(201).json({
       status: "success",
       message: "Expense created successfully",
-      data: finalExpense[0],
+      expense_id: expenseId,
     });
+
   } catch (error) {
     console.error("❌ CREATE EXPENSE ERROR:", error);
     return res.status(500).json({
@@ -2286,6 +2266,8 @@ const createExpense = async (req, res) => {
     });
   }
 };
+
+
 
 const getExpense = async (req, res) => {
   try {
