@@ -2174,7 +2174,7 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // ───────── 2. NORMALIZE IDS ─────────
+    // ───────── 2. NORMALIZE IDS (STRICT) ─────────
     product_id = typeof product_id === "object" ? product_id?.id : product_id;
     account_id = typeof account_id === "object" ? account_id?.id : account_id;
 
@@ -2194,7 +2194,7 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // ───────── 4. USER FETCH ─────────
+    // ───────── 4. USER FETCH (XML-RPC SAFE) ─────────
     const user = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
@@ -2202,6 +2202,8 @@ const createExpense = async (req, res) => {
       0,
       1
     );
+
+    console.log("📄 User result:", user);
 
     if (!user.length) {
       return res.status(400).json({
@@ -2211,8 +2213,9 @@ const createExpense = async (req, res) => {
     }
 
     const partnerId = user[0].partner_id?.[0];
+    console.log("🔗 Resolved partner_id:", partnerId);
 
-    // ───────── 5. EMPLOYEE FETCH ─────────
+    // ───────── 5. EMPLOYEE FETCH (XML-RPC SAFE) ─────────
     let employee = await odooService.searchRead(
       "hr.employee",
       [["user_id", "=", Number(user_id)]],
@@ -2242,7 +2245,7 @@ const createExpense = async (req, res) => {
     const companyId = employee[0].company_id?.[0];
 
     // ───────── 6. CREATE EXPENSE ─────────
-    const expenseVals = {
+    const vals = {
       name,
       employee_id,
       product_id: Number(product_id),
@@ -2256,7 +2259,7 @@ const createExpense = async (req, res) => {
 
     const expenseId = await odooService.create(
       "hr.expense",
-      expenseVals,
+      vals,
       client_id
     );
 
@@ -2282,50 +2285,29 @@ const createExpense = async (req, res) => {
       );
     }
 
-    // ───────── 8. CREATE EXPENSE REPORT (SHEET) ─────────
-    const sheetId = await odooService.create(
-      "hr.expense.sheet",
-      {
-        employee_id,
-        company_id: companyId,
-        name: `Expense Report - ${name}`,
-        expense_line_ids: [[4, expenseId]]
-      },
-      client_id
-    );
-
-    // ───────── 9. CLICK "CREATE REPORT" (action_submit_expenses) ─────────
-    await odooService.execute(
+    // ───────── 8. FINAL FETCH (XML-RPC SAFE) ─────────
+    const finalExpense = await odooService.searchRead(
       "hr.expense",
-      "action_submit_expenses",
-      [[expenseId]],
-      client_id
-    );
-
-    // ───────── 10. SUBMIT TO MANAGER (action_submit_sheet) ─────────
-    await odooService.execute(
-      "hr.expense.sheet",
-      "action_submit_sheet",
-      [[sheetId]],
-      client_id
-    );
-
-    // ───────── 11. FINAL FETCH ─────────
-    const finalSheet = await odooService.searchRead(
-      "hr.expense.sheet",
-      [["id", "=", sheetId]],
-      ["id", "name", "state", "employee_id"],
+      [["id", "=", expenseId]],
+      [
+        "id",
+        "name",
+        "employee_id",
+        "product_id",
+        "account_id",
+        "payment_mode",
+        "total_amount_currency",
+        "state",
+        "date"
+      ],
       0,
       1
     );
 
     return res.status(201).json({
       status: "success",
-      message: "Expense created, report generated, and submitted to manager",
-      data: {
-        expense_id: expenseId,
-        sheet: finalSheet[0]
-      }
+      message: "Expense created successfully",
+      data: finalExpense[0]
     });
 
   } catch (error) {
