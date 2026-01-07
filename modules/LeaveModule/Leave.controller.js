@@ -489,104 +489,104 @@ async deleteLeaveType(req, res) {
   }
 
   async getLeaveAllocation(req, res) {
-    try {
-      console.log("------------------------------------------------");
-      console.log("API Called: getLeaveAllocation");
-      console.log("Query Params:", JSON.stringify(req.query, null, 2));
+try {
+console.log("------------------------------------------------");
+console.log("API Called: getLeaveAllocation");
+console.log("Query Params:", JSON.stringify(req.query, null, 2));
 
-      // 1. Fetch Context & Debug Logs
-      console.log("Fetching client context from request...");
-      const context = await getClientFromRequest(req);
+// 1. Fetch Context & Debug Logs
+console.log("Fetching client context from request...");
+const context = await getClientFromRequest(req);
 
-      // LOG THE RAW CONTEXT
-      console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
+// LOG THE RAW CONTEXT
+console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
 
-      if (!context) {
-        throw new Error("Client context is null or undefined");
-      }
+if (!context) {
+throw new Error("Client context is null or undefined");
+}
 
-      // 2. Destructure with client_id
-      const { user_id, client_id } = context;
-      console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
+// 2. Destructure with client_id
+const { user_id, client_id } = context;
+console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
 
-      // 3. Extract Filters from Query
-      const { 
-        employee_id, 
-        holiday_status_id, 
-        state,
-        limit = 10, 
-        offset = 0 
-      } = req.query;
+// 3. Extract Filters from Query
+const {
+employee_id,
+holiday_status_id,
+state,
+limit = 10,
+offset = 0
+} = req.query;
 
-      // 4. Construct Odoo Domain (Search Filters)
-      const domain = [];
+// 4. Construct Odoo Domain (Search Filters)
+const domain = [];
 
-      // If employee_id is provided, filter by it
-      if (employee_id) {
-        domain.push(["employee_id", "=", parseInt(employee_id)]);
-      }
+// If employee_id is provided, filter by it
+if (employee_id) {
+domain.push(["employee_id", "=", parseInt(employee_id)]);
+}
 
-      // If leave type (holiday_status_id) is provided
-      if (holiday_status_id) {
-        domain.push(["holiday_status_id", "=", parseInt(holiday_status_id)]);
-      }
+// If leave type (holiday_status_id) is provided
+if (holiday_status_id) {
+domain.push(["holiday_status_id", "=", parseInt(holiday_status_id)]);
+}
 
-      // If state is provided (e.g., 'confirm', 'validate')
-      if (state) {
-        domain.push(["state", "=", state]);
-      }
+// If state is provided (e.g., 'confirm', 'validate')
+if (state) {
+domain.push(["state", "=", state]);
+}
 
-      console.log("Constructed Odoo Domain:", JSON.stringify(domain, null, 2));
+console.log("Constructed Odoo Domain:", JSON.stringify(domain, null, 2));
 
-      // 5. Define Fields to Retrieve
-      const fields = [
-        "id",
-        "name",                // Description
-        "holiday_status_id",   // Leave Type
-        "employee_id",
-        "allocation_type",
-        "number_of_days",
-        "date_from",
-        "date_to",
-        "state"
-      ];
+// 5. Define Fields to Retrieve
+const fields = [
+"id",
+"name", // Description
+"holiday_status_id", // Leave Type
+"employee_id",
+"allocation_type",
+"number_of_days",
+"date_from",
+"date_to",
+"state"
+];
 
-      console.log(`Fetching allocations from 'hr.leave.allocation' for Client ID: ${client_id}...`);
+console.log(`Fetching allocations from 'hr.leave.allocation' for Client ID: ${client_id}...`);
 
-      // 6. Call Odoo Service with client_id
-      const allocations = await odooService.searchRead(
-        "hr.leave.allocation",
-        domain,
-        fields,
-        parseInt(limit),
-        parseInt(offset), // You might need to handle offset in your searchRead wrapper if supported, otherwise just pass limit
-        null,             // sort order (optional)
-        client_id         // !!! IMPORTANT: Passed client_id
-      );
+// 6. Call Odoo Service with client_id
+const allocations = await odooService.searchRead(
+"hr.leave.allocation",
+domain,
+fields,
+parseInt(limit),
+parseInt(offset), // You might need to handle offset in your searchRead wrapper if supported, otherwise just pass limit
+null, // sort order (optional)
+client_id // !!! IMPORTANT: Passed client_id
+);
 
-      console.log(`Odoo Search Success! Retrieved ${allocations.length} records.`);
+console.log(`Odoo Search Success! Retrieved ${allocations.length} records.`);
 
-      // 7. Send Response
-      return res.status(200).json({
-        status: "success",
-        message: "Leave allocations retrieved successfully",
-        data: {
-          count: allocations.length,
-          allocations: allocations
-        }
-      });
+// 7. Send Response
+return res.status(200).json({
+status: "success",
+message: "Leave allocations retrieved successfully",
+data: {
+count: allocations.length,
+allocations: allocations
+}
+});
 
-    } catch (error) {
-      console.error("!!! ERROR in getLeaveAllocation !!!");
-      console.error("Error Message:", error.message);
-      console.error("Error Stack:", error.stack);
+} catch (error) {
+console.error("!!! ERROR in getLeaveAllocation !!!");
+console.error("Error Message:", error.message);
+console.error("Error Stack:", error.stack);
 
-      return res.status(error.status || 500).json({
-        status: "error",
-        message: error.message || "Failed to fetch leave allocations"
-      });
-    }
-  }
+return res.status(error.status || 500).json({
+status: "error",
+message: error.message || "Failed to fetch leave allocations"
+});
+}
+}
 
   async updateLeaveAllocation(req, res) {
   try {
@@ -2695,171 +2695,171 @@ async deleteMandatoryDays(req, res) {
 }
 
 async adminLeaveWorkflowAction (req, res) {
-  try {
-    console.log("API called for Admin Leave Workflow Action");
+try {
+console.log("API called for Admin Leave Workflow Action");
 
-    const { holiday_status_id, action } = req.body;
+const { holiday_status_id, action } = req.body;
 
-    if (!holiday_status_id || !action) {
-      return res.status(400).json({
-        success: false,
-        message: "holiday_status_id and action are required"
-      });
-    }
+if (!holiday_status_id || !action) {
+return res.status(400).json({
+success: false,
+message: "holiday_status_id and action are required"
+});
+}
 
-    /* =====================
-       ACTION → ODOO METHOD
-    ===================== */
-    const ACTION_METHOD_MAP = {
-      confirm: "action_confirm",              // Submit / Ready to approve
-      approve: "action_approve",              // Approve
-      refuse: "action_refuse",                // Refuse
-      reset: "action_reset_confirm"           // Reset to draft
-    };
-
-    const methodName = ACTION_METHOD_MAP[action];
-
-    if (!methodName) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid action. Allowed: confirm, approve, refuse, reset"
-      });
-    }
-
-    /* =====================
-       CALL ODOO WORKFLOW
-    ===================== */
-    await odooService.callMethod(
-      "hr.leave",
-      methodName,
-      [[Number(holiday_status_id)]]
-    );
-
-    /* =====================
-       FETCH UPDATED STATE
-    ===================== */
-    const updatedLeave = await odooService.searchRead(
-      "hr.leave",
-      [["id", "=", Number(holiday_status_id)]],
-      ["state"],
-      1
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: `Leave request ${action} successfully`,
-      holiday_status_id,
-      state: updatedLeave?.[0]?.state
-    });
-
-  } catch (error) {
-    console.error("❌ Admin Leave Workflow Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to update leave request"
-    });
-  }
+/* =====================
+ACTION → ODOO METHOD
+===================== */
+const ACTION_METHOD_MAP = {
+// confirm: "action_confirm", // Submit / Ready to approve
+approve: "action_approve", // Approve
+refuse: "action_refuse", // Refuse
+reset: "action_reset_confirm" // Reset to draft
 };
 
+const methodName = ACTION_METHOD_MAP[action];
+
+if (!methodName) {
+return res.status(400).json({
+success: false,
+message: "Invalid action. Allowed: confirm, approve, refuse, reset"
+});
+}
+
+/* =====================
+CALL ODOO WORKFLOW
+===================== */
+await odooService.callMethod(
+"hr.leave",
+methodName,
+[[Number(holiday_status_id)]]
+);
+
+/* =====================
+FETCH UPDATED STATE
+===================== */
+const updatedLeave = await odooService.searchRead(
+"hr.leave",
+[["id", "=", Number(holiday_status_id)]],
+["state"],
+1
+);
+
+return res.status(200).json({
+success: true,
+message: `Leave request ${action} successfully`,
+holiday_status_id,
+state: updatedLeave?.[0]?.state
+});
+
+} catch (error) {
+console.error("❌ Admin Leave Workflow Error:", error);
+return res.status(500).json({
+success: false,
+message: error.message || "Failed to update leave request"
+});
+}
+};
+
+
 async updateAllocationStatus(req, res) {
-    try {
-      console.log("------------------------------------------------");
-      console.log("API Called: updateAllocationStatus");
-      console.log("Request Body:", JSON.stringify(req.body, null, 2));
+try {
+console.log("------------------------------------------------");
+console.log("API Called: updateAllocationStatus");
+console.log("Request Body:", JSON.stringify(req.body, null, 2));
 
-      // 1. Extract inputs
-      const { allocation_id, action } = req.body;
+// 1. Extract inputs
+const { allocation_id, action } = req.body;
 
-      // 2. Fetch Client Context (client_id is crucial for Odoo connection)
-      console.log("Fetching client context...");
-      const context = await getClientFromRequest(req);
-      console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
+// 2. Fetch Client Context (client_id is crucial for Odoo connection)
+console.log("Fetching client context...");
+const context = await getClientFromRequest(req);
+console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
 
-      if (!context) {
-        throw new Error("Client context is null or undefined");
-      }
+if (!context) {
+throw new Error("Client context is null or undefined");
+}
 
-      const { user_id, client_id } = context;
-      console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
+const { user_id, client_id } = context;
+console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
 
-      // 3. Validate Inputs
-      if (!allocation_id) {
-        return res.status(400).json({
-          status: "error",
-          message: "Missing required field: allocation_id"
-        });
-      }
+// 3. Validate Inputs
+if (!allocation_id) {
+return res.status(400).json({
+status: "error",
+message: "Missing required field: allocation_id"
+});
+}
 
-      if (!["approve", "refuse","validate1","set_to_confirm"].includes(action)) {
-        return res.status(400).json({
-          status: "error",
-          message: "Invalid action. Allowed values: 'approve', 'refuse'"
-        });
-      }
+if (!["approve", "refuse","set_to_confirm"].includes(action)) {
+return res.status(400).json({
+status: "error",
+message: "Invalid action. Allowed values: 'approve', 'refuse'"
+});
+}
 
-      // 4. Map Action to Odoo Method
-      // 'approve' -> calls 'action_approve'
-      // 'refuse' -> calls 'action_refuse'
-      let odooMethod = "";
-      if (action === "approve") {
-        odooMethod = "action_approve";
-      } else if (action === "validate1") {
-        odooMethod = "action_validate";}
-      else if (action === "refuse") {
-        odooMethod = "action_refuse";
-      }else if (action === "set_to_confirm") {
-        odooMethod = "action_set_to_confirm";
-      }
+// 4. Map Action to Odoo Method
+// 'approve' -> calls 'action_approve'
+// 'refuse' -> calls 'action_refuse'
+let odooMethod = "";
+if (action === "approve") {
+odooMethod = "action_approve";
+}
+else if (action === "refuse") {
+odooMethod = "action_refuse";
+}else if (action === "set_to_confirm") {
+odooMethod = "action_set_to_confirm";
+}
 
-      console.log(`Mapping action '${action}' to Odoo method '${odooMethod}'`);
+console.log(`Mapping action '${action}' to Odoo method '${odooMethod}'`);
 
-      // 5. Execute the Action
-      console.log(`Executing '${odooMethod}' for Allocation ID: ${allocation_id} with Client ID: ${client_id}...`);
+// 5. Execute the Action
+console.log(`Executing '${odooMethod}' for Allocation ID: ${allocation_id} with Client ID: ${client_id}...`);
 
-      // Using execute_kw to trigger the button's method
-      await odooService.execute(
-        "hr.leave.allocation",
-        odooMethod,
-        [[parseInt(allocation_id)]], // IDs must be an array (e.g., [19180])
-        {}, 
-        user_id
-      );
+// Using execute_kw to trigger the button's method
+await odooService.execute(
+"hr.leave.allocation",
+odooMethod,
+[[parseInt(allocation_id)]], // IDs must be an array (e.g., [19180])
+{},
+user_id
+);
 
-      console.log("Odoo Method Execution Successful.");
+console.log("Odoo Method Execution Successful.");
 
-      // 6. Fetch Updated Record to return new Status
-      console.log("Fetching updated status from Odoo...");
-      const updatedRecord = await odooService.searchRead(
-        "hr.leave.allocation",
-        [["id", "=", parseInt(allocation_id)]],
-        ["id", "state", "name"],
-        1,
-        user_id
-      );
+// 6. Fetch Updated Record to return new Status
+console.log("Fetching updated status from Odoo...");
+const updatedRecord = await odooService.searchRead(
+"hr.leave.allocation",
+[["id", "=", parseInt(allocation_id)]],
+["id", "state", "name"],
+1,
+user_id
+);
 
-      const newState = updatedRecord.length > 0 ? updatedRecord[0].state : "unknown";
-      console.log(`New State for Allocation ${allocation_id}: ${newState}`);
+const newState = updatedRecord.length > 0 ? updatedRecord[0].state : "unknown";
+console.log(`New State for Allocation ${allocation_id}: ${newState}`);
 
-      return res.status(200).json({
-        status: "success",
-        message: `Allocation ${action}d successfully.`,
-        data: {
-            allocation_id: allocation_id,
-            new_status: newState, // Should change from 'confirm' to 'validate' (Approved)
-            action_performed: action
-        }
-      });
+return res.status(200).json({
+status: "success",
+message: `Allocation ${action}d successfully.`,
+data: {
+allocation_id: allocation_id,
+new_status: newState, // Should change from 'confirm' to 'validate' (Approved)
+action_performed: action
+}
+});
 
-    } catch (error) {
-      console.error("!!! ERROR in updateAllocationStatus !!!");
-      console.error("Error Message:", error.message);
-      
-      return res.status(error.status || 500).json({
-        status: "error",
-        message: error.message || `Failed to ${req.body.action} allocation`
-      });
-    }
-  }
+} catch (error) {
+console.error("!!! ERROR in updateAllocationStatus !!!");
+console.error("Error Message:", error.message);
+
+return res.status(error.status || 500).json({
+status: "error",
+message: error.message || `Failed to ${req.body.action} allocation`
+});
+}
+}
 
 
 }

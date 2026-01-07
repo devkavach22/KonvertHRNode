@@ -2,6 +2,8 @@ const odooService = require("../services/odoo.service");
 const mailService = require("../services/mail.service");
 const redisClient = require("../services/redisClient");
 const moment = require("moment-timezone");
+const otpStore = new Map();
+
 
 const { getClientFromRequest } = require("../services/plan.helper");
 const jwt = require("jsonwebtoken");
@@ -6389,109 +6391,79 @@ class ApiController {
       });
     }
   }
-  async sendOtp(req, res) {
-    try {
-      console.log("🔥 Send OTP API called");
 
-      const { user_id, type, value } = req.body;
 
-      // ------------------ 1️⃣ Basic Validation ------------------
-      if (!user_id || !type || !value) {
-        return res.status(400).json({
-          status: "error",
-          message: "user_id, type and value are required",
-        });
-      }
+async sendOtp(req, res) {
+  try {
+    console.log("🔥 Send OTP API called");
 
-      if (!["email", "mobile"].includes(type)) {
-        return res.status(400).json({
-          status: "error",
-          message: "Invalid type",
-        });
-      }
+    const { user_id, type, value } = req.body;
 
-      if (type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-        return res.status(400).json({
-          status: "error",
-          message: "Invalid email format",
-        });
-      }
+    // ------------------ 1️⃣ Basic Validation ------------------
+    if (!user_id || !type || !value) {
+      return res.status(400).json({
+        status: "error",
+        message: "user_id, type and value are required",
+      });
+    }
 
-      if (type === "mobile" && !/^[6-9]\d{9}$/.test(value)) {
-        return res.status(400).json({
-          status: "error",
-          message: "Invalid mobile number",
-        });
-      }
+    if (!["email", "mobile"].includes(type)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid type",
+      });
+    }
 
-      // ------------------ 2️⃣ Verify user exists ------------------
-      const userData = await odooService.searchRead(
-        "res.users",
-        [["id", "=", parseInt(user_id)]],
-        ["id"]
-      );
+    if (type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid email format",
+      });
+    }
 
-      if (!userData || userData.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: "User not found",
-        });
-      }
+    if (type === "mobile" && !/^[6-9]\d{9}$/.test(value)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid mobile number",
+      });
+    }
 
-      // ------------------ 3️⃣ Generate OTP ------------------
-      const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
+    // ------------------ 2️⃣ Verify user exists ------------------
+    const userData = await odooService.searchRead(
+      "res.users",
+      [["id", "=", parseInt(user_id)]],
+      ["id"]
+    );
 
-      // ------------------ 4️⃣ Send OTP ------------------
-      // if (type === "email") {
-      // await mailService.sendMail(
-      // value, // recipient email
-      // "OTP Verification - Kavach Global",
-      // `<!DOCTYPE html>
-      // <html>
-      // <head>
-      // <meta charset="utf-8">
-      // <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      // </head>
-      // <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; margin:0; padding:0;">
-      // <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
-      // <tr>
-      // <td align="center">
-      // <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
-      // <tr>
-      // <td style="background-color:#5f5cc4; height:8px;"></td>
-      // </tr>
-      // <tr>
-      // <td style="padding:50px 60px; text-align:center;">
-      // <h1 style="color:#1a1a1a; font-size:28px; margin-bottom:20px;">OTP Verification</h1>
-      // <p style="font-size:16px; color:#333;">Your OTP for updating your ${type} is:</p>
-      // <p style="font-size:24px; font-weight:bold; color:#5f5cc4; margin:20px 0;">${otp}</p>
-      // <p style="font-size:14px; color:#555;">This OTP is valid for 5 minutes. Do not share it with anyone.</p>
-      // </td>
-      // </tr>
-      // <tr>
-      // <td style="background-color:#5f5cc4; height:8px;"></td>
-      // </tr>
-      // </table>
-      // </td>
-      // </tr>
-      // </table>
-      // </body>
-      // </html>`
-      // );
-      // } else {
-      // // Mobile OTP
-      // await smsService.sendSms(
-      // value,
-      // `Your OTP for updating your ${type} is ${otp}. Valid for 5 minutes.`
-      // );
-      // }
+    if (!userData || userData.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
+    }
 
-      if (type === "email") {
-        // ✅ Your existing email code remains unchanged
-        await mailService.sendMail(
-          value, // recipient email
-          "OTP Verification - Kavach Global",
-          `<!DOCTYPE html>
+    // ------------------ 3️⃣ Generate OTP ------------------
+    const otp = Math.floor(100000 + Math.random() * 900000);
+
+    // ------------------ 4️⃣ Store OTP with expiry ------------------
+    const otpKey = `${user_id}_${type}_${value}`;
+    otpStore.set(otpKey, {
+      otp: otp.toString(),
+      expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      attempts: 0
+    });
+
+    // Auto-delete after 5 minutes
+    setTimeout(() => {
+      otpStore.delete(otpKey);
+    }, 5 * 60 * 1000);
+
+    // ------------------ 5️⃣ Send OTP ------------------
+    if (type === "email") {
+      await mailService.sendMail(
+        value,
+        "OTP Verification - Kavach Global",
+        `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -6522,38 +6494,223 @@ class ApiController {
 </table>
 </body>
 </html>`
-        );
-      } else {
-        // ------------------ SMS via SMTP ------------------
-        // Create a transporter using your existing SMTP config
-        const transporter = mailService.transporter; // assuming your mailService has the transporter
+      );
+    } else {
+      const transporter = mailService.transporter;
+      const smsEmail = `${value}@sms.gateway.com`;
 
-        // Map mobile number to carrier SMS gateway
-        // Example: Airtel (India) -> 9876543210@airtel-sms.com
-        // ⚠️ You need to replace with the actual gateway
-        const smsEmail = `${value}@sms.gateway.com`;
-
-        await transporter.sendMail({
-          from: `"Kavach Global" <${process.env.SMTP_USER}>`,
-          to: smsEmail,
-          subject: "", // SMS subject usually ignored
-          text: `Your OTP for updating your mobile is ${otp}. Valid for 5 minutes.`,
-        });
-      }
-
-      // ------------------ 5️⃣ Return Response ------------------
-      return res.status(200).json({
-        status: "OK",
-        message: "OTP sent successfully",
-        otp, // ⚠️ remove in production
-      });
-    } catch (error) {
-      console.error("Send OTP error:", error);
-      return res.status(500).json({
-        status: "error",
-        message: "Failed to send OTP",
+      await transporter.sendMail({
+        from: `"Kavach Global" <${process.env.SMTP_USER}>`,
+        to: smsEmail,
+        subject: "",
+        text: `Your OTP for updating your mobile is ${otp}. Valid for 5 minutes.`,
       });
     }
+
+    return res.status(200).json({
+      status: "OK",
+      message: "OTP sent successfully",
+      // otp, // ⚠️ Remove in production
+    });
+  } catch (error) {
+    console.error("Send OTP error:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to send OTP",
+    });
   }
+}
+
+// ------------------ ✅ VERIFY OTP API ------------------
+async verifyOtp(req, res) {
+  try {
+    console.log("✅ Verify OTP API called");
+
+    const { user_id, type, value, otp } = req.body;
+
+    // ------------------ 1️⃣ Basic Validation ------------------
+    if (!user_id || !type || !value || !otp) {
+      return res.status(400).json({
+        status: "error",
+        message: "user_id, type, value and otp are required",
+      });
+    }
+
+    if (!["email", "mobile"].includes(type)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid type",
+      });
+    }
+
+    // ------------------ 2️⃣ Get stored OTP ------------------
+    const otpKey = `${user_id}_${type}_${value}`;
+    const storedOtpData = otpStore.get(otpKey);
+
+    if (!storedOtpData) {
+      return res.status(400).json({
+        status: "error",
+        message: "OTP not found or expired",
+      });
+    }
+
+    // ------------------ 3️⃣ Check expiry ------------------
+    if (Date.now() > storedOtpData.expiresAt) {
+      otpStore.delete(otpKey);
+      return res.status(400).json({
+        status: "error",
+        message: "OTP has expired",
+      });
+    }
+
+    // ------------------ 4️⃣ Check attempts (prevent brute force) ------------------
+    if (storedOtpData.attempts >= 3) {
+      otpStore.delete(otpKey);
+      return res.status(429).json({
+        status: "error",
+        message: "Too many failed attempts. Please request a new OTP",
+      });
+    }
+
+    // ------------------ 5️⃣ Verify OTP ------------------
+    if (storedOtpData.otp !== otp.toString()) {
+      storedOtpData.attempts += 1;
+      otpStore.set(otpKey, storedOtpData);
+
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid OTP",
+        remaining_attempts: 3 - storedOtpData.attempts,
+      });
+    }
+
+    // ------------------ 6️⃣ OTP verified successfully ------------------
+    otpStore.delete(otpKey); // Remove used OTP
+
+    const userData = await odooService.searchRead(
+      "res.users",
+      [["id", "=", parseInt(user_id)]],
+      ["id", "partner_id"]
+    );
+
+    if (!userData || userData.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
+    }
+
+    const partnerId = userData[0].partner_id[0];
+    const updateVals = {};
+
+    if (type === "email") {
+      updateVals.email = value;
+    } else if (type === "mobile") {
+      updateVals.mobile = value;
+      updateVals.phone = value;
+    }
+
+    // Update partner in Odoo
+    await odooService.write("res.partner", [partnerId], updateVals);
+
+    return res.status(200).json({
+      status: "OK",
+      message: `${type === "email" ? "Email" : "Mobile"} verified and updated successfully`,
+      user_id: parseInt(user_id),
+      [type]: value,
+    });
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to verify OTP",
+    });
+  }
+}
+
+// ------------------ 🔧 FIXED: UPDATE USER CONTACT ------------------
+async updateUserContact(req, res) {
+  try {
+    console.log("✏️ Update User Contact API called");
+
+    const { user_id, contact_id } = req.query;
+    const { name, email, mobile, phone, function: job_function } = req.body;
+
+    if (!user_id || !contact_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "User ID and Contact ID are required",
+      });
+    }
+
+    const userData = await odooService.searchRead(
+      "res.users",
+      [["id", "=", parseInt(user_id)]],
+      ["id", "login", "name", "partner_id"]
+    );
+
+    if (!userData || userData.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "User not found",
+      });
+    }
+
+    const companyPartnerId = userData[0].partner_id[0];
+
+    const contactData = await odooService.searchRead(
+      "res.partner",
+      [
+        ["id", "=", parseInt(contact_id)],
+        ["parent_id", "=", companyPartnerId],
+      ],
+      ["id"]
+    );
+
+    if (!contactData || contactData.length === 0) {
+      return res.status(403).json({
+        status: "error",
+        message: "Contact does not belong to this user/company",
+      });
+    }
+
+    const updateVals = {};
+
+    if (name) updateVals.name = name;
+    if (email) updateVals.email = email;
+    if (mobile) {
+      updateVals.mobile = mobile;
+      updateVals.phone = mobile;
+    }
+    if (phone) updateVals.phone = phone;
+    if (job_function) updateVals.function = job_function;
+
+    if (Object.keys(updateVals).length === 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "No fields provided for update",
+      });
+    }
+
+    await odooService.write(
+      "res.partner",
+      [parseInt(contact_id)],
+      updateVals
+    );
+
+    return res.status(200).json({
+      status: "OK",
+      message: "Contact updated successfully",
+      contact_id: parseInt(contact_id),
+      updated_fields: updateVals,
+    });
+  } catch (error) {
+    console.error("Update contact error:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to update contact",
+    });
+  }
+}
 }
 module.exports = new ApiController();

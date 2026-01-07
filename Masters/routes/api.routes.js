@@ -783,6 +783,18 @@ router.post(
   LeaveController.updateAllocationStatus.bind(LeaveController)
 );
 
+router.post(
+  "/send-otp",
+  authenticate,
+  apiController.sendOtp.bind(apiController)
+);
+
+router.post(
+  "/verify-otp",
+  authenticate,
+  apiController.verifyOtp.bind(apiController)
+);
+
 router.put(
   "/updateUserContact",
   authenticate,
@@ -793,12 +805,6 @@ router.get(
   "/getUserContacts",
   authenticate,
   apiController.getUserContacts.bind(apiController)
-);
-
-router.post(
-  "/send-otp",
-  authenticate,
-  apiController.sendOtp.bind(apiController)
 );
 
 module.exports = router;
