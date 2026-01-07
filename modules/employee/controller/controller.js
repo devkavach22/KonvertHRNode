@@ -2174,7 +2174,7 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // ───────── 2. NORMALIZE IDS (STRICT) ─────────
+    // ───────── 2. NORMALIZE IDS ─────────
     product_id = typeof product_id === "object" ? product_id?.id : product_id;
     account_id = typeof account_id === "object" ? account_id?.id : account_id;
 
@@ -2194,7 +2194,7 @@ const createExpense = async (req, res) => {
       });
     }
 
-    // ───────── 4. USER FETCH (XML-RPC SAFE) ─────────
+    // ───────── 4. USER FETCH ─────────
     const user = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
@@ -2202,8 +2202,6 @@ const createExpense = async (req, res) => {
       0,
       1
     );
-
-    console.log("📄 User result:", user);
 
     if (!user.length) {
       return res.status(400).json({
@@ -2213,9 +2211,8 @@ const createExpense = async (req, res) => {
     }
 
     const partnerId = user[0].partner_id?.[0];
-    console.log("🔗 Resolved partner_id:", partnerId);
 
-    // ───────── 5. EMPLOYEE FETCH (XML-RPC SAFE) ─────────
+    // ───────── 5. EMPLOYEE FETCH ─────────
     let employee = await odooService.searchRead(
       "hr.employee",
       [["user_id", "=", Number(user_id)]],
@@ -2245,7 +2242,7 @@ const createExpense = async (req, res) => {
     const companyId = employee[0].company_id?.[0];
 
     // ───────── 6. CREATE EXPENSE ─────────
-    const vals = {
+    const expenseVals = {
       name,
       employee_id,
       product_id: Number(product_id),
@@ -2259,7 +2256,7 @@ const createExpense = async (req, res) => {
 
     const expenseId = await odooService.create(
       "hr.expense",
-      vals,
+      expenseVals,
       client_id
     );
 
@@ -2285,29 +2282,50 @@ const createExpense = async (req, res) => {
       );
     }
 
-    // ───────── 8. FINAL FETCH (XML-RPC SAFE) ─────────
-    const finalExpense = await odooService.searchRead(
+    // ───────── 8. CREATE EXPENSE REPORT (SHEET) ─────────
+    const sheetId = await odooService.create(
+      "hr.expense.sheet",
+      {
+        employee_id,
+        company_id: companyId,
+        name: `Expense Report - ${name}`,
+        expense_line_ids: [[4, expenseId]]
+      },
+      client_id
+    );
+
+    // ───────── 9. CLICK "CREATE REPORT" (action_submit_expenses) ─────────
+    await odooService.execute(
       "hr.expense",
-      [["id", "=", expenseId]],
-      [
-        "id",
-        "name",
-        "employee_id",
-        "product_id",
-        "account_id",
-        "payment_mode",
-        "total_amount_currency",
-        "state",
-        "date"
-      ],
+      "action_submit_expenses",
+      [[expenseId]],
+      client_id
+    );
+
+    // ───────── 10. SUBMIT TO MANAGER (action_submit_sheet) ─────────
+    await odooService.execute(
+      "hr.expense.sheet",
+      "action_submit_sheet",
+      [[sheetId]],
+      client_id
+    );
+
+    // ───────── 11. FINAL FETCH ─────────
+    const finalSheet = await odooService.searchRead(
+      "hr.expense.sheet",
+      [["id", "=", sheetId]],
+      ["id", "name", "state", "employee_id"],
       0,
       1
     );
 
     return res.status(201).json({
       status: "success",
-      message: "Expense created successfully",
-      data: finalExpense[0]
+      message: "Expense created, report generated, and submitted to manager",
+      data: {
+        expense_id: expenseId,
+        sheet: finalSheet[0]
+      }
     });
 
   } catch (error) {
@@ -2318,6 +2336,7 @@ const createExpense = async (req, res) => {
     });
   }
 };
+
 
 const getExpense = async (req, res) => {
   try {
@@ -2932,14 +2951,11 @@ const getExpenseCategories = async (req, res) => {
     }
 
     // ───────── 2. PREPARE SEARCH DOMAIN ─────────
-    // We search 'product.product' where 'can_be_expensed' is true.
-    // We MUST filter by client_id to match the logic used in createExpenseCategory.
     const domain = [
       ["can_be_expensed", "=", true],
       ["client_id", "=", client_id]
     ];
 
-    // Optional: If a search term is provided in query
     if (req.query.search) {
       domain.push(["name", "ilike", req.query.search]);
     }
@@ -2948,11 +2964,11 @@ const getExpenseCategories = async (req, res) => {
     const fields = [
       "id",
       "name",
-      "standard_price", // Cost
-      "default_code", // Reference
-      "categ_id", // Product Category
-      "property_account_expense_id", // Expense Account
-      "expense_policy", // Re-invoice Policy
+      "standard_price",
+      "default_code",
+      "categ_id",
+      "property_account_expense_id",
+      "expense_policy",
       "description"
     ];
 
@@ -2964,16 +2980,15 @@ const getExpenseCategories = async (req, res) => {
       "product.product",
       domain,
       fields,
-      0, // offset
-      0, // limit (0 = all)
-      null, // order
-      client_id // context
+      0,
+      0,
+      null,
+      client_id
     );
 
-    console.log("📄 Categories fetched:", categories.length);
+    console.log("📄 Raw categories fetched:", categories.length);
 
     if (!categories || categories.length === 0) {
-      console.log("ℹ️ No expense categories found");
       return res.status(200).json({
         status: "success",
         message: "No expense categories found",
@@ -2982,17 +2997,50 @@ const getExpenseCategories = async (req, res) => {
       });
     }
 
-    // ───────── 5. FORMAT DATA ─────────
-    // Odoo returns Many2one fields as [id, "Name"]. We clean this up.
-    const finalData = categories.map(item => ({
+    // ───────── 5. PROPER DUPLICATION HANDLING (ODOO-CORRECT) ─────────
+    /**
+    * Deduplicate based on:
+    * - Product Name
+    * - Category
+    * - Expense Account
+    *
+    * This prevents duplicates caused by variants or overlapping rules.
+    */
+    const uniqueMap = new Map();
+
+    for (const item of categories) {
+      const categoryId = Array.isArray(item.categ_id) ? item.categ_id[0] : "null";
+      const expenseAccountId = Array.isArray(item.property_account_expense_id)
+        ? item.property_account_expense_id[0]
+        : "null";
+
+      const uniqueKey = `${item.name}__${categoryId}__${expenseAccountId}`;
+
+      if (!uniqueMap.has(uniqueKey)) {
+        uniqueMap.set(uniqueKey, item);
+      }
+    }
+
+    const uniqueCategories = Array.from(uniqueMap.values());
+
+    console.log(
+      `🧹 Duplicates removed: ${categories.length - uniqueCategories.length}`
+    );
+
+    // ───────── 6. FORMAT DATA ─────────
+    const finalData = uniqueCategories.map(item => ({
       id: item.id,
       name: item.name,
       cost: item.standard_price,
       reference: item.default_code || "",
       category_name: Array.isArray(item.categ_id) ? item.categ_id[1] : null,
       category_id: Array.isArray(item.categ_id) ? item.categ_id[0] : null,
-      expense_account_name: Array.isArray(item.property_account_expense_id) ? item.property_account_expense_id[1] : null,
-      expense_account_id: Array.isArray(item.property_account_expense_id) ? item.property_account_expense_id[0] : null,
+      expense_account_name: Array.isArray(item.property_account_expense_id)
+        ? item.property_account_expense_id[1]
+        : null,
+      expense_account_id: Array.isArray(item.property_account_expense_id)
+        ? item.property_account_expense_id[0]
+        : null,
       re_invoice_policy: item.expense_policy,
       description: item.description || ""
     }));
@@ -3230,65 +3278,103 @@ const getExpenseAccounts = async (req, res) => {
     console.log("------------------------------------------------");
     console.log("API Called: getExpenseAccounts");
 
-    // 1. Set System Auth ID explicitly
-    // Using Admin (UID 2) to bypass client-specific checks for this global list
-    const SYSTEM_ADMIN_ID = 2;
+    // 1. Read user_id safely (GET request compatible)
+    const user_id =
+      req.query?.user_id ||
+      req.body?.user_id ||
+      req.user_id;
 
-    // 2. Define Search Domain
-    const domain = [];
+    if (!user_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "user_id is required"
+      });
+    }
 
-    // 3. Define Fields
-    // REMOVED "company_id" because it caused the XML-RPC fault
-    const fields = [
-      "code", // Code
-      "name", // Account Name
-      "account_type", // Type
-      "reconcile", // Allow Reconciliation
-      "currency_id", // Account Currency
-    ];
+    console.log(`Resolved user_id: ${user_id}`);
 
-    console.log(
-      `Fetching Chart of Accounts using System ID: ${SYSTEM_ADMIN_ID}...`
+    // 2. Fetch company_id from res.users
+    console.log(`Fetching company_id for user_id: ${user_id}`);
+
+    const userRecords = await odooService.searchRead(
+      "res.users",
+      [["id", "=", Number(user_id)]],
+      ["company_id"],
+      0,
+      1,
+      null,
+      Number(user_id)
     );
 
-    // 4. Fetch Data from Odoo
+    if (!userRecords || userRecords.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "User not found in Odoo"
+      });
+    }
+
+    const company_id = userRecords[0].company_id
+      ? userRecords[0].company_id[0]
+      : null;
+
+    if (!company_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Company not assigned to this user"
+      });
+    }
+
+    console.log(`Resolved company_id: ${company_id}`);
+
+    // 3. Define domain (company-specific)
+    const domain = [["company_ids", "=", company_id]];
+
+    // 4. Define fields (XML-RPC safe)
+    const fields = [
+      "code",
+      "name",
+      "account_type",
+      "reconcile",
+      "currency_id"
+    ];
+
+    console.log("Fetching expense accounts...");
+
+    // 5. Fetch accounts
     const records = await odooService.searchRead(
       "account.account",
       domain,
       fields,
-      0, // Offset
-      0, // Limit (0 = All)
-      null, // Order
-      SYSTEM_ADMIN_ID
+      0,
+      0,
+      null,
+      Number(user_id)
     );
 
-    console.log(`Accounts found: ${records ? records.length : 0}`);
+    console.log(`Accounts found: ${records?.length || 0}`);
 
-    // 5. Map Data
-    const data = records.map((rec) => ({
+    // 6. Map response
+    const data = records.map(rec => ({
       id: rec.id,
       code: rec.code,
       name: rec.name,
       type: rec.account_type,
       allow_reconciliation: rec.reconcile,
-
-      // Handle Many2one fields
       currency_id: rec.currency_id ? rec.currency_id[0] : null,
-      currency_name: rec.currency_id ? rec.currency_id[1] : null,
-
-      // Removed company mapping since we aren't fetching the field anymore
+      currency_name: rec.currency_id ? rec.currency_id[1] : null
     }));
 
     return res.status(200).json({
       status: "success",
       total: data.length,
-      data,
+      data
     });
+
   } catch (error) {
     console.error("❌ Get Accounts Error:", error);
     return res.status(500).json({
       status: "error",
-      message: error.message || "Failed to fetch accounts",
+      message: error.message || "Failed to fetch accounts"
     });
   }
 };

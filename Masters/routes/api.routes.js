@@ -7,7 +7,9 @@ const bankController = require("../controllers/bankController");
 const productController = require("../controllers/product.controller");
 const companyController = require("../controllers/company.controller");
 const invoiceController = require("../controllers/invoice.controller");
-const { registerEmployeeDevice } = require("../controllers/MobileAppVarification");
+const {
+  registerEmployeeDevice,
+} = require("../controllers/MobileAppVarification");
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 const CheckInandCheckout = require("../controllers/checkin.controller");
@@ -19,7 +21,6 @@ router.post(
   authenticate,
   apiController.createLead.bind(apiController)
 );
-
 
 router.get(
   "/countries",
@@ -87,7 +88,6 @@ router.post(
   authenticate,
   apiController.resetPassword.bind(apiController)
 );
-
 
 router.post(
   "/job/create",
@@ -239,17 +239,12 @@ router.post(
   authenticate,
   apiController.createTag.bind(apiController)
 );
-router.get(
-  "/tags",
-  authenticate,
-  apiController.getTags.bind(apiController)
-);
+router.get("/tags", authenticate, apiController.getTags.bind(apiController));
 router.get(
   "/tag/:id",
   authenticate,
   apiController.getTagById.bind(apiController)
 );
-
 
 router.post(
   "/activate/plan",
@@ -379,7 +374,10 @@ router.post(
   authenticate,
   apiController.createWorkEntryType.bind(apiController)
 );
-router.get("/work-entry-types", apiController.getWorkEntryTypes.bind(apiController));
+router.get(
+  "/work-entry-types",
+  apiController.getWorkEntryTypes.bind(apiController)
+);
 
 router.put(
   "/work-entry-type/:id",
@@ -450,7 +448,10 @@ router.post(
   authenticate,
   apiController.createHrContractType.bind(apiController)
 );
-router.get("/contract-types", apiController.getHrContractTypes.bind(apiController));
+router.get(
+  "/contract-types",
+  apiController.getHrContractTypes.bind(apiController)
+);
 
 router.put(
   "/contract-type/:contract_type_id",
@@ -480,67 +481,134 @@ router.post(
   authenticate,
   apiController.createPartner.bind(apiController)
 );
-router.get("/branch", authenticate, apiController.getPartners.bind(apiController));
+router.get(
+  "/branch",
+  authenticate,
+  apiController.getPartners.bind(apiController)
+);
 
-router.put("/branch/:id", authenticate, apiController.updatePartner.bind(apiController));
-router.delete("/branch/:id", authenticate, apiController.deletePartner.bind(apiController));
+router.put(
+  "/branch/:id",
+  authenticate,
+  apiController.updatePartner.bind(apiController)
+);
+router.delete(
+  "/branch/:id",
+  authenticate,
+  apiController.deletePartner.bind(apiController)
+);
 
 router.post(
   "/create/geoLocation",
   authenticate,
   apiController.createGeoLocation.bind(apiController)
 );
-router.get("/geoLocation", apiController.getAllGeoLocations.bind(apiController));
-router.put("/geoLocation/:id", authenticate, apiController.updateGeoLocation.bind(apiController));
-router.delete("/geoLocation/:id", authenticate, apiController.deleteGeoLocation.bind(apiController));
+router.get(
+  "/geoLocation",
+  apiController.getAllGeoLocations.bind(apiController)
+);
+router.put(
+  "/geoLocation/:id",
+  authenticate,
+  apiController.updateGeoLocation.bind(apiController)
+);
+router.delete(
+  "/geoLocation/:id",
+  authenticate,
+  apiController.deleteGeoLocation.bind(apiController)
+);
 
 router.post(
   "/create/regularization",
   authenticate,
   apiController.createAttendanceRegularization.bind(apiController)
 );
-router.get("/regularization", apiController.getAttendanceRegularization.bind(apiController));
-router.put("/regularization/:id", authenticate, apiController.updateAttendanceRegularization.bind(apiController));
+router.get(
+  "/regularization",
+  apiController.getAttendanceRegularization.bind(apiController)
+);
+router.put(
+  "/regularization/:id",
+  authenticate,
+  apiController.updateAttendanceRegularization.bind(apiController)
+);
 
-router.post("/admin/approve", authenticate, apiController.approveAttendanceRegularization.bind(apiController));
-router.post("/admin/reject", authenticate, apiController.rejectAttendanceRegularization.bind(apiController));
+router.post(
+  "/admin/approve",
+  authenticate,
+  apiController.approveAttendanceRegularization.bind(apiController)
+);
+router.post(
+  "/admin/reject",
+  authenticate,
+  apiController.rejectAttendanceRegularization.bind(apiController)
+);
 
-router.get("/admin/requests",authenticate,apiController.getAllApprovalRequests.bind(apiController));
+router.get(
+  "/admin/requests",
+  authenticate,
+  apiController.getAllApprovalRequests.bind(apiController)
+);
 
 router.post(
   "/create/regcategory",
   authenticate,
   apiController.createRegCategory.bind(apiController)
 );
-router.get("/regcategories", apiController.getRegCategories.bind(apiController));
-router.put("/regcategories/:id", authenticate, apiController.updateRegCategory.bind(apiController));
-router.delete("/regcategories/:id", authenticate, apiController.deleteRegCategory.bind(apiController));
+router.get(
+  "/regcategories",
+  apiController.getRegCategories.bind(apiController)
+);
+router.put(
+  "/regcategories/:id",
+  authenticate,
+  apiController.updateRegCategory.bind(apiController)
+);
+router.delete(
+  "/regcategories/:id",
+  authenticate,
+  apiController.deleteRegCategory.bind(apiController)
+);
 
-
-// Salary 
+// Salary
 router.post(
   "/create/structure-type",
   authenticate,
   PayrollController.createStructureType.bind(PayrollController)
 );
-router.get("/structure-types", authenticate, PayrollController.getStructureTypes.bind(PayrollController));
+router.get(
+  "/structure-types",
+  authenticate,
+  PayrollController.getStructureTypes.bind(PayrollController)
+);
 
 router.post(
   "/create/salary-rule-category",
   authenticate,
   PayrollController.createSalaryRuleCategory.bind(PayrollController)
 );
-router.get("/salary-rule-categories", authenticate, PayrollController.getSalaryRuleCategories.bind(PayrollController));
+router.get(
+  "/salary-rule-categories",
+  authenticate,
+  PayrollController.getSalaryRuleCategories.bind(PayrollController)
+);
 
 router.post(
   "/create/salary-rule",
   authenticate,
   PayrollController.createSalaryRule.bind(PayrollController)
 );
-router.get("/salary-rules", authenticate, PayrollController.getSalaryRules.bind(PayrollController));
+router.get(
+  "/salary-rules",
+  authenticate,
+  PayrollController.getSalaryRules.bind(PayrollController)
+);
 
-
-router.get("/groups", authenticate, apiController.getGroupList.bind(apiController));
+router.get(
+  "/groups",
+  authenticate,
+  apiController.getGroupList.bind(apiController)
+);
 
 router.get(
   "/groups/users",
@@ -710,9 +778,27 @@ router.delete(
   LeaveController.deleteMandatoryDays.bind(LeaveController)
 );
 router.post(
-"/leave-allocation/action",
-authenticate,
-LeaveController.updateAllocationStatus.bind(LeaveController)
+  "/leave-allocation/action",
+  authenticate,
+  LeaveController.updateAllocationStatus.bind(LeaveController)
 );
-module.exports = router;
 
+router.put(
+  "/updateUserContact",
+  authenticate,
+  apiController.updateUserContact.bind(apiController)
+);
+
+router.get(
+  "/getUserContacts",
+  authenticate,
+  apiController.getUserContacts.bind(apiController)
+);
+
+router.post(
+  "/send-otp",
+  authenticate,
+  apiController.sendOtp.bind(apiController)
+);
+
+module.exports = router;

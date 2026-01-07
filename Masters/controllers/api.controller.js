@@ -731,7 +731,9 @@ class ApiController {
       if (isAdminUser) user_role = "REGISTER_ADMIN";
       else if (isEmployeeUser) user_role = "EMPLOYEE_RELATED_OWN_USER";
 
-      const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+      const full_name = `${user.first_name || ""} ${
+        user.last_name || ""
+      }`.trim();
 
       const commonClient = odooService.createClient("/xmlrpc/2/common");
       const uid = await new Promise((resolve, reject) => {
@@ -777,7 +779,7 @@ class ApiController {
               "res.users",
               [
                 ["partner_id", "=", employeeData.address_id[0]],
-                ["is_client_employee_admin", "=", true]
+                ["is_client_employee_admin", "=", true],
               ],
               ["id"],
               1
@@ -833,7 +835,9 @@ class ApiController {
       );
 
       // Determine plan status message
-      const planStatusMessage = planData ? "Plan is active." : "Plan has expired.";
+      const planStatusMessage = planData
+        ? "Plan is active."
+        : "Plan has expired.";
 
       if (isAdminUser) {
         return res.status(200).json({
@@ -866,7 +870,6 @@ class ApiController {
           admin_user_id: adminUserId, // Admin ka user ID
         });
       }
-
     } catch (error) {
       console.error("Login error:", error);
       return res.status(500).json({
@@ -5935,7 +5938,10 @@ class ApiController {
       if (!approval_request_id) {
         return res
           .status(400)
-          .json({ status: "error", message: "approval_request_id is required" });
+          .json({
+            status: "error",
+            message: "approval_request_id is required",
+          });
       }
 
       console.log(
@@ -5976,9 +5982,7 @@ class ApiController {
         });
       }
 
-      console.log(
-        `✅ Found Approval ID: ${approvalId}. Processing...`
-      );
+      console.log(`✅ Found Approval ID: ${approvalId}. Processing...`);
 
       // ========== LEAVE REQUEST HANDLING ==========
       if (approvalRecord.hr_leave_id) {
@@ -6023,24 +6027,25 @@ class ApiController {
             await odooService.callMethod("hr.leave", "action_approve", [
               parseInt(leaveId),
             ]);
-          }
-          else if (currentLeaveState === "confirm") {
+          } else if (currentLeaveState === "confirm") {
             console.log(`✅ Approving confirmed leave...`);
             await odooService.callMethod("hr.leave", "action_approve", [
               parseInt(leaveId),
             ]);
-          }
-          else if (currentLeaveState === "validate" || currentLeaveState === "validate1") {
+          } else if (
+            currentLeaveState === "validate" ||
+            currentLeaveState === "validate1"
+          ) {
             console.log(`✅ Validating leave (double validation)...`);
             await odooService.callMethod("hr.leave", "action_validate", [
               parseInt(leaveId),
             ]);
-          }
-          else if (currentLeaveState === "approved") {
+          } else if (currentLeaveState === "approved") {
             console.log(`ℹ️ Leave already approved, no action needed`);
-          }
-          else {
-            console.log(`⚠️ Unknown leave state: ${currentLeaveState}, will approve approval.request only`);
+          } else {
+            console.log(
+              `⚠️ Unknown leave state: ${currentLeaveState}, will approve approval.request only`
+            );
           }
         } catch (leaveError) {
           console.error(`⚠️ Leave action failed: ${leaveError.message}`);
@@ -6061,7 +6066,7 @@ class ApiController {
             approval_id: approvalId,
             leave_id: leaveId,
             leave_state: currentLeaveState,
-            type: "Leave Request"
+            type: "Leave Request",
           },
         });
       }
@@ -6079,7 +6084,7 @@ class ApiController {
           message: "Attendance Regularization approved successfully",
           data: {
             approval_id: approvalId,
-            type: "Attendance Regularization"
+            type: "Attendance Regularization",
           },
         });
       }
@@ -6096,10 +6101,9 @@ class ApiController {
         message: "Request approved successfully",
         data: {
           approval_id: approvalId,
-          type: "General Request"
+          type: "General Request",
         },
       });
-
     } catch (error) {
       console.error("❌ Odoo Error:", error.message);
       return res.status(500).json({
@@ -6113,7 +6117,14 @@ class ApiController {
       const { approval_request_id, remarks } = req.body;
       const { currentUser } = await getClientFromRequest(req);
 
-      const fields = ["id", "name", "state", "attendance_regulzie_id", "hr_leave_id", "description"];
+      const fields = [
+        "id",
+        "name",
+        "state",
+        "attendance_regulzie_id",
+        "hr_leave_id",
+        "description",
+      ];
 
       const approvalRecords = await odooService.searchRead(
         "approval.request",
@@ -6123,7 +6134,9 @@ class ApiController {
       );
 
       if (!approvalRecords?.length) {
-        return res.status(404).json({ status: "error", message: "Record not found" });
+        return res
+          .status(404)
+          .json({ status: "error", message: "Record not found" });
       }
 
       const approvalRecord = approvalRecords[0];
@@ -6149,25 +6162,32 @@ class ApiController {
 
       if (approvalRecord.attendance_regulzie_id) {
         const regId = approvalRecord.attendance_regulzie_id[0];
-        await odooService.write("attendance.regular", [regId], { state_select: "reject" });
+        await odooService.write("attendance.regular", [regId], {
+          state_select: "reject",
+        });
         updatedRecord = { model: "attendance.regular", id: regId };
-
       } else if (approvalRecord.hr_leave_id) {
         const leaveId = approvalRecord.hr_leave_id[0];
         await odooService.write("hr.leave", [leaveId], { state: "refuse" });
         updatedRecord = { model: "hr.leave", id: leaveId };
-
-      } else if (approvalRecord.description && approvalRecord.description.includes("Expense")) {
-        console.log("📝 Expense detected via description. Approval state updated by wizard.");
-        updatedRecord = { model: "hr.expense.sheet", info: "Handled by Approval Wizard" };
+      } else if (
+        approvalRecord.description &&
+        approvalRecord.description.includes("Expense")
+      ) {
+        console.log(
+          "📝 Expense detected via description. Approval state updated by wizard."
+        );
+        updatedRecord = {
+          model: "hr.expense.sheet",
+          info: "Handled by Approval Wizard",
+        };
       }
 
       return res.status(200).json({
         status: "success",
         message: "Rejected successfully",
-        data: { approval_id: approvalRecord.id, updated_record: updatedRecord }
+        data: { approval_id: approvalRecord.id, updated_record: updatedRecord },
       });
-
     } catch (error) {
       return res.status(500).json({ status: "error", message: error.message });
     }
@@ -6226,6 +6246,308 @@ class ApiController {
       return res.status(statusCode).json({
         status: "error",
         message: error.message || "Internal Server Error",
+      });
+    }
+  }
+
+ async getUserContacts(req, res) {
+    try {
+      console.log("🔍 Get User Contacts API called");
+      const { user_id } = req.query;
+      
+      if (!user_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "User ID is required",
+        });
+      }
+
+      // 1️⃣ Get user with partner_id
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", parseInt(user_id)]],
+        ["id", "login", "name", "partner_id"]
+      );
+
+      if (!userData || userData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+        });
+      }
+
+      const companyPartnerId = userData[0].partner_id[0];
+
+      // 2️⃣ Get child contacts of company with job position
+      const contacts = await odooService.searchRead(
+        "res.partner",
+        [["parent_id", "=", companyPartnerId]],
+        ["id", "name", "email", "mobile", "phone", "type", "function"]
+      );
+
+      return res.status(200).json({
+        status: "OK",
+        user: {
+          id: userData[0].id,
+          email: userData[0].login,
+          name: userData[0].name,
+        },
+        company_partner_id: companyPartnerId,
+        contacts: contacts,
+      });
+    } catch (error) {
+      console.error("Get user contacts error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to fetch user contacts",
+      });
+    }
+  }
+
+  async updateUserContact(req, res) {
+    try {
+      console.log("✏️ Update User Contact API called");
+
+      const { user_id, contact_id } = req.query;
+      const { name, email, mobile, phone } = req.body;
+
+      if (!user_id || !contact_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "User ID and Contact ID are required",
+        });
+      }
+
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", parseInt(user_id)]],
+        ["id", "login", "name", "partner_id"]
+      );
+
+      if (!userData || userData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+        });
+      }
+
+      const companyPartnerId = userData[0].partner_id[0];
+
+      const contactData = await odooService.searchRead(
+        "res.partner",
+        [
+          ["id", "=", parseInt(contact_id)],
+          ["parent_id", "=", companyPartnerId], 
+        ],
+        ["id"]
+      );
+
+      if (!contactData || contactData.length === 0) {
+        return res.status(403).json({
+          status: "error",
+          message: "Contact does not belong to this user/company",
+        });
+      }
+
+      const updateVals = {};
+
+      if (name) updateVals.name = name;
+      if (email) updateVals.email = email;
+      if (mobile) {
+        updateVals.mobile = mobile;
+        updateVals.phone = mobile;
+      }
+      if (phone) updateVals.phone = phone;
+
+      if (Object.keys(updateVals).length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "No fields provided for update",
+        });
+      }
+
+      await odooService.write(
+        "res.partner",
+        [parseInt(contact_id)],
+        updateVals
+      );
+
+      return res.status(200).json({
+        status: "OK",
+        message: "Contact updated successfully",
+        contact_id: parseInt(contact_id),
+      });
+    } catch (error) {
+      console.error("Update contact error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to update contact",
+      });
+    }
+  }
+  async sendOtp(req, res) {
+    try {
+      console.log("🔥 Send OTP API called");
+
+      const { user_id, type, value } = req.body;
+
+      // ------------------ 1️⃣ Basic Validation ------------------
+      if (!user_id || !type || !value) {
+        return res.status(400).json({
+          status: "error",
+          message: "user_id, type and value are required",
+        });
+      }
+
+      if (!["email", "mobile"].includes(type)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid type",
+        });
+      }
+
+      if (type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid email format",
+        });
+      }
+
+      if (type === "mobile" && !/^[6-9]\d{9}$/.test(value)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid mobile number",
+        });
+      }
+
+      // ------------------ 2️⃣ Verify user exists ------------------
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", parseInt(user_id)]],
+        ["id"]
+      );
+
+      if (!userData || userData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+        });
+      }
+
+      // ------------------ 3️⃣ Generate OTP ------------------
+      const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
+
+      // ------------------ 4️⃣ Send OTP ------------------
+      // if (type === "email") {
+      // await mailService.sendMail(
+      // value, // recipient email
+      // "OTP Verification - Kavach Global",
+      // `<!DOCTYPE html>
+      // <html>
+      // <head>
+      // <meta charset="utf-8">
+      // <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      // </head>
+      // <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; margin:0; padding:0;">
+      // <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+      // <tr>
+      // <td align="center">
+      // <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+      // <tr>
+      // <td style="background-color:#5f5cc4; height:8px;"></td>
+      // </tr>
+      // <tr>
+      // <td style="padding:50px 60px; text-align:center;">
+      // <h1 style="color:#1a1a1a; font-size:28px; margin-bottom:20px;">OTP Verification</h1>
+      // <p style="font-size:16px; color:#333;">Your OTP for updating your ${type} is:</p>
+      // <p style="font-size:24px; font-weight:bold; color:#5f5cc4; margin:20px 0;">${otp}</p>
+      // <p style="font-size:14px; color:#555;">This OTP is valid for 5 minutes. Do not share it with anyone.</p>
+      // </td>
+      // </tr>
+      // <tr>
+      // <td style="background-color:#5f5cc4; height:8px;"></td>
+      // </tr>
+      // </table>
+      // </td>
+      // </tr>
+      // </table>
+      // </body>
+      // </html>`
+      // );
+      // } else {
+      // // Mobile OTP
+      // await smsService.sendSms(
+      // value,
+      // `Your OTP for updating your ${type} is ${otp}. Valid for 5 minutes.`
+      // );
+      // }
+
+      if (type === "email") {
+        // ✅ Your existing email code remains unchanged
+        await mailService.sendMail(
+          value, // recipient email
+          "OTP Verification - Kavach Global",
+          `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f5f5f5; margin:0; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+<tr>
+<td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+<tr>
+<td style="background-color:#5f5cc4; height:8px;"></td>
+</tr>
+<tr>
+<td style="padding:50px 60px; text-align:center;">
+<h1 style="color:#1a1a1a; font-size:28px; margin-bottom:20px;">OTP Verification</h1>
+<p style="font-size:16px; color:#333;">Your OTP for updating your ${type} is:</p>
+<p style="font-size:24px; font-weight:bold; color:#5f5cc4; margin:20px 0;">${otp}</p>
+<p style="font-size:14px; color:#555;">This OTP is valid for 5 minutes. Do not share it with anyone.</p>
+</td>
+</tr>
+<tr>
+<td style="background-color:#5f5cc4; height:8px;"></td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>`
+        );
+      } else {
+        // ------------------ SMS via SMTP ------------------
+        // Create a transporter using your existing SMTP config
+        const transporter = mailService.transporter; // assuming your mailService has the transporter
+
+        // Map mobile number to carrier SMS gateway
+        // Example: Airtel (India) -> 9876543210@airtel-sms.com
+        // ⚠️ You need to replace with the actual gateway
+        const smsEmail = `${value}@sms.gateway.com`;
+
+        await transporter.sendMail({
+          from: `"Kavach Global" <${process.env.SMTP_USER}>`,
+          to: smsEmail,
+          subject: "", // SMS subject usually ignored
+          text: `Your OTP for updating your mobile is ${otp}. Valid for 5 minutes.`,
+        });
+      }
+
+      // ------------------ 5️⃣ Return Response ------------------
+      return res.status(200).json({
+        status: "OK",
+        message: "OTP sent successfully",
+        otp, // ⚠️ remove in production
+      });
+    } catch (error) {
+      console.error("Send OTP error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to send OTP",
       });
     }
   }
