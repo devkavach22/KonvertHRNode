@@ -410,7 +410,7 @@ module.exports = {
         if (email) {
           const subject =
             "Subscription Activated - Kavach Global Konnects Pvt Ltd";
-          const loginUrl = "http://localhost:3001/KHR-plan-activation";
+          const loginUrl = "https://konverthrms.onrender.com/KHR-plan-activation";
 
           const htmlContent = `
 <!DOCTYPE html>
