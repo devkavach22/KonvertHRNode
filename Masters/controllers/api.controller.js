@@ -4,7 +4,6 @@ const redisClient = require("../services/redisClient");
 const moment = require("moment-timezone");
 const otpStore = new Map();
 
-
 const { getClientFromRequest } = require("../services/plan.helper");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -576,6 +575,7 @@ class ApiController {
         company_type: "company",
         name: company_name,
         is_from_konvert_hr_portal: true,
+        customer_rank: 1,
       });
       const childContactVals = {
         parent_id: companyPartnerId,
@@ -6253,9 +6253,7 @@ class ApiController {
 
   async getUserContacts(req, res) {
     try {
-      console.log("🔍 Get User Contacts API called");
       const { user_id } = req.query;
-
       if (!user_id) {
         return res.status(400).json({
           status: "error",

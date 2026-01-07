@@ -2246,8 +2246,6 @@ const createExpense = async (req, res) => {
   }
 };
 
-
-
 const getExpense = async (req, res) => {
   try {
     console.log("══════════════════════════════════════");
