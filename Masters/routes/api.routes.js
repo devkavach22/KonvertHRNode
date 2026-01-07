@@ -264,13 +264,8 @@ router.delete(
   apiController.deleteTag.bind(apiController)
 );
 
-// router.post(
-//   "/Payment",
-//   authenticate,
-//   invoiceController.createInvoiceAndPay.bind(invoiceController)
-// );
 router.post(
-  "/create/subscription",
+  "/Payment",
   authenticate,
   invoiceController.createSubscription.bind(invoiceController)
 );

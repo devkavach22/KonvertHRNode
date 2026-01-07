@@ -1,7 +1,6 @@
 const odooService = require("../services/odoo.service");
 const mailService = require("../services/mail.service");
 const crypto = require("crypto");
-
 module.exports = {
   async createSubscription(req, res) {
     console.log(".......Subscription Creation Process Started ........");
@@ -9,8 +8,7 @@ module.exports = {
       const {
         user_id,
         product_id,
-        plan_id,
-        // quantity removed from destructuring - will be set automatically
+        // plan_id removed - will be fetched automatically from product
         price_unit,
         transection_number,
       } = req.body;
@@ -29,13 +27,6 @@ module.exports = {
         return res.status(400).json({
           success: false,
           error: "product_id is required",
-        });
-      }
-
-      if (!plan_id) {
-        return res.status(400).json({
-          success: false,
-          error: "plan_id (Recurring Plan) is required",
         });
       }
 
@@ -147,12 +138,13 @@ module.exports = {
 
       console.log("✅ Partner validated:", partner.name);
 
-      console.log("🔍 Step 4: Validating product...");
+      console.log("🔍 Step 4: Fetching product with subscription plan...");
 
+      // ✅ FIXED: Directly fetch product.product with subscription_plan_id
       const productVariant = await odooService.searchRead(
         "product.product",
         [["id", "=", product_id]],
-        ["id", "name", "product_tmpl_id"]
+        ["id", "name", "product_tmpl_id", "subscription_plan_id"]
       );
 
       if (!productVariant.length) {
@@ -165,44 +157,36 @@ module.exports = {
       console.log("📦 Product found:", productVariant[0]);
 
       const product_template_id = productVariant[0].product_tmpl_id?.[0];
+      const subscription_plan_id = productVariant[0].subscription_plan_id?.[0];
+
+      if (!subscription_plan_id) {
+        return res.status(400).json({
+          success: false,
+          error: "Product does not have a subscription plan assigned. Please use products from the getProducts API.",
+          product_details: {
+            id: product_id,
+            name: productVariant[0].name,
+            template_id: product_template_id,
+            subscription_plan_id: productVariant[0].subscription_plan_id,
+          },
+        });
+      }
+
+      console.log("✅ Subscription Plan ID found:", subscription_plan_id);
       console.log("✅ Product validated:", productVariant[0].name);
 
       console.log("🔍 Step 5: Validating recurring plan...");
 
-      let actual_plan_id = plan_id;
-
-      if (typeof plan_id === "string" && isNaN(plan_id)) {
-        console.log(
-          "🔍 Plan ID is a name, searching for plan by name:",
-          plan_id
-        );
-        const planByName = await odooService.searchRead(
-          "sale.subscription.plan",
-          [["name", "=", plan_id]],
-          ["id", "name"]
-        );
-
-        if (!planByName.length) {
-          return res.status(404).json({
-            success: false,
-            error: `Recurring plan with name '${plan_id}' not found.`,
-          });
-        }
-
-        actual_plan_id = planByName[0].id;
-        console.log("✅ Found plan ID:", actual_plan_id, "for name:", plan_id);
-      }
-
       const recurringPlan = await odooService.searchRead(
         "sale.subscription.plan",
-        [["id", "=", actual_plan_id]],
+        [["id", "=", subscription_plan_id]],
         ["id", "name"]
       );
 
       if (!recurringPlan.length) {
         return res.status(404).json({
           success: false,
-          error: "Recurring plan not found with ID: " + actual_plan_id,
+          error: "Recurring plan not found with ID: " + subscription_plan_id,
         });
       }
       console.log("✅ Recurring Plan validated:", recurringPlan[0].name);
@@ -222,7 +206,7 @@ module.exports = {
       console.log("📝 Step 7: Creating subscription sale order...");
       const saleOrderData = {
         partner_id: partner_id,
-        plan_id: actual_plan_id,
+        plan_id: subscription_plan_id,
         company_id: adminCompanyId,
         date_order: todayDate,
         pricelist_id: pricelist_id || false,
@@ -233,7 +217,7 @@ module.exports = {
             {
               product_id: product_id,
               name: productVariant[0].name || "Subscription Product",
-              product_uom_qty: quantity, // Always 1
+              product_uom_qty: quantity,
               price_unit: price_unit,
               recurring_invoice: true,
             },
@@ -310,7 +294,7 @@ module.exports = {
           partner_id: partner_id,
           invoice_date: todayDate,
           invoice_date_due: todayDate,
-          invoice_line_ids: [[0, 0, { product_id, quantity: 1, price_unit }]], // Quantity set to 1
+          invoice_line_ids: [[0, 0, { product_id, quantity: 1, price_unit }]],
           ref: subscription.name,
           transection_number: transection_number || "",
         };
@@ -441,31 +425,19 @@ module.exports = {
               <h1 style="margin: 0 0 10px 0; font-size: 32px; font-weight: 600; color: #1a1a1a;">Subscription Activated! ✓</h1>
               <p style="margin: 0 0 30px 0; font-size: 14px; color: #4CAF50; font-weight: 600;">Payment Successful</p>
               <p style="margin: 0 0 20px 0; font-size: 16px; color: #333333;">Hi ${customerName},</p>
-              <p style="margin: 0 0 25px 0; font-size: 16px; color: #333333;">Your subscription <strong>${subscription.name
-            }</strong> has been activated and payment of <strong>₹${paymentAmount.toFixed(
-              2
-            )}</strong> has been processed successfully.</p>
+              <p style="margin: 0 0 25px 0; font-size: 16px; color: #333333;">Your subscription <strong>${subscription.name}</strong> has been activated and payment of <strong>₹${paymentAmount.toFixed(2)}</strong> has been processed successfully.</p>
               
               <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8f9fa; border-radius: 6px; margin: 25px 0;">
                 <tr><td style="padding: 25px;">
                     <p style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #666;">SUBSCRIPTION DETAILS</p>
                     <table width="100%" cellpadding="8" cellspacing="0">
-                      <tr><td style="font-size: 15px; color: #666;">Subscription:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${subscription.name
-            }</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Plan:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${recurringPlan[0].name
-            }</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Product:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${productVariant[0].name
-            }</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Invoice:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${invoice.name
-            }</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Subscription:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${subscription.name}</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Plan:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${recurringPlan[0].name}</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Product:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${productVariant[0].name}</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Invoice:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${invoice.name}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Transaction Number:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${transection_number}</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Amount:</td><td style="font-size: 15px; color: #4CAF50; font-weight: 700; text-align: right;">₹${paymentAmount.toFixed(
-              2
-            )}</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Payment Date:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${new Date().toLocaleDateString(
-              "en-IN",
-              { year: "numeric", month: "long", day: "numeric" }
-            )}</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Amount:</td><td style="font-size: 15px; color: #4CAF50; font-weight: 700; text-align: right;">₹${paymentAmount.toFixed(2)}</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Payment Date:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</td></tr>
                     </table>
                   </td></tr>
               </table>
@@ -527,6 +499,7 @@ module.exports = {
       } catch (paymentError) {
         console.error("❌ Payment/Email error:", paymentError);
       }
+
       return res.status(201).json({
         success: true,
         message:
@@ -536,12 +509,12 @@ module.exports = {
           subscription_name: subscription.name,
           partner_id: partner_id,
           partner_name: partner.name,
-          plan_id: actual_plan_id,
+          plan_id: subscription_plan_id,
           plan_name: recurringPlan[0].name,
           product_id: product_id,
           product_template_id: product_template_id,
           product_name: productVariant[0].name,
-          quantity: quantity, // Always returns 1
+          quantity: quantity,
           amount_total: subscription.amount_total,
           subscription_state: subscription.subscription_state,
           start_date: todayDate,

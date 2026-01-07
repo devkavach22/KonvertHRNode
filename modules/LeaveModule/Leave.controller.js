@@ -2148,7 +2148,6 @@ class LeaveController {
   async getAccrualPlan(req, res) {
     try {
       console.log("API called for fetching Accrual Plans");
-      // console.log(req.body);
 
       // -----------------------------
       // 1. Get client_id from auth

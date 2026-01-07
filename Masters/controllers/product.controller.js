@@ -210,7 +210,6 @@ module.exports = {
       });
     }
   },
-
   async getProducts(req, res) {
     try {
       console.log("Product API called .......");
@@ -234,6 +233,7 @@ module.exports = {
           "duration_periods_no",
           "duration",
           "is_highlight",
+          "subscription_plan_id", // ✅ ADDED
         ]
       );
 
@@ -242,6 +242,12 @@ module.exports = {
         description: p.description
           ? p.description.replace(/<[^>]*>/g, "")
           : "",
+        subscription_plan_id: p.subscription_plan_id
+          ? {
+            id: p.subscription_plan_id[0],
+            name: p.subscription_plan_id[1],
+          }
+          : null,
       }));
 
       products.sort((a, b) => {
