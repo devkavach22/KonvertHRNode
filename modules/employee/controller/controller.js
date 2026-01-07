@@ -2523,9 +2523,6 @@ const getExpense = async (req, res) => {
   }
 };
 
-
-
-
 const updateExpense = async (req, res) => {
   try {
     console.log("API called for Expense Update");

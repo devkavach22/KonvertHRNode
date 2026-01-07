@@ -731,9 +731,8 @@ class ApiController {
       if (isAdminUser) user_role = "REGISTER_ADMIN";
       else if (isEmployeeUser) user_role = "EMPLOYEE_RELATED_OWN_USER";
 
-      const full_name = `${user.first_name || ""} ${
-        user.last_name || ""
-      }`.trim();
+      const full_name = `${user.first_name || ""} ${user.last_name || ""
+        }`.trim();
 
       const commonClient = odooService.createClient("/xmlrpc/2/common");
       const uid = await new Promise((resolve, reject) => {
@@ -6250,19 +6249,17 @@ class ApiController {
     }
   }
 
- async getUserContacts(req, res) {
+  async getUserContacts(req, res) {
     try {
       console.log("🔍 Get User Contacts API called");
       const { user_id } = req.query;
-      
+
       if (!user_id) {
         return res.status(400).json({
           status: "error",
           message: "User ID is required",
         });
       }
-
-      // 1️⃣ Get user with partner_id
       const userData = await odooService.searchRead(
         "res.users",
         [["id", "=", parseInt(user_id)]],
@@ -6277,13 +6274,20 @@ class ApiController {
       }
 
       const companyPartnerId = userData[0].partner_id[0];
-
-      // 2️⃣ Get child contacts of company with job position
       const contacts = await odooService.searchRead(
         "res.partner",
         [["parent_id", "=", companyPartnerId]],
         ["id", "name", "email", "mobile", "phone", "type", "function"]
       );
+      const formattedContacts = contacts.map(contact => ({
+        id: contact.id,
+        name: contact.name,
+        email: contact.email || null,
+        mobile: contact.mobile || null,
+        phone: contact.phone || null,
+        type: contact.type,
+        job_position: contact.function || null,
+      }));
 
       return res.status(200).json({
         status: "OK",
@@ -6293,7 +6297,7 @@ class ApiController {
           name: userData[0].name,
         },
         company_partner_id: companyPartnerId,
-        contacts: contacts,
+        contacts: formattedContacts,
       });
     } catch (error) {
       console.error("Get user contacts error:", error);
@@ -6337,7 +6341,7 @@ class ApiController {
         "res.partner",
         [
           ["id", "=", parseInt(contact_id)],
-          ["parent_id", "=", companyPartnerId], 
+          ["parent_id", "=", companyPartnerId],
         ],
         ["id"]
       );
