@@ -495,95 +495,96 @@ class LeaveController {
       });
     }
   }
-
   async getLeaveAllocation(req, res) {
     try {
       console.log("------------------------------------------------");
       console.log("API Called: getLeaveAllocation");
       console.log("Query Params:", JSON.stringify(req.query, null, 2));
 
-      // Extract query parameters
-      const { employee_id, holiday_status_id, allocation_type, limit = 50, offset = 0 } = req.query;
-
+      // 1. Fetch Context & Debug Logs
       console.log("Fetching client context from request...");
       const context = await getClientFromRequest(req);
-      console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
 
       if (!context) {
         throw new Error("Client context is null or undefined");
       }
 
-      // const { user_id, client_id } = context;
-      console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
+      const { client_id } = context;
+      console.log(`Context Extracted - Client ID: ${client_id}`);
 
-      // Build search domain
+      // 2. define Search Filters (Domain)
+      // Allow filtering by specific employee if 'employee_id' is passed in query
       const domain = [];
 
-      if (employee_id) {
-        domain.push(["employee_id", "=", parseInt(employee_id)]);
-      }
-      if (holiday_status_id) {
-        domain.push(["holiday_status_id", "=", parseInt(holiday_status_id)]);
-      }
-      if (allocation_type) {
-        if (!["regular", "accrual"].includes(allocation_type)) {
-          console.warn(`Validation Failed: Invalid allocation_type '${allocation_type}'`);
-          return res.status(400).json({
-            status: "error",
-            message: "Invalid allocation type"
-          });
-        }
-        domain.push(["allocation_type", "=", allocation_type]);
+      if (req.query.employee_id) {
+        domain.push(["employee_id", "=", parseInt(req.query.employee_id)]);
+        console.log(`Filtering by Employee ID: ${req.query.employee_id}`);
       }
 
-      console.log("Search Domain Constructed:", JSON.stringify(domain, null, 2));
+      // Optional: Filter by specific leave type
+      if (req.query.holiday_status_id) {
+        domain.push(["holiday_status_id", "=", parseInt(req.query.holiday_status_id)]);
+      }
 
-      // Fields to fetch
+      // 3. Define Fields to Fetch
+      // These map to the fields you used in 'create' + useful display fields
       const fields = [
         "id",
-        "holiday_status_id",
-        "employee_id",
-        "allocation_type",
+        "name", // Description
+        "holiday_status_id", // Leave Type
+        "employee_id", // Employee
+        "allocation_type", // regular vs accrual
+        "number_of_days", // Total days allocated
+        "number_of_days_display", // Often used in Odoo for actual balance
         "date_from",
         "date_to",
-        "number_of_days",
-        "name",
-        "state",
-        "accrual_plan_id"
+        "accrual_plan_id",
+        "state" // e.g., 'draft', 'confirm', 'validate'
       ];
 
-      console.log(`Fetching leave allocations from 'hr.leave.allocation'...`);
+      console.log(`Fetching allocations from 'hr.leave.allocation' for Client ID: ${client_id}...`);
+      console.log("Search Domain:", JSON.stringify(domain));
+
+      // 4. Call Odoo Service
       const allocations = await odooService.searchRead(
         "hr.leave.allocation",
         domain,
         fields,
-        parseInt(limit),
-        client_id,
-        parseInt(offset)
+        0, // limit (0 = unlimited, or set a number like 50)
+        client_id
       );
 
-      console.log(`Retrieved ${allocations.length} leave allocations.`);
+      console.log(`Odoo returned ${allocations.length} records.`);
 
-      // Optional: Resolve leave type names and employee names
-      const enrichedAllocations = allocations.map(item => ({
-        allocation_id: item.id,
-        leave_type_id: item.holiday_status_id[0],
-        leave_type_name: item.holiday_status_id[1],
-        employee_id: item.employee_id[0],
-        employee_name: item.employee_id[1],
-        allocation_type: item.allocation_type,
-        date_from: item.date_from,
-        date_to: item.date_to,
-        number_of_days: item.number_of_days,
-        description: item.name,
-        state: item.state,
-        accrual_plan_id: item.accrual_plan_id ? item.accrual_plan_id[0] : null
+      // 5. Transform Data for Frontend
+      // Odoo returns relations as [id, "Name"]. We clean this up.
+      const cleanedAllocations = allocations.map((alloc) => ({
+        id: alloc.id,
+        description: alloc.name || "No Description",
+        leave_type: Array.isArray(alloc.holiday_status_id)
+          ? { id: alloc.holiday_status_id[0], name: alloc.holiday_status_id[1] }
+          : null,
+        employee: Array.isArray(alloc.employee_id)
+          ? { id: alloc.employee_id[0], name: alloc.employee_id[1] }
+          : null,
+        allocation_type: alloc.allocation_type,
+        accrual_plan: Array.isArray(alloc.accrual_plan_id)
+          ? { id: alloc.accrual_plan_id[0], name: alloc.accrual_plan_id[1] }
+          : null,
+        days_allocated: alloc.number_of_days,
+        validity: {
+          start: alloc.date_from || null,
+          end: alloc.date_to || "No Limit"
+        },
+        status: alloc.state
       }));
 
+      // 6. Send Response
       return res.status(200).json({
         status: "success",
-        message: "Leave allocations retrieved successfully",
-        data: enrichedAllocations
+        message: "Leave allocations fetched successfully",
+        count: cleanedAllocations.length,
+        data: cleanedAllocations
       });
 
     } catch (error) {
@@ -593,7 +594,7 @@ class LeaveController {
 
       return res.status(error.status || 500).json({
         status: "error",
-        message: error.message || "Failed to retrieve leave allocations"
+        message: error.message || "Failed to fetch leave allocations"
       });
     }
   }
