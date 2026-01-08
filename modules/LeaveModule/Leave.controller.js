@@ -368,27 +368,25 @@ class LeaveController {
 
       const {
         holiday_status_id,
-        // leave_type_id,
         employee_id,
         allocation_type,
         date_from,
         date_to,
         number_of_days,
-        description
+        description,
+        accrual_plan_id // <-- Added for accrual allocation
       } = req.body;
 
       // 1. Fetch Context & Debug Logs
       console.log("Fetching client context from request...");
       const context = await getClientFromRequest(req);
 
-      // LOG THE RAW CONTEXT to check for undefined user_id issues
       console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
 
       if (!context) {
         throw new Error("Client context is null or undefined");
       }
 
-      // 2. Destructure with client_id
       const { user_id, client_id } = context;
       console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
 
@@ -399,7 +397,7 @@ class LeaveController {
         console.warn("Validation Failed: Missing required fields");
         return res.status(400).json({
           status: "error",
-          message: "Required missing fields: holiday_status_id,employee_id,allocation_type,date_from"
+          message: "Required missing fields: holiday_status_id, employee_id, allocation_type, date_from"
         });
       }
 
@@ -411,11 +409,21 @@ class LeaveController {
         });
       }
 
+      // For regular allocation, number_of_days is required
       if (allocation_type === "regular" && (!number_of_days || number_of_days <= 0)) {
         console.warn("Validation Failed: Invalid number_of_days for regular allocation");
         return res.status(400).json({
           status: "error",
-          message: "Allocation days are required."
+          message: "Allocation days are required for regular allocation."
+        });
+      }
+
+      // For accrual allocation, accrual_plan_id is required
+      if (allocation_type === "accrual" && !accrual_plan_id) {
+        console.warn("Validation Failed: accrual_plan_id is required for accrual allocation");
+        return res.status(400).json({
+          status: "error",
+          message: "Accrual Plan is required for accrual allocation."
         });
       }
 
@@ -424,13 +432,12 @@ class LeaveController {
       // Fetch Leave Type Name
       console.log(`Fetching Leave Type Name for ID: ${holiday_status_id} with Client ID: ${client_id}...`);
 
-      // 3. Pass client_id to searchRead
       const leaveTypeInfo = await odooService.searchRead(
         "hr.leave.type",
         [["id", "=", parseInt(holiday_status_id)]],
         ["name"],
         1,
-        client_id // Passed client_id
+        client_id
       );
 
       console.log("Leave Type Info Retrieved:", JSON.stringify(leaveTypeInfo, null, 2));
@@ -445,20 +452,20 @@ class LeaveController {
         allocation_type: allocation_type === "accrual" ? "accrual" : allocation_type,
         date_from: date_from,
         date_to: date_to || null,
-        number_of_days: parseFloat(number_of_days),
+        number_of_days: allocation_type === "regular" ? parseFloat(number_of_days) : 0, // 0 for accrual
         name: description || null,
         state: "confirm",
-        create_uid: user_id
+        create_uid: user_id,
+        accrual_plan_id: allocation_type === "accrual" ? parseInt(accrual_plan_id) : null // <-- Add accrual plan
       };
 
       console.log("Constructed Odoo Payload:", JSON.stringify(vals, null, 2));
       console.log(`Attempting to create record in 'hr.leave.allocation' for Client ID: ${client_id}...`);
 
-      // 4. Create Record passing client_id
       const allocationId = await odooService.create(
         "hr.leave.allocation",
         vals,
-        client_id // Passed client_id
+        client_id
       );
 
       console.log(`Odoo Create Success! New Allocation ID: ${allocationId}`);
@@ -472,7 +479,8 @@ class LeaveController {
           validity_period: {
             from: date_from,
             to: date_to
-          }
+          },
+          accrual_plan_id: allocation_type === "accrual" ? accrual_plan_id : null
         }
       });
 
@@ -494,88 +502,88 @@ class LeaveController {
       console.log("API Called: getLeaveAllocation");
       console.log("Query Params:", JSON.stringify(req.query, null, 2));
 
-      // 1. Fetch Context & Debug Logs
+      // Extract query parameters
+      const { employee_id, holiday_status_id, allocation_type, limit = 50, offset = 0 } = req.query;
+
       console.log("Fetching client context from request...");
       const context = await getClientFromRequest(req);
-
-      // LOG THE RAW CONTEXT
       console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
 
       if (!context) {
         throw new Error("Client context is null or undefined");
       }
 
-      // 2. Destructure with client_id
       const { user_id, client_id } = context;
       console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
 
-      // 3. Extract Filters from Query
-      const {
-        employee_id,
-        holiday_status_id,
-        state,
-        limit = 10,
-        offset = 0
-      } = req.query;
-
-      // 4. Construct Odoo Domain (Search Filters)
+      // Build search domain
       const domain = [];
 
       if (employee_id) {
         domain.push(["employee_id", "=", parseInt(employee_id)]);
       }
-
       if (holiday_status_id) {
         domain.push(["holiday_status_id", "=", parseInt(holiday_status_id)]);
       }
-
-      if (state) {
-        domain.push(["state", "=", state]);
+      if (allocation_type) {
+        if (!["regular", "accrual"].includes(allocation_type)) {
+          console.warn(`Validation Failed: Invalid allocation_type '${allocation_type}'`);
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid allocation type"
+          });
+        }
+        domain.push(["allocation_type", "=", allocation_type]);
       }
 
-      console.log("Constructed Odoo Domain:", JSON.stringify(domain, null, 2));
+      console.log("Search Domain Constructed:", JSON.stringify(domain, null, 2));
 
-      // 5. Define Fields to Retrieve
+      // Fields to fetch
       const fields = [
         "id",
-        "name",
         "holiday_status_id",
         "employee_id",
         "allocation_type",
-        "number_of_days",
         "date_from",
         "date_to",
-        "state"
+        "number_of_days",
+        "name",
+        "state",
+        "accrual_plan_id"
       ];
 
-      console.log(`Fetching allocations from 'hr.leave.allocation' for Client ID: ${client_id}...`);
-
-      // 6. Call Odoo Service with client_id
+      console.log(`Fetching leave allocations from 'hr.leave.allocation'...`);
       const allocations = await odooService.searchRead(
         "hr.leave.allocation",
         domain,
         fields,
         parseInt(limit),
-        parseInt(offset),
-        null,
-        client_id
+        client_id,
+        parseInt(offset)
       );
 
-      // ✅ ADDED: CLEAR COUNT LOG PER CLIENT
-      console.log(
-        `✅ Leave Allocation Count for Client ID ${client_id}: ${allocations.length}`
-      );
+      console.log(`Retrieved ${allocations.length} leave allocations.`);
 
-      console.log(`Odoo Search Success! Retrieved ${allocations.length} records.`);
+      // Optional: Resolve leave type names and employee names
+      const enrichedAllocations = allocations.map(item => ({
+        allocation_id: item.id,
+        leave_type_id: item.holiday_status_id[0],
+        leave_type_name: item.holiday_status_id[1],
+        employee_id: item.employee_id[0],
+        employee_name: item.employee_id[1],
+        allocation_type: item.allocation_type,
+        date_from: item.date_from,
+        date_to: item.date_to,
+        number_of_days: item.number_of_days,
+        description: item.name,
+        state: item.state,
+        accrual_plan_id: item.accrual_plan_id ? item.accrual_plan_id[0] : null
+      }));
 
-      // 7. Send Response
       return res.status(200).json({
         status: "success",
         message: "Leave allocations retrieved successfully",
-        data: {
-          count: allocations.length,
-          allocations: allocations
-        }
+        data: enrichedAllocations
       });
 
     } catch (error) {
@@ -585,10 +593,11 @@ class LeaveController {
 
       return res.status(error.status || 500).json({
         status: "error",
-        message: error.message || "Failed to fetch leave allocations"
+        message: error.message || "Failed to retrieve leave allocations"
       });
     }
   }
+
 
   async updateLeaveAllocation(req, res) {
     try {

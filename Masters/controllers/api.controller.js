@@ -6225,18 +6225,15 @@ class ApiController {
         currentUser.id
       );
 
-      // --- LOGIC TO DELETE 'REASON' KEY UNLESS STATE IS REJECT ---
       const processedRequests = requests.map((item) => {
-        const newItem = { ...item }; // Copy the object
+        const newItem = { ...item }; 
 
         if (newItem.state !== "reject") {
-          delete newItem.reason; // Remove the reason key entirely
+          delete newItem.reason; 
         }
 
         return newItem;
       });
-      // ---------------------------------------------------------
-
       console.log(
         `🎉 Found ${requests.length} requests. Returning filtered keys.`
       );
@@ -6754,8 +6751,6 @@ class ApiController {
           .status(400)
           .json({ status: "error", message: "Already approved" });
       }
-
-      // Logic for Leave Request
       if (approvalRecord.hr_leave_id) {
         const leaveId = approvalRecord.hr_leave_id[0];
         try {
@@ -6775,13 +6770,11 @@ class ApiController {
           message: `Leave Request approved successfully by ${adminName}`,
           data: {
             approval_id: approvalId,
-            approved_by: adminName, // Added this
+            approved_by: adminName,
             type: "Leave Request",
           },
         });
       }
-
-      // Logic for Attendance / General
       await odooService.callMethod("approval.request", "approve_request", [
         parseInt(approvalId),
       ]);
@@ -6791,7 +6784,7 @@ class ApiController {
         message: `Approved successfully by ${adminName}`,
         data: {
           approval_id: approvalId,
-          approved_by: adminName, // Added this
+          approved_by: adminName,
           type: approvalRecord.attendance_regulzie_id
             ? "Attendance Regularization"
             : "General Request",
