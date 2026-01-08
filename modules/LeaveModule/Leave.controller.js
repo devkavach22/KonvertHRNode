@@ -513,7 +513,7 @@ class LeaveController {
         throw new Error("Client context is null or undefined");
       }
 
-      const { user_id, client_id } = context;
+      // const { user_id, client_id } = context;
       console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
 
       // Build search domain
