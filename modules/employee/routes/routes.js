@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   createEmployee,
+  getEmployeeById,
   getEmployees,
   updateEmployee,
   deleteEmployee,
@@ -87,7 +88,7 @@ router.get("/employees", authenticate, getEmployees);
 router.delete('/:id', deleteEmployee);
 router.get("/employee-dashboard",authenticate,getEmployeeDashboard);
 router.get("/employees-basic-info",authenticate,getEmployeesBasicInfo);
-
+router.get("/singleEmployee/:id", authenticate, getEmployeeById);
 router.post("/create/expense",authenticate, upload.single("attachment"),createExpense);
 router.get("/expense",authenticate,getExpense);
 router.put("/update-expense/:id",authenticate,updateExpense);
