@@ -9,7 +9,6 @@ const {
   readBusinessLocationService,
   updateBusinessLocationService,
   deleteBusinessLocationService,
-  createAttendancePolicyService,
   readAttendancePolicyService,
   updateAttendancePolicyService,
   deleteAttendancePolicyService,
@@ -508,35 +507,6 @@ const validateAttendancePolicyData = (data, isUpdate = false) => {
 
   return null;
 };
-
-const createAttendancePolicy = async (req, res) => {
-  try {
-    const data = { ...req.body };
-
-    const validationError = validateAttendancePolicyData(data, false);
-    if (validationError) {
-      return res.status(validationError.status).json({
-        status: "error",
-        message: validationError.message,
-      });
-    }
-
-    const policyId = await createAttendancePolicyService(data);
-
-    return res.status(201).json({
-      status: "success",
-      message: "Attendance Policy created successfully",
-      id: policyId,
-    });
-  } catch (error) {
-    console.error("Error creating attendance policy:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Failed to create attendance policy",
-      error: error.message,
-    });
-  }
-};
 const getAllAttendancePolicies = async (req, res) => {
   try {
     const { client_id } = await getClientFromRequest(req);
@@ -580,7 +550,82 @@ const getAllAttendancePolicies = async (req, res) => {
     });
   }
 };
+const createAttendancePolicy = async (req, res) => {
+  try {
+    console.log("API Called: createAttendancePolicy");
 
+    const { client_id, currentUser } = await getClientFromRequest(req);
+    const data = req.body;
+
+    // Created By ID (Same as Employee logic)
+    const userIdFromParams = req.query.user_id ? parseInt(req.query.user_id) : null;
+    const createdBy = userIdFromParams || (currentUser ? currentUser.id : (client_id ? parseInt(client_id) : undefined));
+
+    if (!data.name) {
+      return res.status(400).json({
+        status: "error",
+        message: "Attendance Policy name is required",
+      });
+    }
+
+    // 1. Check karein ki kya ye policy pehle se exist karti hai
+    const existing = await odooService.searchRead(
+      "attendance.policy",
+      [
+        ["name", "=", data.name],
+        ["client_id", "=", client_id],
+      ],
+      ["id"],
+      1
+    );
+
+    const finalType = data.type || "regular";
+    const vals = {
+      name: data.name,
+      type: finalType,
+      early_type: finalType,
+      day_after: data.day_after || 0,
+      grace_minutes: data.grace_minutes || 0,
+      no_pay_minutes: data.no_pay_minutes || 0,
+      half_day_minutes: data.half_day_minutes || 0,
+      early_grace_minutes: data.early_grace_minutes || 0,
+      late_beyond_days: data.late_beyond_days || 0,
+      late_beyond_time: data.late_beyond_time || 0,
+      absent_if: data.absent_if || false,
+      client_id: client_id,
+    };
+
+    let policyId;
+
+    if (existing.length > 0) {
+      // 2. Agar policy exist karti hai toh "WRITE" karein
+      policyId = existing[0].id;
+      console.log(`Policy exists (ID: ${policyId}), calling WRITE...`);
+      
+      await odooService.write("attendance.policy", [policyId], vals, createdBy);
+    } else {
+      // 3. Agar permission issue "create" mein hai, toh admin UID se create karein
+      // OdooService.create mein uid null chhodne par wo default admin uid use karega
+      console.log("Creating new policy using default Admin credentials to avoid Access Denied...");
+      policyId = await odooService.create("attendance.policy", vals); 
+    }
+
+    return res.status(201).json({
+      status: "success",
+      message: existing.length > 0 ? "Attendance Policy updated successfully" : "Attendance Policy created successfully",
+      id: policyId,
+      created_by: createdBy,
+      created_date: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error("Error in Attendance Policy operation:", error);
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Operation failed",
+    });
+  }
+};
 const getAttendancePolicyById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1409,28 +1454,85 @@ const getEmployees = async (req, res) => {
           "hr.employee",
           [["id", "=", emp.id]],
           [
-            "id", "name", "father_name", "gender", "birthday", "blood_group",
-            "private_email", "present_address", "permanent_address",
-            "emergency_contact_name", "emergency_contact_relation",
-            "emergency_contact_mobile", "emergency_contact_address",
-            "mobile_phone", "pin_code", "work_phone", "marital", "spouse_name",
-            "attendance_policy_id", "employee_category", "shift_roster_id",
-            "resource_calendar_id", "district_id", "state_id", "bussiness_type_id",
-            "business_location_id", "job_id", "department_id", "work_location_id",
-            "country_id", "is_geo_tracking", "aadhaar_number", "pan_number",
-            "voter_id", "passport_id", "esi_number", "category",
-            "is_uan_number_applicable", "uan_number", "cd_employee_num",
-            "name_of_post_graduation", "name_of_any_other_education",
-            "total_experiance", "religion", "date_of_marriage", "probation_period",
-            "confirmation_date", "hold_remarks", "is_lapse_allocation",
-            "group_company_joining_date", "week_off", "grade_band", "status",
-            "employee_password", "hold_status", "bank_account_id",
-            "attendance_capture_mode", "reporting_manager_id", "head_of_department_id",
-            "barcode", "pin", "type_of_sepration", "resignation_date",
-            "notice_period_days", "joining_date", "employment_type", "user_id",
-            "driving_license", "upload_passbook", "image_1920", "name_of_site",
-            "longitude", "device_id", "device_unique_id", "latitude", "device_name",
-            "system_version", "ip_address", "device_platform",
+            "id",
+            "name",
+            "father_name",
+            "gender",
+            "birthday",
+            "blood_group",
+            "private_email",
+            "present_address",
+            "permanent_address",
+            "emergency_contact_name",
+            "emergency_contact_relation",
+            "emergency_contact_mobile",
+            "emergency_contact_address",
+            "mobile_phone",
+            "pin_code",
+            "work_phone",
+            "marital",
+            "spouse_name",
+            "attendance_policy_id",
+            "employee_category",
+            "shift_roster_id",
+            "resource_calendar_id",
+            "district_id",
+            "state_id",
+            "bussiness_type_id",
+            "business_location_id",
+            "job_id",
+            "department_id",
+            "work_location_id",
+            "country_id",
+            "is_geo_tracking",
+            "aadhaar_number",
+            "pan_number",
+            "voter_id",
+            "passport_id",
+            "esi_number",
+            "category",
+            "is_uan_number_applicable",
+            "uan_number",
+            "cd_employee_num",
+            "name_of_post_graduation",
+            "name_of_any_other_education",
+            "total_experiance",
+            "religion",
+            "date_of_marriage",
+            "probation_period",
+            "confirmation_date",
+            "hold_remarks",
+            "is_lapse_allocation",
+            "group_company_joining_date",
+            "week_off",
+            "grade_band",
+            "status",
+            "employee_password",
+            "hold_status",
+            "bank_account_id",
+            "attendance_capture_mode",
+            "reporting_manager_id",
+            "head_of_department_id",
+            "barcode",
+            "pin",
+            "type_of_sepration",
+            "resignation_date",
+            "notice_period_days",
+            "joining_date",
+            "employment_type",
+            "user_id",
+            "driving_license",
+            "upload_passbook",
+            "image_1920",
+            "name_of_site",
+            "longitude",
+            "device_id",
+            "device_unique_id",
+            "latitude",
+            "device_name",
+            "system_version",
+            "ip_address",
+            "device_platform",
           ]
         );
 
@@ -1455,14 +1557,15 @@ const getEmployees = async (req, res) => {
             // Yahan bhi check lagaya hai taaki false na aaye
             employee.group_id = approvalDetails[0].group_id || "";
             employee.approval_user_id = approvalDetails[0].user_id || "";
-            employee.approval_sequance = approvalDetails[0].approval_sequance || "";
+            employee.approval_sequance =
+              approvalDetails[0].approval_sequance || "";
           } else {
             // Default empty fields agar approval data nahi hai
             employee.group_id = "";
             employee.approval_user_id = "";
             employee.approval_sequance = "";
           }
-          
+
           employees.push(employee);
         }
       } catch (empError) {
@@ -1495,32 +1598,88 @@ const getEmployeeById = async (req, res) => {
       "hr.employee",
       [
         ["id", "=", parseInt(id)],
-        ["address_id", "=", client_id]
+        ["address_id", "=", client_id],
       ],
       [
-        "id", "name", "father_name", "gender", "birthday", "blood_group",
-        "private_email", "present_address", "permanent_address",
-        "emergency_contact_name", "emergency_contact_relation",
-        "emergency_contact_mobile", "emergency_contact_address",
-        "mobile_phone", "pin_code", "work_phone", "marital", "spouse_name",
-        "attendance_policy_id", "employee_category", "shift_roster_id",
-        "resource_calendar_id", "district_id", "state_id", "bussiness_type_id",
-        "business_location_id", "job_id", "department_id", "work_location_id",
-        "country_id", "is_geo_tracking", "aadhaar_number", "pan_number",
-        "voter_id", "passport_id", "esi_number", "category",
-        "is_uan_number_applicable", "uan_number", "cd_employee_num",
-        "name_of_post_graduation", "name_of_any_other_education",
-        "total_experiance", "religion", "date_of_marriage", "probation_period",
-        "confirmation_date", "hold_remarks", "is_lapse_allocation",
-        "group_company_joining_date", "week_off", "grade_band", "status",
-        "employee_password", "hold_status", "bank_account_id",
-        "attendance_capture_mode", "reporting_manager_id",
-        "head_of_department_id", "barcode", "pin", "type_of_sepration",
-        "resignation_date", "notice_period_days", "joining_date",
-        "employment_type", "user_id", "driving_license", "upload_passbook",
-        "image_1920", "name_of_site", "longitude", "device_id",
-        "device_unique_id", "latitude", "device_name", "system_version",
-        "ip_address", "device_platform"
+        "id",
+        "name",
+        "father_name",
+        "gender",
+        "birthday",
+        "blood_group",
+        "private_email",
+        "present_address",
+        "permanent_address",
+        "emergency_contact_name",
+        "emergency_contact_relation",
+        "emergency_contact_mobile",
+        "emergency_contact_address",
+        "mobile_phone",
+        "pin_code",
+        "work_phone",
+        "marital",
+        "spouse_name",
+        "attendance_policy_id",
+        "employee_category",
+        "shift_roster_id",
+        "resource_calendar_id",
+        "district_id",
+        "state_id",
+        "bussiness_type_id",
+        "business_location_id",
+        "job_id",
+        "department_id",
+        "work_location_id",
+        "country_id",
+        "is_geo_tracking",
+        "aadhaar_number",
+        "pan_number",
+        "voter_id",
+        "passport_id",
+        "esi_number",
+        "category",
+        "is_uan_number_applicable",
+        "uan_number",
+        "cd_employee_num",
+        "name_of_post_graduation",
+        "name_of_any_other_education",
+        "total_experiance",
+        "religion",
+        "date_of_marriage",
+        "probation_period",
+        "confirmation_date",
+        "hold_remarks",
+        "is_lapse_allocation",
+        "group_company_joining_date",
+        "week_off",
+        "grade_band",
+        "status",
+        "employee_password",
+        "hold_status",
+        "bank_account_id",
+        "attendance_capture_mode",
+        "reporting_manager_id",
+        "head_of_department_id",
+        "barcode",
+        "pin",
+        "type_of_sepration",
+        "resignation_date",
+        "notice_period_days",
+        "joining_date",
+        "employment_type",
+        "user_id",
+        "driving_license",
+        "upload_passbook",
+        "image_1920",
+        "name_of_site",
+        "longitude",
+        "device_id",
+        "device_unique_id",
+        "latitude",
+        "device_name",
+        "system_version",
+        "ip_address",
+        "device_platform",
       ]
     );
 
@@ -1563,7 +1722,6 @@ const getEmployeeById = async (req, res) => {
       status: "success",
       data: employee,
     });
-
   } catch (error) {
     console.error("Error fetching employee by ID:", error);
     return res.status(error.status || 500).json({
@@ -1980,7 +2138,7 @@ const getEmployeeDashboard = async (req, res) => {
       date_to,
       limit = 10,
       offset = 0,
-      use_mock = false
+      use_mock = false,
     } = req.query;
 
     /* ───────── MOCK RESPONSE ───────── */
@@ -1991,10 +2149,10 @@ const getEmployeeDashboard = async (req, res) => {
           { leave_type: "Annual Leave", total: 12, used: 5, remaining: 7 },
           { leave_type: "Medical Leave", total: 10, used: 4, remaining: 6 },
           { leave_type: "Casual Leave", total: 6, used: 1, remaining: 5 },
-          { leave_type: "Other Leave", total: 4, used: 2, remaining: 2 }
+          { leave_type: "Other Leave", total: 4, used: 2, remaining: 2 },
         ],
         tableData: [],
-        meta: { total: 0, limit: Number(limit), offset: Number(offset) }
+        meta: { total: 0, limit: Number(limit), offset: Number(offset) },
       });
     }
 
@@ -2002,7 +2160,7 @@ const getEmployeeDashboard = async (req, res) => {
     if (!user_id) {
       return res.status(400).json({
         success: false,
-        errorMessage: "user_id is required"
+        errorMessage: "user_id is required",
       });
     }
 
@@ -2039,7 +2197,7 @@ const getEmployeeDashboard = async (req, res) => {
       ["id", "name"]
     );
 
-    const employeeIds = employees.map(e => e.id);
+    const employeeIds = employees.map((e) => e.id);
 
     console.log("Resolved Employee IDs:", employeeIds);
 
@@ -2055,7 +2213,7 @@ const getEmployeeDashboard = async (req, res) => {
       "hr.leave.allocation",
       [
         ["employee_id", "in", employeeIds],
-        ["state", "=", "validate"]
+        ["state", "=", "validate"],
       ],
       ["holiday_status_id", "number_of_days"]
     );
@@ -2064,7 +2222,7 @@ const getEmployeeDashboard = async (req, res) => {
       "hr.leave",
       [
         ["employee_id", "in", employeeIds],
-        ["state", "=", "validate"]
+        ["state", "=", "validate"],
       ],
       ["holiday_status_id", "number_of_days"]
     );
@@ -2073,11 +2231,11 @@ const getEmployeeDashboard = async (req, res) => {
       annual: { leave_type: "Annual Leave", total: 0, used: 0, remaining: 0 },
       medical: { leave_type: "Medical Leave", total: 0, used: 0, remaining: 0 },
       casual: { leave_type: "Casual Leave", total: 0, used: 0, remaining: 0 },
-      other: { leave_type: "Other Leave", total: 0, used: 0, remaining: 0 }
+      other: { leave_type: "Other Leave", total: 0, used: 0, remaining: 0 },
     };
 
     const leaveTypeCategoryMap = {};
-    leaveTypes.forEach(t => {
+    leaveTypes.forEach((t) => {
       const name = t.name.toLowerCase();
       if (name.includes("annual")) leaveTypeCategoryMap[t.id] = "annual";
       else if (name.includes("medical")) leaveTypeCategoryMap[t.id] = "medical";
@@ -2085,17 +2243,19 @@ const getEmployeeDashboard = async (req, res) => {
       else leaveTypeCategoryMap[t.id] = "other";
     });
 
-    allocations.forEach(a => {
-      const category = leaveTypeCategoryMap[a.holiday_status_id?.[0]] || "other";
+    allocations.forEach((a) => {
+      const category =
+        leaveTypeCategoryMap[a.holiday_status_id?.[0]] || "other";
       cards[category].total += a.number_of_days;
     });
 
-    approvedLeaves.forEach(l => {
-      const category = leaveTypeCategoryMap[l.holiday_status_id?.[0]] || "other";
+    approvedLeaves.forEach((l) => {
+      const category =
+        leaveTypeCategoryMap[l.holiday_status_id?.[0]] || "other";
       cards[category].used += l.number_of_days;
     });
 
-    Object.values(cards).forEach(c => {
+    Object.values(cards).forEach((c) => {
       c.remaining = c.total - c.used;
     });
 
@@ -2106,12 +2266,9 @@ const getEmployeeDashboard = async (req, res) => {
 
     if (leave_type_id)
       domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
-    if (state)
-      domain.push(["state", "=", state]);
-    if (date_from)
-      domain.push(["request_date_from", ">=", date_from]);
-    if (date_to)
-      domain.push(["request_date_to", "<=", date_to]);
+    if (state) domain.push(["state", "=", state]);
+    if (date_from) domain.push(["request_date_from", ">=", date_from]);
+    if (date_to) domain.push(["request_date_to", "<=", date_to]);
 
     const totalCount = await odooService.searchCount("hr.leave", domain);
 
@@ -2125,14 +2282,14 @@ const getEmployeeDashboard = async (req, res) => {
         "request_date_from",
         "request_date_to",
         "number_of_days",
-        "state"
+        "state",
       ],
       Number(offset),
       Number(limit),
       "request_date_from desc"
     );
 
-    const tableData = leaves.map(l => ({
+    const tableData = leaves.map((l) => ({
       id: l.id,
       employee_id: l.employee_id?.[0],
       employee_name: l.employee_id?.[1],
@@ -2141,7 +2298,7 @@ const getEmployeeDashboard = async (req, res) => {
       from: l.request_date_from,
       to: l.request_date_to,
       no_of_days: l.number_of_days,
-      status: l.state
+      status: l.state,
     }));
 
     console.log("Table rows:", tableData.length);
@@ -2154,15 +2311,14 @@ const getEmployeeDashboard = async (req, res) => {
       meta: {
         total: totalCount,
         limit: Number(limit),
-        offset: Number(offset)
-      }
+        offset: Number(offset),
+      },
     });
-
   } catch (error) {
     console.error("❌ Employee Dashboard Error:", error);
     return res.status(500).json({
       success: false,
-      errorMessage: error.message
+      errorMessage: error.message,
     });
   }
 };
@@ -2190,7 +2346,9 @@ const createExpense = async (req, res) => {
     const { client_id } = await getClientFromRequest(req);
 
     if (!client_id) {
-      return res.status(400).json({ status: "error", message: "client_id not found" });
+      return res
+        .status(400)
+        .json({ status: "error", message: "client_id not found" });
     }
 
     // ───────── 2. NORMALIZE IDS ─────────
@@ -2198,8 +2356,17 @@ const createExpense = async (req, res) => {
     account_id = typeof account_id === "object" ? account_id?.id : account_id;
 
     // ───────── 3. VALIDATIONS ─────────
-    if (!user_id || !name || !product_id || !account_id || !total_amount_currency || !payment_mode) {
-      return res.status(400).json({ status: "error", message: "Missing required fields" });
+    if (
+      !user_id ||
+      !name ||
+      !product_id ||
+      !account_id ||
+      !total_amount_currency ||
+      !payment_mode
+    ) {
+      return res
+        .status(400)
+        .json({ status: "error", message: "Missing required fields" });
     }
 
     // ───────── 4. USER FETCH ─────────
@@ -2212,7 +2379,9 @@ const createExpense = async (req, res) => {
     );
 
     if (!user.length) {
-      return res.status(400).json({ status: "error", message: "Invalid user_id" });
+      return res
+        .status(400)
+        .json({ status: "error", message: "Invalid user_id" });
     }
 
     const partnerId = user[0].partner_id?.[0];
@@ -2237,7 +2406,9 @@ const createExpense = async (req, res) => {
     }
 
     if (!employee.length) {
-      return res.status(400).json({ status: "error", message: "Employee not found" });
+      return res
+        .status(400)
+        .json({ status: "error", message: "Employee not found" });
     }
 
     const employee_id = employee[0].id; // This is 17565
@@ -2271,12 +2442,12 @@ const createExpense = async (req, res) => {
           type: "binary",
           res_model: "hr.expense",
           res_id: Number(expenseId), // Ensure this is a number
-          company_id: companyId,     // Ensure it belongs to the same company
+          company_id: companyId, // Ensure it belongs to the same company
         },
         client_id
       );
 
-      // FIX 3: Removed the 'write' to attachment_ids. 
+      // FIX 3: Removed the 'write' to attachment_ids.
       // In Odoo, setting res_model/res_id on the attachment is enough to link it.
       // Writing to hr.expense sometimes triggers a re-check of the user context, causing your error.
     }
@@ -2286,7 +2457,6 @@ const createExpense = async (req, res) => {
       message: "Expense created successfully",
       expense_id: expenseId,
     });
-
   } catch (error) {
     console.error("❌ CREATE EXPENSE ERROR:", error);
     return res.status(500).json({
@@ -2300,116 +2470,79 @@ const getExpense = async (req, res) => {
   try {
     console.log("══════════════════════════════════════");
     console.log("🚀 API CALLED → FETCH EXPENSES");
-    console.log("📥 Request Query:", req.query);
-    console.log("📥 Request Body:", req.body);
 
-    // ───────── 1. GET USER ID ─────────
-    const user_id = req.query.user_id || req.body.user_id;
-    console.log("👤 Resolved user_id:", user_id);
-
-    // ───────── 2. RESOLVE CLIENT ─────────
-    console.log("🔍 Resolving client from request...");
+    // 1. Resolve User and Client
+    const user_id = req.query.user_id || req.body?.user_id;
     const { client_id } = await getClientFromRequest(req);
-    console.log("🏢 Resolved client_id:", client_id);
 
-    if (!client_id) {
-      console.error("❌ client_id not found");
+    if (!client_id || !user_id) {
       return res.status(400).json({
         status: "error",
-        message: "client_id not found"
+        message: "client_id or user_id not found"
       });
     }
 
-    if (!user_id) {
-      console.error("❌ Missing user_id");
-      return res.status(400).json({
-        status: "error",
-        message: "Missing user_id"
-      });
-    }
+    console.log(`👤 User: ${user_id} | 🏢 Client: ${client_id}`);
 
-    // ───────── 3. FETCH USER (user_id → partner_id) ─────────
-    console.log("🔄 Fetching user from res.users...");
-    const user = await odooService.searchRead(
+    // 2. Fetch User to get partner_id (Odoo models use partner_id for linking)
+    const userData = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
-      ["partner_id"],
-      1,
-      client_id
+      ["partner_id"]
     );
 
-    console.log("📄 User result:", user);
+    let partnerId = (userData.length && userData[0].partner_id) ? userData[0].partner_id[0] : null;
 
-    if (!user.length || !user[0].partner_id) {
-      console.error("❌ Invalid user_id or partner_id missing");
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid user_id or Partner not found"
-      });
-    }
-
-    const partnerId = user[0].partner_id[0];
-    console.log("🔗 Resolved partner_id:", partnerId);
-
-    // ───────── 4. FETCH EMPLOYEE ─────────
-    let employee = [];
-
-    console.log("🔄 Attempt 1: Fetch employee using user_id...");
-    employee = await odooService.searchRead(
+    // 3. Fetch Employee - Domain adjustment
+    // Odoo mein search domain array of arrays hota hai. 
+    // Hum user_id se search kar rahe hain, client_id (address_id) ka filter zaruri hai 
+    // taaki sirf wahi employee dikhe jo us client ka ho.
+    let employeeData = await odooService.searchRead(
       "hr.employee",
-      [["user_id", "=", Number(user_id)]],
-      ["id", "name", "company_id"],
-      1,
-      client_id
+      [
+        ["user_id", "=", Number(user_id)],
+        ["address_id", "=", Number(client_id)]
+      ],
+      ["id", "name"]
     );
 
-    if (!employee.length) {
-      console.log("⚠️ No employee via user_id. Trying partner_id...");
-      employee = await odooService.searchRead(
+    // Alternative lookup agar user_id link na ho (Work Address context)
+    if (!employeeData.length && partnerId) {
+      console.log("⚠️ No employee via user_id. Trying partner_id/address lookup...");
+      employeeData = await odooService.searchRead(
         "hr.employee",
-        [["address_id", "=", partnerId]],
-        ["id", "name", "company_id"],
-        1,
-        client_id
+        [
+          ["address_id", "=", Number(client_id)],
+          "|", 
+          ["work_contact_id", "=", partnerId], 
+          ["name", "=", userData[0]?.name] 
+        ],
+        ["id", "name"]
       );
     }
 
-    console.log("📄 Employee result:", employee);
-
-    if (!employee.length) {
-      console.error("❌ Employee not found for user");
-      return res.status(400).json({
+    if (!employeeData.length) {
+      console.error("❌ Employee not found for user 3145 in client 17565");
+      return res.status(404).json({
         status: "error",
-        message: "Employee not found for this user"
+        message: "Employee not found for this user in this company context"
       });
     }
 
-    const employee_id = employee[0].id;
-    console.log("👨‍💼 Final resolved employee_id:", employee_id);
+    const employee_id = employeeData[0].id;
+    console.log("👨‍💼 Found Employee ID:", employee_id);
 
-    // ───────── 5. FETCH EXPENSES ─────────
-    console.log("🔄 Fetching expenses for employee_id:", employee_id);
+    // 4. Fetch Expenses
     const expenses = await odooService.searchRead(
       "hr.expense",
       [["employee_id", "=", employee_id]],
       [
-        "id",
-        "name",
-        "product_id",
-        "account_id",
-        "payment_mode",
-        "total_amount_currency",
-        "state",
-        "date",
-        "currency_id"
+        "id", "name", "product_id", "account_id", "payment_mode",
+        "total_amount", "state", "date", "currency_id"
       ],
-      0,
-      0,
-      null,
-      client_id
+      0, // offset
+      80 // limit (aap limit set kar sakte hain)
     );
-
-    console.log("📄 Expenses fetched:", expenses.length);
 
     if (!expenses || expenses.length === 0) {
       return res.status(200).json({
@@ -2419,41 +2552,37 @@ const getExpense = async (req, res) => {
       });
     }
 
-    // ───────── 6. FETCH ATTACHMENTS (BASE64 FIX) ─────────
+    // 5. Fetch Attachments
     const expenseIds = expenses.map(exp => exp.id);
-    console.log("📎 Fetching attachments for expense IDs:", expenseIds);
-
     const attachments = await odooService.searchRead(
       "ir.attachment",
       [
         ["res_model", "=", "hr.expense"],
         ["res_id", "in", expenseIds]
       ],
-      [
-        "id",
-        "name",
-        "datas", // ✅ BASE64 DATA
-        "mimetype",
-        "res_id"
-      ],
-      0,
-      0,
-      null,
-      client_id
+      ["id", "name", "datas", "mimetype", "res_id"]
     );
 
-    console.log("📎 Attachments fetched:", attachments.length);
-
-    // ───────── 7. MERGE EXPENSE + BASE64 ATTACHMENTS ─────────
+    // 6. Merge & Cleanup (Removing Odoo 'false' values)
     const finalData = expenses.map(exp => {
+      // Attachment mapping
       const expAttachments = attachments
         .filter(att => att.res_id === exp.id)
         .map(att => ({
           id: att.id,
           name: att.name,
           mimetype: att.mimetype,
-          base64: att.datas // ✅ RETURN BASE64
+          base64: att.datas || ""
         }));
+
+      // Cleanup Odoo 'false' booleans to ""
+      Object.keys(exp).forEach(key => {
+        if (exp[key] === false) exp[key] = "";
+        // Handling Many2one arrays (e.g. [id, name] -> name)
+        if (Array.isArray(exp[key]) && exp[key].length === 2) {
+            // Agar aapko sirf name chahiye: exp[key] = exp[key][1];
+        }
+      });
 
       return {
         ...exp,
@@ -2461,12 +2590,10 @@ const getExpense = async (req, res) => {
       };
     });
 
-    console.log("✅ Expenses fetched successfully");
-    console.log("══════════════════════════════════════");
-
+    console.log(`✅ Successfully fetched ${finalData.length} expenses`);
     return res.status(200).json({
       status: "success",
-      message: "Expenses fetched successfully",
+      count: finalData.length,
       data: finalData
     });
 
@@ -2474,10 +2601,11 @@ const getExpense = async (req, res) => {
     console.error("❌ GET EXPENSE ERROR:", error);
     return res.status(500).json({
       status: "error",
-      message: error.message || "Failed to fetch expenses"
+      message: error.message || "Internal Server Error"
     });
   }
 };
+
 
 const updateExpense = async (req, res) => {
   try {
@@ -3420,7 +3548,6 @@ const getPurchaseTaxes = async (req, res) => {
 
     console.log(`Purchase Taxes found: ${records ? records.length : 0}`);
 
-    // 5. Map Data
     const data = records.map((rec) => ({
       id: rec.id,
       name: rec.name,
