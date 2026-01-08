@@ -6194,66 +6194,66 @@ class ApiController {
   //   }
   // }
 
-  async getAllApprovalRequests(req, res) {
-    try {
-      const { client_id, currentUser } = await getClientFromRequest(req);
-      if (!currentUser.is_client_employee_admin) {
-        return res.status(403).json({
-          status: "error",
-          message: "Access Denied: You are not an admin of this client.",
-        });
-      }
+  // async getAllApprovalRequests(req, res) {
+  //   try {
+  //     const { client_id, currentUser } = await getClientFromRequest(req);
+  //     if (!currentUser.is_client_employee_admin) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "Access Denied: You are not an admin of this client.",
+  //       });
+  //     }
 
-      const domain = [["req_employee_id.address_id", "=", client_id]];
-      const fields = [
-        "name",
-        "req_employee_id",
-        "attendance_regulzie_id",
-        "hr_leave_id",
-        "description",
-        "state",
-        "reason",
-      ];
+  //     const domain = [["req_employee_id.address_id", "=", client_id]];
+  //     const fields = [
+  //       "name",
+  //       "req_employee_id",
+  //       "attendance_regulzie_id",
+  //       "hr_leave_id",
+  //       "description",
+  //       "state",
+  //       "reason",
+  //     ];
 
-      const requests = await odooService.searchRead(
-        "approval.request",
-        domain,
-        fields,
-        0,
-        100,
-        "id desc",
-        currentUser.id
-      );
+  //     const requests = await odooService.searchRead(
+  //       "approval.request",
+  //       domain,
+  //       fields,
+  //       0,
+  //       100,
+  //       "id desc",
+  //       currentUser.id
+  //     );
 
-      const processedRequests = requests.map((item) => {
-        const newItem = { ...item }; 
+  //     const processedRequests = requests.map((item) => {
+  //       const newItem = { ...item };
 
-        if (newItem.state !== "reject") {
-          delete newItem.reason; 
-        }
+  //       if (newItem.state !== "reject") {
+  //         delete newItem.reason;
+  //       }
 
-        return newItem;
-      });
-      console.log(
-        `🎉 Found ${requests.length} requests. Returning filtered keys.`
-      );
-      console.log("========================================");
+  //       return newItem;
+  //     });
+  //     console.log(
+  //       `🎉 Found ${requests.length} requests. Returning filtered keys.`
+  //     );
+  //     console.log("========================================");
 
-      return res.status(200).json({
-        status: "success",
-        total: processedRequests.length,
-        client_name: currentUser.partner_id[1],
-        data: processedRequests,
-      });
-    } catch (error) {
-      console.error("❌ API ERROR:", error.message || error);
-      const statusCode = error.status || 500;
-      return res.status(statusCode).json({
-        status: "error",
-        message: error.message || "Internal Server Error",
-      });
-    }
-  }
+  //     return res.status(200).json({
+  //       status: "success",
+  //       total: processedRequests.length,
+  //       client_name: currentUser.partner_id[1],
+  //       data: processedRequests,
+  //     });
+  //   } catch (error) {
+  //     console.error("❌ API ERROR:", error.message || error);
+  //     const statusCode = error.status || 500;
+  //     return res.status(statusCode).json({
+  //       status: "error",
+  //       message: error.message || "Internal Server Error",
+  //     });
+  //   }
+  // }
 
   async getUserContacts(req, res) {
     try {
@@ -6522,7 +6522,6 @@ class ApiController {
     }
   }
 
-  // ------------------ ✅ VERIFY OTP API ------------------
   async verifyOtp(req, res) {
     try {
       console.log("✅ Verify OTP API called");
@@ -6630,7 +6629,6 @@ class ApiController {
     }
   }
 
-  // ------------------ 🔧 FIXED: UPDATE USER CONTACT ------------------
   async updateUserContact(req, res) {
     try {
       console.log("✏️ Update User Contact API called");
@@ -6714,93 +6712,161 @@ class ApiController {
       });
     }
   }
-
-  async approveAttendanceRegularization(req, res) {
+  async getAllApprovalRequests(req, res) {
     try {
-      const { approval_request_id, user_id } = req.body;
-      const { currentUser } = await getClientFromRequest(req);
-      const adminName = currentUser.partner_id[1];
+      const { client_id, currentUser } = await getClientFromRequest(req);
 
-      if (!approval_request_id) {
-        return res
-          .status(400)
-          .json({
-            status: "error",
-            message: "approval_request_id is required",
-          });
+      // Safety Check: client_id hona chahiye comparison ke liye
+      if (!client_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "Client identification (partner_id) missing."
+        });
       }
 
+      let domain = [];
+
+      // CASE 1: Agar user ADMIN hai
+      if (currentUser.is_client_employee_admin) {
+        domain = [["req_employee_id.address_id", "=", client_id]];
+        console.log("🛠️ Admin Access: Loading all requests for client_id:", client_id);
+      }
+
+      // CASE 2: Agar user EMPLOYEE/USER hai (Aapka logic yahan hai)
+      else if (currentUser.is_client_employee_user) {
+        /**
+         * Aapka Logic: Employee ke address_id ko Admin ki partner_id (client_id) se compare karna.
+         * Agar getClientFromRequest ne pehle hi address_id verify kar liya hai,
+         * toh hum domain me check karenge ki requests ussi address ki hon.
+         */
+        domain = [["req_employee_id.address_id", "=", client_id]];
+
+        // Note: Agar aap chahte hain ki Rahul Sharma sirf apni company ki requests dekhe
+        // magar sirf tab jab wo approver ho, toh ye line add karein:
+        // domain.push(["approver_ids.user_id", "=", currentUser.id]);
+
+        console.log("👤 Employee User Access: Matching address_id with admin partner_id");
+      }
+
+      else {
+        return res.status(403).json({
+          status: "error",
+          message: "Access Denied: Role not recognized."
+        });
+      }
+
+      const fields = [
+        "name",
+        "req_employee_id",
+        "attendance_regulzie_id",
+        "hr_leave_id",
+        "description",
+        "state",
+        "reason",
+      ];
+
+      // Odoo searchRead call
+      // Humne domain set kar diya hai jo address_id compare kar raha hai
+      const requests = await odooService.searchRead(
+        "approval.request",
+        domain,
+        fields,
+        0,
+        100,
+        "id desc",
+        currentUser.id
+      );
+
+      const processedRequests = requests.map((item) => {
+        const newItem = { ...item };
+        // Odoo 18 states management
+        if (newItem.state !== "refused" && newItem.state !== "reject") {
+          delete newItem.reason;
+        }
+        return newItem;
+      });
+
+      return res.status(200).json({
+        status: "success",
+        total: processedRequests.length,
+        client_name: currentUser.partner_id[1],
+        data: processedRequests,
+      });
+
+    } catch (error) {
+      console.error("❌ Node.js Error:", error.message);
+      return res.status(500).json({
+        status: "error",
+        message: error.message || "Internal Server Error"
+      });
+    }
+  }
+  async approveAttendanceRegularization(req, res) {
+    try {
+      const { approval_request_id, user_id, password } = req.body;
+
+      if (!approval_request_id || !user_id || !password) {
+        return res.status(400).json({
+          status: "error",
+          message: "approval_request_id, user_id, and password are required",
+        });
+      }
+
+      // 1. Pehle check karein ki record exist karta hai ya nahi (Admin context se check kar sakte hain)
       const approvalRecords = await odooService.searchRead(
         "approval.request",
         [["id", "=", parseInt(approval_request_id)]],
-        ["id", "state", "attendance_regulzie_id", "hr_leave_id"],
+        ["id", "state"],
         1
       );
 
       if (!approvalRecords || approvalRecords.length === 0) {
-        return res
-          .status(404)
-          .json({ status: "error", message: `No record found` });
+        return res.status(404).json({ status: "error", message: "Record not found" });
       }
 
-      const approvalRecord = approvalRecords[0];
-      const approvalId = approvalRecord.id;
-
-      if (approvalRecord.state === "approved") {
-        return res
-          .status(400)
-          .json({ status: "error", message: "Already approved" });
+      if (approvalRecords[0].state === "approved") {
+        return res.status(400).json({ status: "error", message: "Already approved" });
       }
-      if (approvalRecord.hr_leave_id) {
-        const leaveId = approvalRecord.hr_leave_id[0];
-        try {
-          await odooService.callMethod("hr.leave", "action_approve", [
-            parseInt(leaveId),
-          ]);
-        } catch (e) {
-          console.log("Leave logic handled internally");
-        }
 
-        await odooService.callMethod("approval.request", "approve_request", [
-          parseInt(approvalId),
-        ]);
+
+      try {
+        await odooService.callMethod(
+          "approval.request",
+          "approve_request",
+          [parseInt(approval_request_id)],
+          {},
+          parseInt(user_id),
+          password
+        );
 
         return res.status(200).json({
           status: "success",
-          message: `Leave Request approved successfully by ${adminName}`,
-          data: {
-            approval_id: approvalId,
-            approved_by: adminName,
-            type: "Leave Request",
-          },
+          message: `Request approved successfully by User ${user_id}`,
+          data: { approval_id: approval_request_id }
+        });
+
+      } catch (odooError) {
+        console.error("Odoo Logic Error:", odooError.message);
+        return res.status(400).json({
+          status: "error",
+          message: odooError.message || "Approval failed. Check sequence or credentials."
         });
       }
-      await odooService.callMethod("approval.request", "approve_request", [
-        parseInt(approvalId),
-      ]);
-
-      return res.status(200).json({
-        status: "success",
-        message: `Approved successfully by ${adminName}`,
-        data: {
-          approval_id: approvalId,
-          approved_by: adminName,
-          type: approvalRecord.attendance_regulzie_id
-            ? "Attendance Regularization"
-            : "General Request",
-        },
-      });
     } catch (error) {
       return res.status(500).json({ status: "error", message: error.message });
     }
   }
   async rejectAttendanceRegularization(req, res) {
     try {
-      const { approval_request_id, remarks } = req.body;
+      // 1. Password aur user_id req.body se le rahe hain
+      const { approval_request_id, remarks, user_id, password } = req.body;
       const { currentUser } = await getClientFromRequest(req);
 
       const adminName = currentUser.partner_id[1];
       const adminId = currentUser.id;
+
+      console.log("---------------- REJECT PROCESS START ----------------");
+      console.log(`[Step 1] Attempting Reject - Request ID: ${approval_request_id} | User: ${adminName}`);
 
       const fields = ["id", "name", "state", "attendance_regulzie_id", "hr_leave_id", "description"];
 
@@ -6812,17 +6878,55 @@ class ApiController {
       );
 
       if (!approvalRecords?.length) {
+        console.log("❌ Error: Record not found");
         return res.status(404).json({ status: "error", message: "Record not found" });
       }
 
       const approvalRecord = approvalRecords[0];
+      console.log(`[Step 2] Current Request State: ${approvalRecord.state}`);
 
+      // --- SEQUENCE CHECK LOGIC START ---
+      const userLogLines = await odooService.searchRead(
+        "approval.log.list",
+        [
+          ["approval_request_id", "=", parseInt(approval_request_id)],
+          ["approver_id", "=", parseInt(user_id)]
+        ],
+        ["sequence_no_of_user", "is_approved_by_user"]
+      );
+
+      if (userLogLines?.length > 0) {
+        const userLine = userLogLines[0];
+        if (userLine.sequence_no_of_user > 1) {
+          const prevSequence = userLine.sequence_no_of_user - 1;
+          const prevLines = await odooService.searchRead(
+            "approval.log.list",
+            [["approval_request_id", "=", parseInt(approval_request_id)], ["sequence_no_of_user", "=", prevSequence]],
+            ["is_approved_by_user", "approver_id"]
+          );
+
+          if (prevLines.length > 0 && !prevLines[0].is_approved_by_user) {
+            const managerName = prevLines[0].approver_id[1];
+            console.log(`⚠️ Sequence Error: Wait for ${managerName}`);
+            return res.status(400).json({
+              status: "error",
+              message: `Pending Previous Action: Please wait for ${managerName} (Level ${prevSequence}) to approve before you can take action.`
+            });
+          }
+        }
+      }
+      // --- SEQUENCE CHECK LOGIC END ---
+
+      // 2. Wizard Create (Using user_id & password)
+      console.log(`[Step 3] Creating Wizard for UID: ${user_id}`);
       const wizardId = await odooService.create(
         "request.reject.wizard",
         { remarks: remarks || `Rejected via App by ${adminName}` },
-        { uid: 2 }
+        { uid: parseInt(user_id), userPassword: password } // Identity passed here
       );
 
+      // 3. Call action_reject_request
+      console.log(`[Step 4] Triggering Wizard Method. ID: ${wizardId}`);
       await odooService.callMethod(
         "request.reject.wizard",
         "action_reject_request",
@@ -6831,33 +6935,35 @@ class ApiController {
           active_id: approvalRecord.id,
           active_model: "approval.request",
           active_ids: [approvalRecord.id],
-        }
+        },
+        parseInt(user_id),
+        password
       );
 
       let updatedRecord = null;
 
+      // 4. Update linked records
       if (approvalRecord.attendance_regulzie_id) {
         const regId = approvalRecord.attendance_regulzie_id[0];
-        await odooService.write("attendance.regular", [regId], {
-          state_select: "reject",
-        });
+        await odooService.write("attendance.regular", [regId], { state_select: "reject" }, parseInt(user_id), password);
         updatedRecord = { model: "attendance.regular", id: regId };
       } else if (approvalRecord.hr_leave_id) {
         const leaveId = approvalRecord.hr_leave_id[0];
-        await odooService.write("hr.leave", [leaveId], { state: "refuse" });
+        await odooService.write("hr.leave", [leaveId], { state: "refuse" }, parseInt(user_id), password);
         updatedRecord = { model: "hr.leave", id: leaveId };
       } else if (approvalRecord.description && approvalRecord.description.includes("Expense")) {
         updatedRecord = { model: "hr.expense.sheet", info: "Handled by Approval Wizard" };
       }
 
+      console.log("---------------- REJECT PROCESS COMPLETE ----------------");
       return res.status(200).json({
         status: "success",
-        message: `Rejected successfully by ${adminName}`,
+        message: `The request has been successfully rejected by ${adminName}.`,
         data: {
           approval_id: approvalRecord.id,
           rejected_by: adminName,
           rejected_by_id: adminId,
-          updated_record: updatedRecord
+          updated_record: updatedRecord,
         },
       });
     } catch (error) {

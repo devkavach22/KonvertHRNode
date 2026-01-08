@@ -1526,7 +1526,7 @@ const getEmployees = async (req, res) => {
 const getEmployeeById = async (req, res) => {
   try {
     const { client_id } = await getClientFromRequest(req);
-    const { id } = req.params; 
+    const { id } = req.params;
 
     console.log(`API Called: Get Employee ID ${id}`);
 
@@ -2274,7 +2274,7 @@ const createExpense = async (req, res) => {
     // ───────── 6. CREATE EXPENSE ─────────
     const vals = {
       name,
-      employee_id: Number(employee_id), 
+      employee_id: Number(employee_id),
       product_id: Number(product_id),
       account_id: Number(account_id),
       payment_mode,
@@ -2344,7 +2344,7 @@ const getExpense = async (req, res) => {
       console.error("❌ client_id not found");
       return res.status(400).json({
         status: "error",
-        message: "client_id not found",
+        message: "client_id not found"
       });
     }
 
@@ -2352,33 +2352,27 @@ const getExpense = async (req, res) => {
       console.error("❌ Missing user_id");
       return res.status(400).json({
         status: "error",
-        message: "Missing user_id",
+        message: "Missing user_id"
       });
     }
 
     // ───────── 3. FETCH USER (user_id → partner_id) ─────────
-    console.log(`🔄 Fetching user from res.users for ID: ${user_id}...`);
-
-    // Ensure parameters are sent correctly: [domain], [fields], offset, limit
+    console.log("🔄 Fetching user from res.users...");
     const user = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
       ["partner_id"],
-      0, // offset
-      1, // limit
-      null, // order
+      1,
       client_id
     );
 
-    console.log("📄 User result:", JSON.stringify(user, null, 2));
+    console.log("📄 User result:", user);
 
-    if (!user || user.length === 0 || !user[0].partner_id) {
-      console.error(
-        `❌ User Resolution Failed: User ID ${user_id} not found or has no partner_id linked.`
-      );
+    if (!user.length || !user[0].partner_id) {
+      console.error("❌ Invalid user_id or partner_id missing");
       return res.status(400).json({
         status: "error",
-        message: "Invalid user_id or Partner not found",
+        message: "Invalid user_id or Partner not found"
       });
     }
 
@@ -2393,43 +2387,35 @@ const getExpense = async (req, res) => {
       "hr.employee",
       [["user_id", "=", Number(user_id)]],
       ["id", "name", "company_id"],
-      0, // offset
-      1, // limit
-      null,
+      1,
       client_id
     );
 
     if (!employee.length) {
-      console.log(
-        "⚠️ No employee via user_id. Trying partner_id (address_id)..."
-      );
+      console.log("⚠️ No employee via user_id. Trying partner_id...");
       employee = await odooService.searchRead(
         "hr.employee",
         [["address_id", "=", partnerId]],
         ["id", "name", "company_id"],
-        0, // offset
-        1, // limit
-        null,
+        1,
         client_id
       );
     }
 
-    console.log("📄 Employee result:", JSON.stringify(employee, null, 2));
+    console.log("📄 Employee result:", employee);
 
-    if (!employee || !employee.length) {
-      console.error(
-        `❌ Employee not found for User ID: ${user_id} and Partner ID: ${partnerId}`
-      );
+    if (!employee.length) {
+      console.error("❌ Employee not found for user");
       return res.status(400).json({
         status: "error",
-        message: "Employee not found for this user",
+        message: "Employee not found for this user"
       });
     }
 
     const employee_id = employee[0].id;
     console.log("👨‍💼 Final resolved employee_id:", employee_id);
 
-    // ───────── 5. FETCH EXPENSES (EMPLOYEE-BOUND) ─────────
+    // ───────── 5. FETCH EXPENSES ─────────
     console.log("🔄 Fetching expenses for employee_id:", employee_id);
     const expenses = await odooService.searchRead(
       "hr.expense",
@@ -2443,60 +2429,63 @@ const getExpense = async (req, res) => {
         "total_amount_currency",
         "state",
         "date",
-        "currency_id",
+        "currency_id"
       ],
-      0, // offset
-      0, // limit (0 for all)
-      "date desc", // sort by newest
-      client_id
-    );
-
-    console.log("📄 Expenses fetched count:", expenses ? expenses.length : 0);
-
-    if (!expenses || expenses.length === 0) {
-      console.log("ℹ️ No expenses found for this employee");
-      return res.status(200).json({
-        status: "success",
-        message: "No expenses found",
-        data: [],
-      });
-    }
-
-    // ───────── 6. FETCH ATTACHMENTS ─────────
-    const expenseIds = expenses.map((exp) => exp.id);
-    console.log("📎 Fetching attachments for expense IDs:", expenseIds);
-
-    const attachments = await odooService.searchRead(
-      "ir.attachment",
-      [
-        ["res_model", "=", "hr.expense"],
-        ["res_id", "in", expenseIds],
-      ],
-      ["id", "name", "local_url", "res_id"],
       0,
       0,
       null,
       client_id
     );
 
-    console.log(
-      "📎 Attachments fetched count:",
-      attachments ? attachments.length : 0
+    console.log("📄 Expenses fetched:", expenses.length);
+
+    if (!expenses || expenses.length === 0) {
+      return res.status(200).json({
+        status: "success",
+        message: "No expenses found",
+        data: []
+      });
+    }
+
+    // ───────── 6. FETCH ATTACHMENTS (BASE64 FIX) ─────────
+    const expenseIds = expenses.map(exp => exp.id);
+    console.log("📎 Fetching attachments for expense IDs:", expenseIds);
+
+    const attachments = await odooService.searchRead(
+      "ir.attachment",
+      [
+        ["res_model", "=", "hr.expense"],
+        ["res_id", "in", expenseIds]
+      ],
+      [
+        "id",
+        "name",
+        "datas", // ✅ BASE64 DATA
+        "mimetype",
+        "res_id"
+      ],
+      0,
+      0,
+      null,
+      client_id
     );
 
-    // ───────── 7. MERGE EXPENSE + ATTACHMENTS ─────────
-    const finalData = expenses.map((exp) => {
-      const expAttachments = (attachments || [])
-        .filter((att) => att.res_id === exp.id)
-        .map((att) => ({
+    console.log("📎 Attachments fetched:", attachments.length);
+
+    // ───────── 7. MERGE EXPENSE + BASE64 ATTACHMENTS ─────────
+    const finalData = expenses.map(exp => {
+      const expAttachments = attachments
+        .filter(att => att.res_id === exp.id)
+        .map(att => ({
           id: att.id,
           name: att.name,
-          url: att.local_url,
+          mimetype: att.mimetype,
+          base64: att.datas // ✅ RETURN BASE64
         }));
 
       return {
         ...exp,
-        attachment_ids: expAttachments,
+        attachment_ids: expAttachments
       };
     });
 
@@ -2506,13 +2495,14 @@ const getExpense = async (req, res) => {
     return res.status(200).json({
       status: "success",
       message: "Expenses fetched successfully",
-      data: finalData,
+      data: finalData
     });
+
   } catch (error) {
     console.error("❌ GET EXPENSE ERROR:", error);
     return res.status(500).json({
       status: "error",
-      message: error.message || "Failed to fetch expenses",
+      message: error.message || "Failed to fetch expenses"
     });
   }
 };
