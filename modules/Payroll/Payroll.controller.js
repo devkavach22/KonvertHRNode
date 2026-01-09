@@ -6,7 +6,6 @@ const {
 class PayrollController {
     async createStructureType(req, res) {
         try {
-            console.log("API Called createStructureType");
             const {
                 name,
                 default_schedule_pay,
@@ -28,16 +27,19 @@ class PayrollController {
                     message: "wage_type is required",
                 });
             }
-
             if (!default_work_entry_type_id) {
                 return res.status(400).json({
                     status: "error",
                     message: "default_work_entry_type_id is required",
                 });
             }
+            const { client_id } = await getClientFromRequest(req);
             const existing = await odooService.searchRead(
                 "hr.payroll.structure.type",
-                [["name", "=", name]],
+                [
+                    ["name", "=", name],
+                    ["client_id", "=", client_id],
+                ],
                 ["id"],
                 1
             );
@@ -55,6 +57,7 @@ class PayrollController {
                 default_work_entry_type_id,
                 default_resource_calendar_id: default_resource_calendar_id || false,
                 default_struct_id: default_struct_id || false,
+                client_id,
             };
             const structTypeId = await odooService.create(
                 "hr.payroll.structure.type",
@@ -75,24 +78,24 @@ class PayrollController {
     async getStructureTypes(req, res) {
         try {
             console.log("API Called getStructureTypes");
+            const { client_id } = await getClientFromRequest(req);
             const count = await odooService.execute(
                 "hr.payroll.structure.type",
                 "search_count",
-                [[]]
+                [[["client_id", "=", client_id]]]
             );
-
             if (count === 0) {
                 return res.status(200).json({
                     status: "success",
                     count: 0,
                     data: [],
-                    message: "No structure types found"
+                    message: "No structure types found",
                 });
             }
             const ids = await odooService.execute(
                 "hr.payroll.structure.type",
                 "search",
-                [[]],
+                [[["client_id", "=", client_id]]],
                 { limit: 1000 }
             );
 
@@ -105,21 +108,18 @@ class PayrollController {
                 "default_work_entry_type_id",
                 "default_resource_calendar_id",
                 "default_struct_id",
+                "client_id"
             ];
-
             const records = await odooService.execute(
                 "hr.payroll.structure.type",
                 "read",
                 [ids, fields]
             );
-
-
             return res.status(200).json({
                 status: "success",
                 count: records.length,
                 data: records,
             });
-
         } catch (error) {
             return res.status(500).json({
                 status: "error",
@@ -127,16 +127,62 @@ class PayrollController {
             });
         }
     }
+
     async createSalaryRuleCategory(req, res) {
         try {
             console.log("API Called createSalaryRuleCategory");
 
-            const {
-                name,
-                code,
-                parent_id,
-                note
-            } = req.body;
+            const user_id = Number(req.query.user_id || req.params.user_id);
+
+            if (!user_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "user_id is required",
+                });
+            }
+
+            // ───────── FIND EMPLOYEE USING USER_ID ─────────
+            const employee = await odooService.searchRead(
+                "hr.employee",
+                [["user_id", "=", user_id]],
+                ["id", "address_id"],
+                1
+            );
+
+            if (!employee.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Employee not linked with this user",
+                });
+            }
+
+            const employeeAddressId = employee[0].address_id?.[0];
+
+            if (!employeeAddressId) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Employee does not have address_id",
+                });
+            }
+
+            // ───────── PARTNER CHECK ─────────
+            const partner = await odooService.searchRead(
+                "res.partner",
+                [["id", "=", employeeAddressId]],
+                ["id"],
+                1
+            );
+
+            if (!partner.length) {
+                return res.status(403).json({
+                    status: "error",
+                    message: "User is not authorized to create Salary Rule Category",
+                });
+            }
+
+            // ───────── EXISTING LOGIC (UNCHANGED) ─────────
+            const { name, code, parent_id, note } = req.body;
+
             if (!name) {
                 return res.status(400).json({
                     status: "error",
@@ -150,6 +196,7 @@ class PayrollController {
                     message: "Code is required",
                 });
             }
+
             const existingCode = await odooService.searchRead(
                 "hr.salary.rule.category",
                 [["code", "=", code]],
@@ -163,6 +210,7 @@ class PayrollController {
                     message: `Salary Rule Category with code '${code}' already exists`,
                 });
             }
+
             const existingName = await odooService.searchRead(
                 "hr.salary.rule.category",
                 [["name", "=", name]],
@@ -176,6 +224,7 @@ class PayrollController {
                     message: `Salary Rule Category with name '${name}' already exists`,
                 });
             }
+
             if (parent_id) {
                 const parentExists = await odooService.searchRead(
                     "hr.salary.rule.category",
@@ -191,22 +240,26 @@ class PayrollController {
                     });
                 }
             }
+
             const vals = {
                 name,
                 code,
                 parent_id: parent_id || false,
                 note: note || false,
             };
+
             const categoryId = await odooService.create(
                 "hr.salary.rule.category",
                 vals
             );
+
             const createdRecord = await odooService.searchRead(
                 "hr.salary.rule.category",
                 [["id", "=", categoryId]],
                 ["id", "name", "code", "parent_id", "note"],
                 1
             );
+
             return res.status(201).json({
                 status: "success",
                 message: "Salary Rule Category created successfully",
@@ -220,80 +273,94 @@ class PayrollController {
             });
         }
     }
-    async getSalaryRuleCategories(req, res) {
-        try {
-            console.log("API Called getSalaryRuleCategories");
-            const count = await odooService.execute(
-                "hr.salary.rule.category",
-                "search_count",
-                [[]]
-            );
-            if (count === 0) {
-                return res.status(200).json({
-                    status: "success",
-                    count: 0,
-                    data: [],
-                    message: "No salary rule categories found"
-                });
-            }
-            const ids = await odooService.execute(
-                "hr.salary.rule.category",
-                "search",
-                [[]],
-                { limit: 1000 }
-            );
 
-            if (!ids || ids.length === 0) {
-                return res.status(200).json({
-                    status: "success",
-                    count: 0,
-                    data: [],
-                    message: "No accessible salary rule categories"
-                });
-            }
 
-            try {
-                const minimalRecords = await odooService.execute(
-                    "hr.salary.rule.category",
-                    "read",
-                    [ids, ["id", "name", "code"]]
-                );
-                const records = await odooService.execute(
-                    "hr.salary.rule.category",
-                    "read",
-                    [ids, ["id", "name", "code", "parent_id", "note"]]
-                );
+  async getSalaryRuleCategories(req, res) {
+  try {
+    console.log("API Called getSalaryRuleCategories");
 
-                return res.status(200).json({
-                    status: "success",
-                    count: records.length,
-                    data: records,
-                });
+    // ✅ user_id resolve (same fix as before)
+    const user_id = Number(req.query.user_id || req.params.user_id);
 
-            } catch (readError) {
-                console.error("Read error:", readError);
-                const recordsWithoutNote = await odooService.execute(
-                    "hr.salary.rule.category",
-                    "read",
-                    [ids, ["id", "name", "code", "parent_id"]]
-                );
-
-                return res.status(200).json({
-                    status: "success",
-                    count: recordsWithoutNote.length,
-                    data: recordsWithoutNote,
-                    warning: "Note field not available"
-                });
-            }
-
-        } catch (error) {
-            return res.status(500).json({
-                status: "error",
-                message: error.message || "Failed to fetch salary rule categories",
-                error_type: error.constructor.name
-            });
-        }
+    if (!user_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "user_id is required",
+      });
     }
+
+    // ───────── COUNT (user-wise) ─────────
+    const count = await odooService.execute(
+      "hr.salary.rule.category",
+      "search_count",
+      [[["create_uid", "=", user_id]]]
+    );
+
+    if (count === 0) {
+      return res.status(200).json({
+        status: "success",
+        count: 0,
+        data: [],
+        message: "No salary rule categories found for this user",
+      });
+    }
+
+    // ───────── FETCH IDS (only created by this user) ─────────
+    const ids = await odooService.execute(
+      "hr.salary.rule.category",
+      "search",
+      [[["create_uid", "=", user_id]]],
+      { limit: 1000 }
+    );
+
+    if (!ids || ids.length === 0) {
+      return res.status(200).json({
+        status: "success",
+        count: 0,
+        data: [],
+        message: "No accessible salary rule categories",
+      });
+    }
+
+    // ───────── READ RECORDS ─────────
+    try {
+      const records = await odooService.execute(
+        "hr.salary.rule.category",
+        "read",
+        [ids, ["id", "name", "code", "parent_id", "note"]]
+      );
+
+      return res.status(200).json({
+        status: "success",
+        count: records.length,
+        data: records,
+      });
+
+    } catch (readError) {
+      console.error("Read error:", readError);
+
+      const recordsWithoutNote = await odooService.execute(
+        "hr.salary.rule.category",
+        "read",
+        [ids, ["id", "name", "code", "parent_id"]]
+      );
+
+      return res.status(200).json({
+        status: "success",
+        count: recordsWithoutNote.length,
+        data: recordsWithoutNote,
+        warning: "Note field not available",
+      });
+    }
+
+  } catch (error) {
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Failed to fetch salary rule categories",
+    });
+  }
+}
+
     // async createSalaryRule(req, res) {
     //     try {
     //         console.log("API Called createSalaryRule");
@@ -521,303 +588,301 @@ class PayrollController {
     //         });
     //     }
     // }
-
-
     async createSalaryRule(req, res) {
-    try {
-        console.log("API Called createSalaryRule");
+        try {
+            console.log("API Called createSalaryRule");
 
-        const {
-            name,
-            active = true,
-            appears_on_payslip = false,
-            appears_on_employee_cost_dashboard = false,
-            appears_on_payroll_report = false,
-            category_id,
-            code,
-            sequence,
-            condition_select = "none",
-            condition_range,
-            condition_range_min,
-            condition_range_max,
-            condition_input,
-            condition_python,
-            quantity = "1",
-            partner_id,
-            amount_fix,
-            amount_select = "fix",
-            note,
-            struct_id
-        } = req.body;
+            const {
+                name,
+                active = true,
+                appears_on_payslip = false,
+                appears_on_employee_cost_dashboard = false,
+                appears_on_payroll_report = false,
+                category_id,
+                code,
+                sequence,
+                condition_select = "none",
+                condition_range,
+                condition_range_min,
+                condition_range_max,
+                condition_input,
+                condition_python,
+                quantity = "1",
+                partner_id,
+                amount_fix,
+                amount_select = "fix",
+                note,
+                struct_id
+            } = req.body;
 
-        if (!name) {
-            return res.status(400).json({
-                status: "error",
-                message: "Name is required",
-            });
-        }
-
-        if (!category_id) {
-            return res.status(400).json({
-                status: "error",
-                message: "Category is required",
-            });
-        }
-
-        if (!code) {
-            return res.status(400).json({
-                status: "error",
-                message: "Code is required",
-            });
-        }
-
-        if (sequence === undefined || sequence === null) {
-            return res.status(400).json({
-                status: "error",
-                message: "Sequence is required",
-            });
-        }
-
-        if (!condition_select) {
-            return res.status(400).json({
-                status: "error",
-                message: "Condition select is required",
-            });
-        }
-
-        if (!amount_select) {
-            return res.status(400).json({
-                status: "error",
-                message: "Amount type is required",
-            });
-        }
-
-        if (!struct_id) {
-            return res.status(400).json({
-                status: "error",
-                message: "Salary Structure (struct_id) is required",
-            });
-        }
-
-        const validConditions = ["none", "range", "input", "python"];
-        if (!validConditions.includes(condition_select)) {
-            return res.status(400).json({
-                status: "error",
-                message: `Invalid condition_select. Must be one of: ${validConditions.join(", ")}`,
-            });
-        }
-
-        const validAmountTypes = ["percentage", "fix", "input", "code"];
-        if (!validAmountTypes.includes(amount_select)) {
-            return res.status(400).json({
-                status: "error",
-                message: `Invalid amount_select. Must be one of: ${validAmountTypes.join(", ")}`,
-            });
-        }
-
-        if (amount_select === "fix" && (amount_fix === undefined || amount_fix === null)) {
-            return res.status(400).json({
-                status: "error",
-                message: "Fixed amount is required when amount type is 'fix'",
-            });
-        }
-
-        if (!["code", "input"].includes(amount_select) && !quantity) {
-            return res.status(400).json({
-                status: "error",
-                message: "Quantity is required for this amount type",
-            });
-        }
-
-        // Condition-specific validations
-        if (condition_select === "range") {
-            if (!condition_range) {
+            if (!name) {
                 return res.status(400).json({
                     status: "error",
-                    message: "Range field (condition_range) is required when condition is 'range'",
+                    message: "Name is required",
                 });
             }
 
-            if (condition_range_min === undefined || condition_range_min === null) {
+            if (!category_id) {
                 return res.status(400).json({
                     status: "error",
-                    message: "Minimum range (condition_range_min) is required when condition is 'range'",
+                    message: "Category is required",
                 });
             }
 
-            if (condition_range_max === undefined || condition_range_max === null) {
+            if (!code) {
                 return res.status(400).json({
                     status: "error",
-                    message: "Maximum range (condition_range_max) is required when condition is 'range'",
+                    message: "Code is required",
                 });
             }
-        }
 
-        if (condition_select === "input") {
-            if (!condition_input) {
+            if (sequence === undefined || sequence === null) {
                 return res.status(400).json({
                     status: "error",
-                    message: "Condition input field (condition_input) is required when condition is 'input'",
+                    message: "Sequence is required",
                 });
             }
-        }
 
-        if (condition_select === "python") {
-            if (!condition_python) {
+            if (!condition_select) {
                 return res.status(400).json({
                     status: "error",
-                    message: "Python condition (condition_python) is required when condition is 'python'",
+                    message: "Condition select is required",
                 });
             }
-        }
 
-        const existingCode = await odooService.execute(
-            "hr.salary.rule",
-            "search",
-            [[["code", "=", code]]],
-            { limit: 1 }
-        );
+            if (!amount_select) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Amount type is required",
+                });
+            }
 
-        if (existingCode.length) {
-            return res.status(409).json({
-                status: "error",
-                message: `Salary Rule with code '${code}' already exists`,
-            });
-        }
+            if (!struct_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Salary Structure (struct_id) is required",
+                });
+            }
 
-        const categoryExists = await odooService.execute(
-            "hr.salary.rule.category",
-            "search",
-            [[["id", "=", category_id]]],
-            { limit: 1 }
-        );
+            const validConditions = ["none", "range", "input", "python"];
+            if (!validConditions.includes(condition_select)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Invalid condition_select. Must be one of: ${validConditions.join(", ")}`,
+                });
+            }
 
-        if (!categoryExists.length) {
-            return res.status(404).json({
-                status: "error",
-                message: `Category with ID ${category_id} not found`,
-            });
-        }
+            const validAmountTypes = ["percentage", "fix", "input", "code"];
+            if (!validAmountTypes.includes(amount_select)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Invalid amount_select. Must be one of: ${validAmountTypes.join(", ")}`,
+                });
+            }
 
-        const structureExists = await odooService.execute(
-            "hr.payroll.structure",
-            "search",
-            [[["id", "=", struct_id]]],
-            { limit: 1 }
-        );
+            if (amount_select === "fix" && (amount_fix === undefined || amount_fix === null)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Fixed amount is required when amount type is 'fix'",
+                });
+            }
 
-        if (!structureExists.length) {
-            return res.status(404).json({
-                status: "error",
-                message: `Salary Structure with ID ${struct_id} not found`,
-            });
-        }
+            if (!["code", "input"].includes(amount_select) && !quantity) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Quantity is required for this amount type",
+                });
+            }
 
-        if (partner_id) {
-            const partnerExists = await odooService.execute(
-                "res.partner",
+            // Condition-specific validations
+            if (condition_select === "range") {
+                if (!condition_range) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Range field (condition_range) is required when condition is 'range'",
+                    });
+                }
+
+                if (condition_range_min === undefined || condition_range_min === null) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Minimum range (condition_range_min) is required when condition is 'range'",
+                    });
+                }
+
+                if (condition_range_max === undefined || condition_range_max === null) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Maximum range (condition_range_max) is required when condition is 'range'",
+                    });
+                }
+            }
+
+            if (condition_select === "input") {
+                if (!condition_input) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Condition input field (condition_input) is required when condition is 'input'",
+                    });
+                }
+            }
+
+            if (condition_select === "python") {
+                if (!condition_python) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Python condition (condition_python) is required when condition is 'python'",
+                    });
+                }
+            }
+
+            const existingCode = await odooService.execute(
+                "hr.salary.rule",
                 "search",
-                [[["id", "=", partner_id]]],
+                [[["code", "=", code]]],
                 { limit: 1 }
             );
 
-            if (!partnerExists.length) {
-                return res.status(404).json({
+            if (existingCode.length) {
+                return res.status(409).json({
                     status: "error",
-                    message: `Partner with ID ${partner_id} not found`,
+                    message: `Salary Rule with code '${code}' already exists`,
                 });
             }
+
+            const categoryExists = await odooService.execute(
+                "hr.salary.rule.category",
+                "search",
+                [[["id", "=", category_id]]],
+                { limit: 1 }
+            );
+
+            if (!categoryExists.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: `Category with ID ${category_id} not found`,
+                });
+            }
+
+            const structureExists = await odooService.execute(
+                "hr.payroll.structure",
+                "search",
+                [[["id", "=", struct_id]]],
+                { limit: 1 }
+            );
+
+            if (!structureExists.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: `Salary Structure with ID ${struct_id} not found`,
+                });
+            }
+
+            if (partner_id) {
+                const partnerExists = await odooService.execute(
+                    "res.partner",
+                    "search",
+                    [[["id", "=", partner_id]]],
+                    { limit: 1 }
+                );
+
+                if (!partnerExists.length) {
+                    return res.status(404).json({
+                        status: "error",
+                        message: `Partner with ID ${partner_id} not found`,
+                    });
+                }
+            }
+
+            const vals = {
+                name,
+                active,
+                appears_on_payslip,
+                appears_on_employee_cost_dashboard,
+                appears_on_payroll_report,
+                category_id,
+                code,
+                sequence,
+                condition_select,
+                amount_select,
+                struct_id,
+            };
+
+            if (!["code", "input"].includes(amount_select)) {
+                vals.quantity = quantity;
+            }
+
+            if (amount_select === "fix") {
+                vals.amount_fix = amount_fix;
+            }
+
+            if (partner_id) {
+                vals.partner_id = partner_id;
+            }
+
+            if (note) {
+                vals.note = note;
+            }
+
+            // Add condition-specific fields
+            if (condition_select === "range") {
+                vals.condition_range = condition_range;
+                vals.condition_range_min = condition_range_min;
+                vals.condition_range_max = condition_range_max;
+            }
+
+            if (condition_select === "input") {
+                vals.condition_input = condition_input;
+            }
+
+            if (condition_select === "python") {
+                vals.condition_python = condition_python;
+            }
+
+            const ruleId = await odooService.create("hr.salary.rule", vals);
+
+            const createdRecord = await odooService.execute(
+                "hr.salary.rule",
+                "read",
+                [[ruleId], [
+                    "id",
+                    "name",
+                    "active",
+                    "appears_on_payslip",
+                    "appears_on_employee_cost_dashboard",
+                    "appears_on_payroll_report",
+                    "category_id",
+                    "code",
+                    "sequence",
+                    "condition_select",
+                    "condition_range",
+                    "condition_range_min",
+                    "condition_range_max",
+                    "condition_input",
+                    "condition_python",
+                    "quantity",
+                    "partner_id",
+                    "amount_fix",
+                    "amount_select",
+                    "note",
+                    "struct_id"
+                ]]
+            );
+
+            return res.status(201).json({
+                status: "success",
+                message: "Salary Rule created successfully",
+                data: createdRecord[0] || { id: ruleId },
+            });
+
+        } catch (error) {
+            console.error("Create Salary Rule Error:", error);
+            return res.status(500).json({
+                status: "error",
+                message: error.message || "Failed to create salary rule",
+            });
         }
-
-        const vals = {
-            name,
-            active,
-            appears_on_payslip,
-            appears_on_employee_cost_dashboard,
-            appears_on_payroll_report,
-            category_id,
-            code,
-            sequence,
-            condition_select,
-            amount_select,
-            struct_id,
-        };
-
-        if (!["code", "input"].includes(amount_select)) {
-            vals.quantity = quantity;
-        }
-
-        if (amount_select === "fix") {
-            vals.amount_fix = amount_fix;
-        }
-
-        if (partner_id) {
-            vals.partner_id = partner_id;
-        }
-
-        if (note) {
-            vals.note = note;
-        }
-
-        // Add condition-specific fields
-        if (condition_select === "range") {
-            vals.condition_range = condition_range;
-            vals.condition_range_min = condition_range_min;
-            vals.condition_range_max = condition_range_max;
-        }
-
-        if (condition_select === "input") {
-            vals.condition_input = condition_input;
-        }
-
-        if (condition_select === "python") {
-            vals.condition_python = condition_python;
-        }
-
-        const ruleId = await odooService.create("hr.salary.rule", vals);
-
-        const createdRecord = await odooService.execute(
-            "hr.salary.rule",
-            "read",
-            [[ruleId], [
-                "id",
-                "name",
-                "active",
-                "appears_on_payslip",
-                "appears_on_employee_cost_dashboard",
-                "appears_on_payroll_report",
-                "category_id",
-                "code",
-                "sequence",
-                "condition_select",
-                "condition_range",
-                "condition_range_min",
-                "condition_range_max",
-                "condition_input",
-                "condition_python",
-                "quantity",
-                "partner_id",
-                "amount_fix",
-                "amount_select",
-                "note",
-                "struct_id"
-            ]]
-        );
-
-        return res.status(201).json({
-            status: "success",
-            message: "Salary Rule created successfully",
-            data: createdRecord[0] || { id: ruleId },
-        });
-
-    } catch (error) {
-        console.error("Create Salary Rule Error:", error);
-        return res.status(500).json({
-            status: "error",
-            message: error.message || "Failed to create salary rule",
-        });
     }
-}
     async getSalaryRules(req, res) {
         try {
             const ids = await odooService.execute(
