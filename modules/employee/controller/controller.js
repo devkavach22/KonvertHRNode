@@ -552,38 +552,44 @@ const getAllAttendancePolicies = async (req, res) => {
 };
 const createAttendancePolicy = async (req, res) => {
   try {
-    console.log("API Called: createAttendancePolicy");
-
-    const { client_id, currentUser } = await getClientFromRequest(req);
+    console.log("--------------------------------------------------");
+    console.log("🚀 API Called: createAttendancePolicy");
+    
+    const { client_id } = await getClientFromRequest(req);
     const data = req.body;
+        const userIdFromParams = req.query.user_id
+      ? parseInt(req.query.user_id)
+      : null;
 
-    // Created By ID (Same as Employee logic)
-    const userIdFromParams = req.query.user_id ? parseInt(req.query.user_id) : null;
-    const createdBy = userIdFromParams || (currentUser ? currentUser.id : (client_id ? parseInt(client_id) : undefined));
-
+    console.log("user_id from params:", userIdFromParams);
+    console.log("client_id:", client_id);
+    
     if (!data.name) {
-      return res.status(400).json({
-        status: "error",
-        message: "Attendance Policy name is required",
+      return res.status(400).json({ 
+        status: "error", 
+        message: "Attendance Policy name is required" 
       });
     }
-
-    // 1. Check karein ki kya ye policy pehle se exist karti hai
+    
     const existing = await odooService.searchRead(
       "attendance.policy",
-      [
-        ["name", "=", data.name],
-        ["client_id", "=", client_id],
-      ],
+      [["name", "=", data.name.trim()]],
       ["id"],
       1
     );
-
-    const finalType = data.type || "regular";
+    
+    if (existing.length > 0) {
+      console.log(`⚠️ Conflict: Policy '${data.name}' already exists`);
+      return res.status(409).json({
+        status: "error",
+        message: "Attendance Policy with this name already exists",
+      });
+    }
+    
     const vals = {
-      name: data.name,
-      type: finalType,
-      early_type: finalType,
+      name: data.name.trim(),
+      type: data.type || "regular",
+      early_type: data.type || "regular",
       day_after: data.day_after || 0,
       grace_minutes: data.grace_minutes || 0,
       no_pay_minutes: data.no_pay_minutes || 0,
@@ -594,35 +600,33 @@ const createAttendancePolicy = async (req, res) => {
       absent_if: data.absent_if || false,
       client_id: client_id,
     };
-
-    let policyId;
-
-    if (existing.length > 0) {
-      // 2. Agar policy exist karti hai toh "WRITE" karein
-      policyId = existing[0].id;
-      console.log(`Policy exists (ID: ${policyId}), calling WRITE...`);
-      
-      await odooService.write("attendance.policy", [policyId], vals, createdBy);
-    } else {
-      // 3. Agar permission issue "create" mein hai, toh admin UID se create karein
-      // OdooService.create mein uid null chhodne par wo default admin uid use karega
-      console.log("Creating new policy using default Admin credentials to avoid Access Denied...");
-      policyId = await odooService.create("attendance.policy", vals); 
-    }
-
+    
+    const create_uid_value =
+      userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+    
+    console.log("create_uid will be set to:", create_uid_value);
+    console.log("🆕 Creating new policy record...");
+    
+    const policyId = await odooHelpers.createWithCustomUid(
+      "attendance.policy",
+      vals,
+      create_uid_value
+    );
+    
+    console.log(`✅ Success: Policy Created (ID: ${policyId})`);
+    
     return res.status(201).json({
       status: "success",
-      message: existing.length > 0 ? "Attendance Policy updated successfully" : "Attendance Policy created successfully",
+      message: "Attendance Policy created successfully",
       id: policyId,
-      created_by: createdBy,
-      created_date: new Date().toISOString()
+      created_by: create_uid_value, 
+      created_date: new Date().toISOString(),  
     });
-
   } catch (error) {
-    console.error("Error in Attendance Policy operation:", error);
-    return res.status(error.status || 500).json({
+    console.error("❌ Error in Attendance Policy creation:", error.message);
+    return res.status(500).json({
       status: "error",
-      message: error.message || "Operation failed",
+      message: error.message || "Failed to create policy",
     });
   }
 };
@@ -2053,8 +2057,7 @@ const updateEmployee = async (req, res) => {
       message: "Employee updated successfully",
       id: parseInt(id),
       user_id: currentEmployee.user_id,
-      updated_by: write_uid_value,
-      user_update_status: userUpdateStatus,
+      updated_by: write_uid_value
     });
   } catch (error) {
     console.error("Error updating employee:", error);
@@ -2513,9 +2516,9 @@ const getExpense = async (req, res) => {
         "hr.employee",
         [
           ["address_id", "=", Number(client_id)],
-          "|", 
-          ["work_contact_id", "=", partnerId], 
-          ["name", "=", userData[0]?.name] 
+          "|",
+          ["work_contact_id", "=", partnerId],
+          ["name", "=", userData[0]?.name]
         ],
         ["id", "name"]
       );
@@ -2580,7 +2583,7 @@ const getExpense = async (req, res) => {
         if (exp[key] === false) exp[key] = "";
         // Handling Many2one arrays (e.g. [id, name] -> name)
         if (Array.isArray(exp[key]) && exp[key].length === 2) {
-            // Agar aapko sirf name chahiye: exp[key] = exp[key][1];
+          // Agar aapko sirf name chahiye: exp[key] = exp[key][1];
         }
       });
 
