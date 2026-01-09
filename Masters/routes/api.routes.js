@@ -520,6 +520,7 @@ router.post(
 );
 router.get(
   "/regularization",
+  authenticate,
   apiController.getAttendanceRegularization.bind(apiController)
 );
 router.put(
@@ -552,6 +553,7 @@ router.post(
 );
 router.get(
   "/regcategories",
+  authenticate,
   apiController.getRegCategories.bind(apiController)
 );
 router.put(
