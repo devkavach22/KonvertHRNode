@@ -2860,93 +2860,184 @@ class ApiController {
       });
     }
   }
+  // async updateSkill(req, res) {
+  //   try {
+  //     const { skill_type_id } = req.params;
+  //     const { skill_names, skill_level_name, level_progress, default_level } =
+  //       req.body;
+
+  //     if (!skill_type_id) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "skill_type_id is required",
+  //       });
+  //     }
+
+  //     const { client_id } = await getClientFromRequest(req);
+
+  //     const skillType = await odooService.searchRead(
+  //       "hr.skill.type",
+  //       [
+  //         ["id", "=", parseInt(skill_type_id)],
+  //         ["client_id", "=", client_id],
+  //       ],
+  //       ["id"],
+  //       1
+  //     );
+
+  //     if (!skillType.length) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "Unauthorized or Skill Type not found for this client",
+  //       });
+  //     }
+  //     const updatedSkills = [];
+
+  //     if (Array.isArray(skill_names)) {
+  //       for (const name of skill_names) {
+  //         const exists = await odooService.searchRead(
+  //           "hr.skill",
+  //           [
+  //             ["name", "=", name],
+  //             ["skill_type_id", "=", parseInt(skill_type_id)],
+  //           ],
+  //           ["id"],
+  //           1
+  //         );
+
+  //         if (!exists.length) {
+  //           const id = await odooService.create("hr.skill", {
+  //             name,
+  //             skill_type_id: parseInt(skill_type_id),
+  //           });
+
+  //           updatedSkills.push({ name, id });
+  //         }
+  //       }
+  //     }
+  //     let updatedLevel = null;
+
+  //     if (skill_level_name) {
+  //       const existingLevel = await odooService.searchRead(
+  //         "hr.skill.level",
+  //         [
+  //           ["skill_type_id", "=", parseInt(skill_type_id)],
+  //           ["name", "=", skill_level_name],
+  //         ],
+  //         ["id"],
+  //         1
+  //       );
+
+  //       if (existingLevel.length) {
+  //         await odooService.write("hr.skill.level", [existingLevel[0].id], {
+  //           ...(level_progress !== undefined && {
+  //             level_progress: parseInt(level_progress),
+  //           }),
+  //           ...(default_level !== undefined && {
+  //             default_level: !!default_level,
+  //           }),
+  //         });
+
+  //         updatedLevel = existingLevel[0].id;
+  //       }
+  //     }
+
+  //     return res.json({
+  //       status: "success",
+  //       message: "Skill updated successfully",
+  //       data: {
+  //         added_skills: updatedSkills,
+  //         updated_level_id: updatedLevel,
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("❌ Update Skill Error:", error);
+  //     return res.status(error.status || 500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to update skill",
+  //     });
+  //   }
+  // }
+
   async updateSkill(req, res) {
     try {
       const { skill_type_id } = req.params;
-      const { skill_names, skill_level_name, level_progress, default_level } =
-        req.body;
+      const { skill_names, skill_level_name, level_progress, default_level } = req.body;
 
       if (!skill_type_id) {
-        return res.status(400).json({
-          status: "error",
-          message: "skill_type_id is required",
-        });
+        return res.status(400).json({ status: "error", message: "skill_type_id is required" });
       }
 
       const { client_id } = await getClientFromRequest(req);
 
       const skillType = await odooService.searchRead(
         "hr.skill.type",
-        [
-          ["id", "=", parseInt(skill_type_id)],
-          ["client_id", "=", client_id],
-        ],
+        [["id", "=", parseInt(skill_type_id)], ["client_id", "=", client_id]],
         ["id"],
         1
       );
 
       if (!skillType.length) {
-        return res.status(403).json({
-          status: "error",
-          message: "Unauthorized or Skill Type not found for this client",
-        });
+        return res.status(403).json({ status: "error", message: "Unauthorized or Skill Type not found" });
       }
-      const updatedSkills = [];
+
+      const addedSkills = [];
+      let removedCount = 0; // Initialize count
 
       if (Array.isArray(skill_names)) {
-        for (const name of skill_names) {
-          const exists = await odooService.searchRead(
-            "hr.skill",
-            [
-              ["name", "=", name],
-              ["skill_type_id", "=", parseInt(skill_type_id)],
-            ],
-            ["id"],
-            1
-          );
+        const currentOdooSkills = await odooService.searchRead(
+          "hr.skill",
+          [["skill_type_id", "=", parseInt(skill_type_id)]],
+          ["id", "name"]
+        );
 
-          if (!exists.length) {
+        const currentOdooSkillNames = currentOdooSkills.map(s => s.name);
+
+        // Identify skills to delete
+        const skillsToDelete = currentOdooSkills.filter(s => !skill_names.includes(s.name));
+
+        if (skillsToDelete.length > 0) {
+          const idsToDelete = skillsToDelete.map(s => s.id);
+          await odooService.unlink("hr.skill", idsToDelete);
+          removedCount = idsToDelete.length; // Set the count here
+        }
+
+        // Identify skills to add
+        for (const name of skill_names) {
+          if (!currentOdooSkillNames.includes(name)) {
             const id = await odooService.create("hr.skill", {
               name,
               skill_type_id: parseInt(skill_type_id),
             });
-
-            updatedSkills.push({ name, id });
+            addedSkills.push({ name, id });
           }
         }
       }
-      let updatedLevel = null;
 
+      let updatedLevel = null;
       if (skill_level_name) {
         const existingLevel = await odooService.searchRead(
           "hr.skill.level",
-          [
-            ["skill_type_id", "=", parseInt(skill_type_id)],
-            ["name", "=", skill_level_name],
-          ],
+          [["skill_type_id", "=", parseInt(skill_type_id)], ["name", "=", skill_level_name]],
           ["id"],
           1
         );
 
         if (existingLevel.length) {
           await odooService.write("hr.skill.level", [existingLevel[0].id], {
-            ...(level_progress !== undefined && {
-              level_progress: parseInt(level_progress),
-            }),
-            ...(default_level !== undefined && {
-              default_level: !!default_level,
-            }),
+            ...(level_progress !== undefined && { level_progress: parseInt(level_progress) }),
+            ...(default_level !== undefined && { default_level: !!default_level }),
           });
-
           updatedLevel = existingLevel[0].id;
         }
       }
 
       return res.json({
         status: "success",
-        message: "Skill updated successfully",
+        message: "Skills synchronized successfully",
         data: {
-          added_skills: updatedSkills,
+          added_skills: addedSkills,
+          removed_count: removedCount, // Now properly scoped
           updated_level_id: updatedLevel,
         },
       });
@@ -6995,7 +7086,7 @@ class ApiController {
   //       for (const prevLog of previousApprovers) {
   //         const approverId = Array.isArray(prevLog.approver_id) ? prevLog.approver_id[0] : prevLog.approver_id;
 
-         
+
 
   //         // ✅ If previous approver has NOT approved, BLOCK
   //         if (prevLog.is_approved_by_user !== true) {
@@ -7170,175 +7261,175 @@ class ApiController {
   // }
 
   async rejectAttendanceRegularization(req, res) {
-  try {
-    const { approval_request_id, remarks, user_id } = req.body;
-    const { currentUser } = await getClientFromRequest(req);
+    try {
+      const { approval_request_id, remarks, user_id } = req.body;
+      const { currentUser } = await getClientFromRequest(req);
 
-    const adminName = currentUser?.partner_id ? currentUser.partner_id[1] : "Approver";
+      const adminName = currentUser?.partner_id ? currentUser.partner_id[1] : "Approver";
 
-    if (!approval_request_id || !user_id) {
-      return res.status(400).json({
-        status: "error",
-        message: "approval_request_id and user_id are required",
+      if (!approval_request_id || !user_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "approval_request_id and user_id are required",
+        });
+      }
+
+      const approvalRecords = await odooService.searchRead(
+        "approval.request",
+        [["id", "=", parseInt(approval_request_id)]],
+        ["id", "name", "state", "attendance_regulzie_id", "hr_leave_id", "description", "approval_log_list"]
+      );
+
+      if (!approvalRecords?.length) {
+        return res.status(404).json({
+          status: "error",
+          message: "Approval Record not found"
+        });
+      }
+
+      const approvalRecord = approvalRecords[0];
+
+      if (approvalRecord.state === 'refused' || approvalRecord.state === 'rejected' || approvalRecord.state === 'cancel') {
+        return res.status(400).json({
+          status: "error",
+          message: "This request has already been rejected.",
+        });
+      }
+
+      const approvalLogIds = approvalRecord.approval_log_list;
+
+      if (!approvalLogIds || approvalLogIds.length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "No approval sequence configured",
+        });
+      }
+
+      let approvalLogs = await odooService.searchRead(
+        "approval.log.list",
+        [["id", "in", approvalLogIds]],
+        ["id", "sequence_no_of_user", "approver_id", "is_approved_by_user"]
+      );
+
+      if (!approvalLogs || approvalLogs.length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "Could not retrieve approval sequence",
+        });
+      }
+
+      approvalLogs.sort((a, b) => a.sequence_no_of_user - b.sequence_no_of_user);
+
+      const currentUserLog = approvalLogs.find(log => {
+        const approverId = Array.isArray(log.approver_id) ? log.approver_id[0] : log.approver_id;
+        return approverId === parseInt(user_id);
       });
-    }
 
-    const approvalRecords = await odooService.searchRead(
-      "approval.request",
-      [["id", "=", parseInt(approval_request_id)]],
-      ["id", "name", "state", "attendance_regulzie_id", "hr_leave_id", "description", "approval_log_list"]
-    );
+      if (!currentUserLog) {
+        return res.status(403).json({
+          status: "error",
+          message: "You are not authorized to reject this request (not in approval sequence)",
+        });
+      }
 
-    if (!approvalRecords?.length) {
-      return res.status(404).json({
-        status: "error",
-        message: "Approval Record not found"
-      });
-    }
+      const currentSequence = currentUserLog.sequence_no_of_user;
 
-    const approvalRecord = approvalRecords[0];
+      const previousApprovers = approvalLogs.filter(log =>
+        log.sequence_no_of_user < currentSequence
+      );
 
-    if (approvalRecord.state === 'refused' || approvalRecord.state === 'rejected' || approvalRecord.state === 'cancel') {
-      return res.status(400).json({
-        status: "error",
-        message: "This request has already been rejected.",
-      });
-    }
-
-    const approvalLogIds = approvalRecord.approval_log_list;
-
-    if (!approvalLogIds || approvalLogIds.length === 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "No approval sequence configured",
-      });
-    }
-
-    let approvalLogs = await odooService.searchRead(
-      "approval.log.list",
-      [["id", "in", approvalLogIds]],
-      ["id", "sequence_no_of_user", "approver_id", "is_approved_by_user"]
-    );
-
-    if (!approvalLogs || approvalLogs.length === 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "Could not retrieve approval sequence",
-      });
-    }
-
-    approvalLogs.sort((a, b) => a.sequence_no_of_user - b.sequence_no_of_user);
-
-    const currentUserLog = approvalLogs.find(log => {
-      const approverId = Array.isArray(log.approver_id) ? log.approver_id[0] : log.approver_id;
-      return approverId === parseInt(user_id);
-    });
-
-    if (!currentUserLog) {
-      return res.status(403).json({
-        status: "error",
-        message: "You are not authorized to reject this request (not in approval sequence)",
-      });
-    }
-
-    const currentSequence = currentUserLog.sequence_no_of_user;
-
-    const previousApprovers = approvalLogs.filter(log =>
-      log.sequence_no_of_user < currentSequence
-    );
-
-    if (previousApprovers.length > 0) {
-      for (const prevLog of previousApprovers) {
-        if (prevLog.is_approved_by_user !== true) {
-          return res.status(403).json({
-            status: "error",
-            message: `Cannot reject. The approver at sequence ${prevLog.sequence_no_of_user} must approve first before you can take action.`,
-          });
+      if (previousApprovers.length > 0) {
+        for (const prevLog of previousApprovers) {
+          if (prevLog.is_approved_by_user !== true) {
+            return res.status(403).json({
+              status: "error",
+              message: `Cannot reject. The approver at sequence ${prevLog.sequence_no_of_user} must approve first before you can take action.`,
+            });
+          }
         }
       }
-    }
 
-    const employeeData = await odooService.searchRead(
-      "hr.employee",
-      [["user_id", "=", parseInt(user_id)]],
-      ["employee_password", "name"]
-    );
+      const employeeData = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", parseInt(user_id)]],
+        ["employee_password", "name"]
+      );
 
-    if (!employeeData || employeeData.length === 0) {
-      return res.status(404).json({
-        status: "error",
-        message: "Employee record not found for this user"
-      });
-    }
+      if (!employeeData || employeeData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "Employee record not found for this user"
+        });
+      }
 
-    const fetchedPassword = employeeData[0].employee_password;
+      const fetchedPassword = employeeData[0].employee_password;
 
-    if (!fetchedPassword || fetchedPassword === "") {
-      return res.status(400).json({
-        status: "error",
-        message: "Password not found in Odoo for this employee."
-      });
-    }
+      if (!fetchedPassword || fetchedPassword === "") {
+        return res.status(400).json({
+          status: "error",
+          message: "Password not found in Odoo for this employee."
+        });
+      }
 
-    const wizardId = await odooService.create(
-      "request.reject.wizard",
-      { remarks: remarks || `Rejected via App by ${adminName}` },
-      { uid: parseInt(user_id), userPassword: fetchedPassword }
-    );
+      const wizardId = await odooService.create(
+        "request.reject.wizard",
+        { remarks: remarks || `Rejected via App by ${adminName}` },
+        { uid: parseInt(user_id), userPassword: fetchedPassword }
+      );
 
-    await odooService.callMethod(
-      "request.reject.wizard",
-      "action_reject_request",
-      [parseInt(wizardId)],
-      {
-        active_id: approvalRecord.id,
-        active_model: "approval.request",
-        active_ids: [approvalRecord.id],
-      },
-      parseInt(user_id),
-      fetchedPassword
-    );
-
-    let updatedRecord = null;
-
-    if (approvalRecord.attendance_regulzie_id) {
-      const regId = approvalRecord.attendance_regulzie_id[0];
-      await odooService.write(
-        "attendance.regular",
-        [regId],
-        { state_select: "reject" },
+      await odooService.callMethod(
+        "request.reject.wizard",
+        "action_reject_request",
+        [parseInt(wizardId)],
+        {
+          active_id: approvalRecord.id,
+          active_model: "approval.request",
+          active_ids: [approvalRecord.id],
+        },
         parseInt(user_id),
         fetchedPassword
       );
-      updatedRecord = { model: "attendance.regular", id: regId };
 
-    } else if (approvalRecord.hr_leave_id) {
-      const leaveId = approvalRecord.hr_leave_id[0];
-      await odooService.write(
-        "hr.leave",
-        [leaveId],
-        { state: "refuse" },
-        parseInt(user_id),
-        fetchedPassword
-      );
-      updatedRecord = { model: "hr.leave", id: leaveId };
+      let updatedRecord = null;
+
+      if (approvalRecord.attendance_regulzie_id) {
+        const regId = approvalRecord.attendance_regulzie_id[0];
+        await odooService.write(
+          "attendance.regular",
+          [regId],
+          { state_select: "reject" },
+          parseInt(user_id),
+          fetchedPassword
+        );
+        updatedRecord = { model: "attendance.regular", id: regId };
+
+      } else if (approvalRecord.hr_leave_id) {
+        const leaveId = approvalRecord.hr_leave_id[0];
+        await odooService.write(
+          "hr.leave",
+          [leaveId],
+          { state: "refuse" },
+          parseInt(user_id),
+          fetchedPassword
+        );
+        updatedRecord = { model: "hr.leave", id: leaveId };
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: `The request has been successfully rejected.`,
+        data: {
+          approval_id: approvalRecord.id,
+          updated_record: updatedRecord,
+        },
+      });
+
+    } catch (error) {
+      return res.status(500).json({
+        status: "error",
+        message: error.message
+      });
     }
-
-    return res.status(200).json({
-      status: "success",
-      message: `The request has been successfully rejected.`,
-      data: {
-        approval_id: approvalRecord.id,
-        updated_record: updatedRecord,
-      },
-    });
-
-  } catch (error) {
-    return res.status(500).json({
-      status: "error",
-      message: error.message
-    });
   }
-}
 }
 module.exports = new ApiController();
