@@ -3501,12 +3501,13 @@ class ApiController {
         full_time_required_hours,
         hours_per_day,
         tz,
+        total_overtime_hours_allowed, // New field from image
       } = req.body;
 
       if (!name) {
         return res.status(400).json({
           status: "error",
-          message: "Calendar name is required",
+          message: "Working Schedule name is required",
         });
       }
 
@@ -3544,6 +3545,9 @@ class ApiController {
         tz: tz || false,
         full_time_required_hours:
           full_time_required_hours !== undefined ? full_time_required_hours : 0,
+        // Adding the new float field
+        total_overtime_hours_allowed:
+          total_overtime_hours_allowed !== undefined ? parseFloat(total_overtime_hours_allowed) : 0.0,
       };
 
       if (flexible_hours) {
