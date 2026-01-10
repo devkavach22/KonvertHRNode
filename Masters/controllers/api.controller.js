@@ -1034,7 +1034,6 @@ class ApiController {
         name,
         client_id,
         department_id: valid_department_id,
-        is_published: true,
         no_of_recruitment: no_of_recruitment || 0,
         skill_ids: [[6, 0, valid_skill_ids]],
         industry_id: valid_industry_id,
@@ -1071,7 +1070,6 @@ class ApiController {
           "no_of_recruitment",
           "industry_id",
           "contract_type_id",
-          "is_published",
           "skill_ids",
         ]
       );
@@ -1086,7 +1084,6 @@ class ApiController {
         industry_name: job.industry_id?.[1] || null,
         contract_type_id: job.contract_type_id?.[0] || null,
         contract_type_name: job.contract_type_id?.[1] || null,
-        is_published: job.is_published,
         skill_ids: job.skill_ids || [],
       }));
 
@@ -6800,47 +6797,23 @@ class ApiController {
       });
     }
   }
+
   async getAllApprovalRequests(req, res) {
     try {
       const { client_id, currentUser } = await getClientFromRequest(req);
 
-      // Safety Check: client_id hona chahiye comparison ke liye
       if (!client_id) {
-        return res.status(400).json({
-          status: "error",
-          message: "Client identification (partner_id) missing."
-        });
+        return res.status(400).json({ status: "error", message: "Client ID missing." });
       }
 
-      let domain = [];
+      let domain = [["req_employee_id.address_id", "=", client_id]];
 
-      // CASE 1: Agar user ADMIN hai
-      if (currentUser.is_client_employee_admin) {
-        domain = [["req_employee_id.address_id", "=", client_id]];
-        console.log("🛠️ Admin Access: Loading all requests for client_id:", client_id);
-      }
-
-      // CASE 2: Agar user EMPLOYEE/USER hai (Aapka logic yahan hai)
-      else if (currentUser.is_client_employee_user) {
-        /**
-         * Aapka Logic: Employee ke address_id ko Admin ki partner_id (client_id) se compare karna.
-         * Agar getClientFromRequest ne pehle hi address_id verify kar liya hai,
-         * toh hum domain me check karenge ki requests ussi address ki hon.
-         */
-        domain = [["req_employee_id.address_id", "=", client_id]];
-
-        // Note: Agar aap chahte hain ki Rahul Sharma sirf apni company ki requests dekhe
-        // magar sirf tab jab wo approver ho, toh ye line add karein:
-        // domain.push(["approver_ids.user_id", "=", currentUser.id]);
-
-        console.log("👤 Employee User Access: Matching address_id with admin partner_id");
-      }
-
-      else {
-        return res.status(403).json({
-          status: "error",
-          message: "Access Denied: Role not recognized."
-        });
+      if (!currentUser.is_client_employee_admin) {
+        // ✅ Correction: 'approver_ids.user_id' ko badal kar 'approval_log_list.approver_id' kiya gaya hai
+        domain.push(["approval_log_list.approver_id", "=", currentUser.id]);
+        console.log("👤 Manager View: Filtering requests specifically for User ID:", currentUser.id);
+      } else {
+        console.log("🛠️ Admin Access: Loading all company requests.");
       }
 
       const fields = [
@@ -6851,10 +6824,9 @@ class ApiController {
         "description",
         "state",
         "reason",
+        "approval_log_list"
       ];
 
-      // Odoo searchRead call
-      // Humne domain set kar diya hai jo address_id compare kar raha hai
       const requests = await odooService.searchRead(
         "approval.request",
         domain,
@@ -6865,10 +6837,19 @@ class ApiController {
         currentUser.id
       );
 
+      if (requests.length === 0) {
+        return res.status(200).json({
+          status: "success",
+          message: "There is no any Request for you.",
+          total: 0,
+          data: []
+        });
+      }
+
       const processedRequests = requests.map((item) => {
         const newItem = { ...item };
-        // Odoo 18 states management
-        if (newItem.state !== "refused" && newItem.state !== "reject") {
+        // Odoo mein state 'refused' aur 'cancel' ho sakti hai, 'reject' ki jagah
+        if (newItem.state !== "refused" && newItem.state !== "cancel") {
           delete newItem.reason;
         }
         return newItem;
@@ -6877,16 +6858,12 @@ class ApiController {
       return res.status(200).json({
         status: "success",
         total: processedRequests.length,
-        client_name: currentUser.partner_id[1],
         data: processedRequests,
       });
 
     } catch (error) {
       console.error("❌ Node.js Error:", error.message);
-      return res.status(500).json({
-        status: "error",
-        message: error.message || "Internal Server Error"
-      });
+      return res.status(500).json({ status: "error", message: error.message });
     }
   }
 
