@@ -6809,7 +6809,6 @@ class ApiController {
       let domain = [["req_employee_id.address_id", "=", client_id]];
 
       if (!currentUser.is_client_employee_admin) {
-        // ✅ Correction: 'approver_ids.user_id' ko badal kar 'approval_log_list.approver_id' kiya gaya hai
         domain.push(["approval_log_list.approver_id", "=", currentUser.id]);
         console.log("👤 Manager View: Filtering requests specifically for User ID:", currentUser.id);
       } else {
@@ -6821,6 +6820,7 @@ class ApiController {
         "req_employee_id",
         "attendance_regulzie_id",
         "hr_leave_id",
+        "hr_expense_id",
         "description",
         "state",
         "reason",
@@ -6849,7 +6849,7 @@ class ApiController {
       const processedRequests = requests.map((item) => {
         const newItem = { ...item };
         // Odoo mein state 'refused' aur 'cancel' ho sakti hai, 'reject' ki jagah
-        if (newItem.state !== "refused" && newItem.state !== "cancel") {
+        if (newItem.state !== "refused" && newItem.state !== "reject") {
           delete newItem.reason;
         }
         return newItem;
@@ -6954,7 +6954,7 @@ class ApiController {
 
         return res.status(200).json({
           status: "success",
-          message: "Request approved successfully using employee password",
+          message: "Request approved successfully",
           data: { approval_id: approval_request_id }
         });
 
