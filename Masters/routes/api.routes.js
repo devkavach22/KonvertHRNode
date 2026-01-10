@@ -78,6 +78,11 @@ router.post(
 );
 
 router.post(
+  "/Marketing/pageLogin",
+  authenticate,
+  apiController.loginMarketingPage.bind(apiController)
+);
+router.post(
   "/forgot-password/request",
   authenticate,
   apiController.sendTempPassword.bind(apiController)

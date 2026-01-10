@@ -879,6 +879,104 @@ class ApiController {
       });
     }
   }
+
+
+  async loginMarketingPage(req, res) {
+    try {
+      console.log("🔥 Login API called");
+      const { email, password } = req.body;
+
+      // Validate input
+      if (!email || !password) {
+        return res.status(400).json({
+          status: "error",
+          message: "Email and Password are required",
+        });
+      }
+
+      // Validate email format
+      const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!validEmailRegex.test(email)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid email format",
+        });
+      }
+
+      // Search for user in Odoo
+      const userRecord = await odooService.searchRead(
+        "res.users",
+        [["login", "=", email]],
+        [
+          "id",
+          "login",
+          "name",
+          "first_name",
+          "last_name",
+        ]
+      );
+
+      if (!userRecord || userRecord.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found. Please signup.",
+        });
+      }
+
+      const user = userRecord[0];
+      const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+
+      // Authenticate with Odoo
+      const commonClient = odooService.createClient("/xmlrpc/2/common");
+      const uid = await new Promise((resolve, reject) => {
+        commonClient.methodCall(
+          "authenticate",
+          [odooService.db, email, password, {}],
+          (err, uid) => {
+            if (err || !uid) reject(new Error("Incorrect password"));
+            else resolve(uid);
+          }
+        );
+      }).catch((err) => {
+        return res.status(401).json({
+          status: "error",
+          message: err.message || "Authentication failed",
+        });
+      });
+
+      if (!uid) return;
+
+      // Generate JWT token
+      const token = jwt.sign(
+        {
+          userId: uid,
+          email,
+          name: user.name,
+          odoo_username: email,
+          odoo_password: password,
+          odoo_db: odooService.db,
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      // Return success response
+      return res.status(200).json({
+        status: "success",
+        message: "Login successful",
+        user_id: uid,
+        email,
+        name: user.name,
+        full_name,
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to login",
+      });
+    }
+  }
   async getStates(req, res) {
     try {
       const states = await odooService.searchRead(
