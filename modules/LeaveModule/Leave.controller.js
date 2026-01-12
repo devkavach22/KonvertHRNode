@@ -495,109 +495,99 @@ class LeaveController {
       });
     }
   }
-  async getLeaveAllocation(req, res) {
-    try {
-      console.log("------------------------------------------------");
-      console.log("API Called: getLeaveAllocation");
-      console.log("Query Params:", JSON.stringify(req.query, null, 2));
-
-      // 1. Fetch Context & Debug Logs
-      console.log("Fetching client context from request...");
-      const context = await getClientFromRequest(req);
-
-      if (!context) {
-        throw new Error("Client context is null or undefined");
-      }
-
-      const { client_id } = context;
-      console.log(`Context Extracted - Client ID: ${client_id}`);
-
-      // 2. define Search Filters (Domain)
-      // Allow filtering by specific employee if 'employee_id' is passed in query
-      const domain = [];
-
-      if (req.query.employee_id) {
-        domain.push(["employee_id", "=", parseInt(req.query.employee_id)]);
-        console.log(`Filtering by Employee ID: ${req.query.employee_id}`);
-      }
-
-      // Optional: Filter by specific leave type
-      if (req.query.holiday_status_id) {
-        domain.push(["holiday_status_id", "=", parseInt(req.query.holiday_status_id)]);
-      }
-
-      // 3. Define Fields to Fetch
-      // These map to the fields you used in 'create' + useful display fields
-      const fields = [
-        "id",
-        "name", // Description
-        "holiday_status_id", // Leave Type
-        "employee_id", // Employee
-        "allocation_type", // regular vs accrual
-        "number_of_days", // Total days allocated
-        "number_of_days_display", // Often used in Odoo for actual balance
-        "date_from",
-        "date_to",
-        "accrual_plan_id",
-        "state" // e.g., 'draft', 'confirm', 'validate'
-      ];
-
-      console.log(`Fetching allocations from 'hr.leave.allocation' for Client ID: ${client_id}...`);
-      console.log("Search Domain:", JSON.stringify(domain));
-
-      // 4. Call Odoo Service
-      const allocations = await odooService.searchRead(
-        "hr.leave.allocation",
-        domain,
-        fields,
-        0, // limit (0 = unlimited, or set a number like 50)
-        client_id
-      );
-
-      console.log(`Odoo returned ${allocations.length} records.`);
-
-      // 5. Transform Data for Frontend
-      // Odoo returns relations as [id, "Name"]. We clean this up.
-      const cleanedAllocations = allocations.map((alloc) => ({
-        id: alloc.id,
-        description: alloc.name || "No Description",
-        leave_type: Array.isArray(alloc.holiday_status_id)
-          ? { id: alloc.holiday_status_id[0], name: alloc.holiday_status_id[1] }
-          : null,
-        employee: Array.isArray(alloc.employee_id)
-          ? { id: alloc.employee_id[0], name: alloc.employee_id[1] }
-          : null,
-        allocation_type: alloc.allocation_type,
-        accrual_plan: Array.isArray(alloc.accrual_plan_id)
-          ? { id: alloc.accrual_plan_id[0], name: alloc.accrual_plan_id[1] }
-          : null,
-        days_allocated: alloc.number_of_days,
-        validity: {
-          start: alloc.date_from || null,
-          end: alloc.date_to || "No Limit"
-        },
-        status: alloc.state
-      }));
-
-      // 6. Send Response
-      return res.status(200).json({
-        status: "success",
-        message: "Leave allocations fetched successfully",
-        count: cleanedAllocations.length,
-        data: cleanedAllocations
-      });
-
-    } catch (error) {
-      console.error("!!! ERROR in getLeaveAllocation !!!");
-      console.error("Error Message:", error.message);
-      console.error("Error Stack:", error.stack);
-
-      return res.status(error.status || 500).json({
-        status: "error",
-        message: error.message || "Failed to fetch leave allocations"
+async getLeaveAllocation(req, res) {
+  try {
+    console.log("------------------------------------------------");
+    console.log("API Called: getLeaveAllocation");
+    
+    const context = await getClientFromRequest(req);
+    const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
+    
+    console.log(`Step 1: Checking User ${user_id} flags...`);
+    
+    const userData = await odooService.searchRead(
+      "res.users",
+      [["id", "=", user_id]],
+      ["is_client_employee_admin", "is_client_employee_user", "address_id"]
+    );
+    
+    if (!userData || userData.length === 0) {
+      return res.status(404).json({ 
+        status: "error", 
+        message: "User not found" 
       });
     }
+    
+    const user = userData[0];
+    let domain = [];
+    
+    if (user.is_client_employee_user) {
+      console.log("User is regular employee. Fetching own records.");
+      
+      const employeeData = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", user_id]],
+        ["id"]
+      );
+      
+      if (employeeData.length > 0) {
+        domain.push(["employee_id", "=", employeeData[0].id]);
+      } else {
+        return res.status(404).json({
+          status: "error",
+          message: "Employee record not found for this user"
+        });
+      }
+      
+    } else if (user.is_client_employee_admin) {
+      console.log("User is Admin. Fetching records based on filters.");
+            if (req.query.employee_id) {
+        domain.push(["employee_id", "=", parseInt(req.query.employee_id)]);
+      }
+    }
+    
+    domain.push(["client_id", "=", context.client_id]);
+    
+    console.log(`Step 2: Fetching Allocations with domain:`, domain);
+    
+    // 5. Fetch leave allocations using searchRead
+    const allocations = await odooService.searchRead(
+      "hr.leave.allocation",
+      domain,
+      [
+        "id",
+        "name",
+        "holiday_status_id",
+        "employee_id",
+        "allocation_type",
+        "number_of_days",
+        "state"
+      ]
+    );
+    
+    console.log(`Found ${allocations.length} allocations`);
+    
+    return res.status(200).json({
+      status: "success",
+      count: allocations.length,
+      data: allocations.map(a => ({
+        id: a.id,
+        description: a.name,
+        leave_type: a.holiday_status_id ? a.holiday_status_id[1] : null,
+        employee: a.employee_id ? a.employee_id[1] : null,
+        days: a.number_of_days,
+        status: a.state
+      }))
+    });
+    
+  } catch (error) {
+    console.error("Get Leave Allocation Error:", error);
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to fetch leave allocations"
+    });
   }
+}
 
 
   async updateLeaveAllocation(req, res) {
@@ -1050,98 +1040,122 @@ class LeaveController {
 
 
 
-  async getLeaveRequest(req, res) {
+async getLeaveRequest(req, res) {
   try {
     console.log("========== GET LEAVE REQUEST API START ==========");
     console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
-
-    /* ───────── 1. GET USER ID (SAME AS CREATE) ───────── */
-    const rawUserId = req.query.user_id ?? req.body?.user_id;
-    const user_id = Number(rawUserId);
-
-    console.log("Resolved raw user_id:", rawUserId);
-    console.log("Parsed numeric user_id:", user_id);
-
-    if (
-      rawUserId === undefined ||
-      rawUserId === null ||
-      rawUserId === "" ||
-      Number.isNaN(user_id) ||
-      user_id <= 0
-    ) {
-      console.error("❌ user_id missing in request");
-      return res.status(400).json({
-        status: "error",
-        message: "user_id is required"
-      });
-    }
-
-    /* ───────── 2. FETCH EMPLOYEE USING USER_ID ───────── */
-    console.log("Fetching employee linked to user...");
-
-    const employeeInfo = await odooService.searchRead(
-      "hr.employee",
-      [["user_id", "=", user_id]],
-      ["id", "name", "department_id", "company_id"],
-      1
+    
+    /* ───────── 1. GET CONTEXT ───────── */
+    const context = await getClientFromRequest(req);
+    const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
+    
+    console.log(`Resolved user_id: ${user_id}`);
+    
+    /* ───────── 2. CHECK USER FLAGS ───────── */
+    console.log("Checking user permissions...");
+    const userData = await odooService.searchRead(
+      "res.users",
+      [["id", "=", user_id]],
+      ["is_client_employee_admin", "is_client_employee_user"]
     );
-
-    console.log("Employee Info Response:", employeeInfo);
-
-    if (!employeeInfo.length) {
-      console.error(`❌ Employee not found for user_id ${user_id}`);
-      return res.status(404).json({
-        status: "error",
-        message: "Employee not linked with this user."
+    
+    if (!userData || userData.length === 0) {
+      return res.status(404).json({ 
+        status: "error", 
+        message: "User not found" 
       });
     }
-
-    const empData = employeeInfo[0];
-    const empIdInt = empData.id;
-
-    /* ───────── 3. BUILD DOMAIN (CLIENT-SAFE) ───────── */
-    const domain = [["employee_id", "=", empIdInt]];
-
-    // Optional filters
+    
+    const user = userData[0];
+    let domain = [];
+    let employeeInfo = null;
+    
+    /* ───────── 3. BUILD DOMAIN BASED ON USER TYPE ───────── */
+    if (user.is_client_employee_user) {
+      console.log("User is regular employee. Fetching own leave requests.");
+      
+      // Fetch employee linked to this user
+      employeeInfo = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", user_id]],
+        ["id", "name", "department_id", "company_id"]
+      );
+      
+      if (!employeeInfo.length) {
+        console.error(`❌ Employee not found for user_id ${user_id}`);
+        return res.status(404).json({
+          status: "error",
+          message: "Employee not linked with this user."
+        });
+      }
+      
+      // Filter by employee_id
+      domain.push(["employee_id", "=", employeeInfo[0].id]);
+      
+    } else if (user.is_client_employee_admin) {
+      console.log("User is Admin. Fetching based on filters.");
+      
+      // Admin can filter by specific employee or see all
+      if (req.query.employee_id) {
+        const empId = parseInt(req.query.employee_id);
+        domain.push(["employee_id", "=", empId]);
+        
+        // Fetch that specific employee's info for response
+        employeeInfo = await odooService.searchRead(
+          "hr.employee",
+          [["id", "=", empId]],
+          ["id", "name", "department_id", "company_id"]
+        );
+      }
+      // If no employee_id filter, admin sees all (we won't fetch specific employee info)
+    }
+    
+    /* ───────── 4. ADD CLIENT_ID & OPTIONAL FILTERS ───────── */
+    domain.push(["client_id", "=", context.client_id]);
+    
+    // Optional date filters
     if (req.query.date_from && req.query.date_to) {
       domain.push(["date_from", ">=", req.query.date_from]);
       domain.push(["date_to", "<=", req.query.date_to]);
     }
-
+    
+    // Optional leave type filter
     if (req.query.holiday_status_id) {
-      domain.push(["holiday_status_id", "=", Number(req.query.holiday_status_id)]);
+      domain.push(["holiday_status_id", "=", parseInt(req.query.holiday_status_id)]);
     }
-
+    
+    // Optional status filter
     if (req.query.state) {
       domain.push(["state", "=", req.query.state]);
     }
-
+    
     console.log("Final Search Domain:", JSON.stringify(domain));
-
-    /* ───────── 4. FETCH LEAVE REQUESTS ───────── */
+    
+    /* ───────── 5. FETCH LEAVE REQUESTS ───────── */
     console.log("Fetching leave requests from Odoo...");
-
     const leaveRequests = await odooService.searchRead(
       "hr.leave",
       domain,
       [
         "id",
         "name",
+        "employee_id",
         "holiday_status_id",
         "date_from",
         "date_to",
         "number_of_days",
         "state",
         "create_date"
-      ],
-      0
+      ]
     );
-
+    
     console.log(`Fetched ${leaveRequests.length} leave records`);
-
-    /* ───────── 5. FORMAT RESPONSE ───────── */
+    
+    /* ───────── 6. FORMAT RESPONSE ───────── */
     const responseData = leaveRequests.map(lr => ({
       request_id: lr.id,
+      employee_id: lr.employee_id?.[0] || null,
+      employee_name: lr.employee_id?.[1] || null,
       leave_type_id: lr.holiday_status_id?.[0] || null,
       leave_type_name: lr.holiday_status_id?.[1] || "Unknown",
       from: lr.date_from,
@@ -1151,32 +1165,38 @@ class LeaveController {
       reason: lr.name || null,
       created_on: lr.create_date
     }));
-
-    /* ───────── 6. RESPONSE ───────── */
-    return res.status(200).json({
+    
+    /* ───────── 7. BUILD RESPONSE ───────── */
+    const response = {
       status: "success",
       message: "Leave requests fetched successfully.",
-      employee: {
-        id: empIdInt,
+      total_records: responseData.length,
+      data: responseData
+    };
+    
+    // Include employee info only if we have it (regular user or admin filtering by specific employee)
+    if (employeeInfo && employeeInfo.length > 0) {
+      const empData = employeeInfo[0];
+      response.employee = {
+        id: empData.id,
         name: empData.name,
         department: empData.department_id?.[1] || null,
         company: empData.company_id?.[1] || null
-      },
-      total_records: responseData.length,
-      data: responseData
-    });
-
+      };
+    }
+    
+    console.log("========== GET LEAVE REQUEST SUCCESS ==========");
+    return res.status(200).json(response);
+    
   } catch (error) {
     console.error("========== GET LEAVE REQUEST FAILED ==========");
     console.error(error);
-
     return res.status(error.status || 500).json({
       status: "error",
       message: error.message || "Failed to fetch leave requests."
     });
   }
 }
-
 
   async updateLeaveRequest(req, res) {
     try {

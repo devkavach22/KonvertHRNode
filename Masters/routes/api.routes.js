@@ -605,6 +605,16 @@ router.get(
   authenticate,
   PayrollController.getSalaryRules.bind(PayrollController)
 );
+router.post(
+  "/employee/Contract",
+  authenticate,
+  PayrollController.createContracts.bind(PayrollController)
+);
+router.get(
+  "/employee/Contract",
+  authenticate,
+  PayrollController.getContracts.bind(PayrollController)
+);
 
 router.get(
   "/groups",

@@ -40,8 +40,6 @@ class PayrollController {
                     ["name", "=", name],
                     ["client_id", "=", client_id],
                 ],
-                ["id"],
-                1
             );
             if (existing.length) {
                 return res.status(409).json({
@@ -273,93 +271,91 @@ class PayrollController {
             });
         }
     }
+    async getSalaryRuleCategories(req, res) {
+        try {
+            console.log("API Called getSalaryRuleCategories");
 
+            // ✅ user_id resolve (same fix as before)
+            const user_id = Number(req.query.user_id || req.params.user_id);
 
-  async getSalaryRuleCategories(req, res) {
-  try {
-    console.log("API Called getSalaryRuleCategories");
+            if (!user_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "user_id is required",
+                });
+            }
 
-    // ✅ user_id resolve (same fix as before)
-    const user_id = Number(req.query.user_id || req.params.user_id);
+            // ───────── COUNT (user-wise) ─────────
+            const count = await odooService.execute(
+                "hr.salary.rule.category",
+                "search_count",
+                [[["create_uid", "=", user_id]]]
+            );
 
-    if (!user_id) {
-      return res.status(400).json({
-        status: "error",
-        message: "user_id is required",
-      });
+            if (count === 0) {
+                return res.status(200).json({
+                    status: "success",
+                    count: 0,
+                    data: [],
+                    message: "No salary rule categories found for this user",
+                });
+            }
+
+            // ───────── FETCH IDS (only created by this user) ─────────
+            const ids = await odooService.execute(
+                "hr.salary.rule.category",
+                "search",
+                [[["create_uid", "=", user_id]]],
+                { limit: 1000 }
+            );
+
+            if (!ids || ids.length === 0) {
+                return res.status(200).json({
+                    status: "success",
+                    count: 0,
+                    data: [],
+                    message: "No accessible salary rule categories",
+                });
+            }
+
+            // ───────── READ RECORDS ─────────
+            try {
+                const records = await odooService.execute(
+                    "hr.salary.rule.category",
+                    "read",
+                    [ids, ["id", "name", "code", "parent_id", "note"]]
+                );
+
+                return res.status(200).json({
+                    status: "success",
+                    count: records.length,
+                    data: records,
+                });
+
+            } catch (readError) {
+                console.error("Read error:", readError);
+
+                const recordsWithoutNote = await odooService.execute(
+                    "hr.salary.rule.category",
+                    "read",
+                    [ids, ["id", "name", "code", "parent_id"]]
+                );
+
+                return res.status(200).json({
+                    status: "success",
+                    count: recordsWithoutNote.length,
+                    data: recordsWithoutNote,
+                    warning: "Note field not available",
+                });
+            }
+
+        } catch (error) {
+            return res.status(500).json({
+                status: "error",
+                message: error.message || "Failed to fetch salary rule categories",
+            });
+        }
     }
-
-    // ───────── COUNT (user-wise) ─────────
-    const count = await odooService.execute(
-      "hr.salary.rule.category",
-      "search_count",
-      [[["create_uid", "=", user_id]]]
-    );
-
-    if (count === 0) {
-      return res.status(200).json({
-        status: "success",
-        count: 0,
-        data: [],
-        message: "No salary rule categories found for this user",
-      });
-    }
-
-    // ───────── FETCH IDS (only created by this user) ─────────
-    const ids = await odooService.execute(
-      "hr.salary.rule.category",
-      "search",
-      [[["create_uid", "=", user_id]]],
-      { limit: 1000 }
-    );
-
-    if (!ids || ids.length === 0) {
-      return res.status(200).json({
-        status: "success",
-        count: 0,
-        data: [],
-        message: "No accessible salary rule categories",
-      });
-    }
-
-    // ───────── READ RECORDS ─────────
-    try {
-      const records = await odooService.execute(
-        "hr.salary.rule.category",
-        "read",
-        [ids, ["id", "name", "code", "parent_id", "note"]]
-      );
-
-      return res.status(200).json({
-        status: "success",
-        count: records.length,
-        data: records,
-      });
-
-    } catch (readError) {
-      console.error("Read error:", readError);
-
-      const recordsWithoutNote = await odooService.execute(
-        "hr.salary.rule.category",
-        "read",
-        [ids, ["id", "name", "code", "parent_id"]]
-      );
-
-      return res.status(200).json({
-        status: "success",
-        count: recordsWithoutNote.length,
-        data: recordsWithoutNote,
-        warning: "Note field not available",
-      });
-    }
-
-  } catch (error) {
-    return res.status(500).json({
-      status: "error",
-      message: error.message || "Failed to fetch salary rule categories",
-    });
-  }
-}
 
     // async createSalaryRule(req, res) {
     //     try {
@@ -938,7 +934,6 @@ class PayrollController {
             });
         }
     }
-
     async createSalaryStructure(req, res) {
         try {
             // const client = await getClientFromRequest(req);
@@ -1041,7 +1036,6 @@ class PayrollController {
             });
         }
     }
-
     async getSalaryStructure(req, res) {
         try {
             // const client = await getClientFromRequest(req);
@@ -1108,6 +1102,523 @@ class PayrollController {
                 success: false,
                 message: "Failed to fetch Salary Structure",
                 error: error.message
+            });
+        }
+    }
+    async createContracts(req, res) {
+        try {
+            console.log("API called for Contract creation");
+            const {
+                name, // Contract Reference (MANDATORY)
+                employee_code,
+                employee_id,
+                job_id, // Job Position
+                date_start,
+                date_end,
+
+                resource_calendar_id,
+                work_entry_source,
+                structure_type_id, // Salary Structure Type
+                department_id,
+                contract_type_id,
+
+                wage_type,
+                schedule_pay,
+                wage,
+
+                conveyance_allowances,
+                skill_allowances,
+                food_allowances,
+                washing_allowances,
+                special_allowances,
+                medical_allowances,
+                uniform_allowances,
+                child_eduction_allowances,
+                other_allowances,
+                variable_pay,
+                gratuity,
+                professional_tax,
+                lta
+            } = req.body;
+            console.log(req.body);
+
+            /* ───────── 1. GET client_id FROM AUTH ───────── */
+            const { client_id } = await getClientFromRequest(req);
+
+            const client = await odooService.searchRead(
+                "res.partner",
+                [["id", "=", client_id]],
+                ["id"],
+                1
+            );
+
+            if (!client.length) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid client_id"
+                });
+            }
+
+            /* ───────── 2. MANDATORY VALIDATION ───────── */
+            const missingFields = [];
+            if (!name) missingFields.push("name (Contract Reference)");
+            if (!employee_code) missingFields.push("employee_code");
+            if (!employee_id) missingFields.push("employee_id");
+            if (!date_start) missingFields.push("date_start");
+            if (!structure_type_id) missingFields.push("structure_type_id (Salary Structure Type)");
+            if (!work_entry_source) missingFields.push("work_entry_source");
+            if (!wage) missingFields.push("wage");
+
+            if (missingFields.length) {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Missing required fields: ${missingFields.join(", ")}`
+                });
+            }
+
+            /* ───────── 3. VALIDATE EMPLOYEE (GET COMPANY & COUNTRY) ───────── */
+            const employee = await odooService.searchRead(
+                "hr.employee",
+                [["id", "=", employee_id]],
+                ["id", "name"],
+                1
+            );
+
+            if (!employee.length) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid employee_id"
+                });
+            }
+
+            // const employeeCompanyId = employee[0].company_id?.[0] || false;
+            // const employeeCountryId = employee[0].country_id?.[0] || false;
+
+            /* ───────── 4. VALIDATE JOB POSITION ───────── */
+            if (job_id) {
+                const job = await odooService.searchRead(
+                    "hr.job",
+                    [["id", "=", job_id]],
+                    ["id", "name"],
+                    1
+                );
+                if (!job.length) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Invalid job_id"
+                    });
+                }
+            }
+
+            /* ───────── 5. VALIDATE SALARY STRUCTURE TYPE (CRITICAL FIX) ───────── */
+            // let validStructureTypeId = false;
+
+            if (structure_type_id) {
+                const structureType = await odooService.searchRead(
+                    "hr.payroll.structure.type",
+                    [["id", "=", structure_type_id]],
+                    ["id", "name"],
+                    1
+                );
+                // const structureType = await odooService.searchRead(
+                // "hr.payroll.structure.type",
+                // [
+                // ["id", "=", structure_type_id],
+                // "|", ["company_id", "=", false], ["company_id", "=", employeeCompanyId],
+                // "|", ["country_id", "=", false], ["country_id", "=", employeeCountryId]
+                // ],
+                // ["id", "name"],
+                // 1
+                // );
+
+                if (!structureType.length) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Invalid Salary Structure Type for this employee"
+                    });
+                }
+
+                // validStructureTypeId = structure_type_id;
+            }
+
+            /* ───────── 6. VALIDATE WORK ENTRY SOURCE ───────── */
+            const validWorkEntrySources = ["calendar", "attendance"];
+            if (!validWorkEntrySources.includes(work_entry_source)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid work_entry_source"
+                });
+            }
+
+            if (work_entry_source === "calendar" && !resource_calendar_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "resource_calendar_id is required when work_entry_source is calendar"
+                });
+            }
+
+            if (resource_calendar_id) {
+                const calendar = await odooService.searchRead(
+                    "resource.calendar",
+                    [["id", "=", resource_calendar_id]],
+                    ["id", "name"],
+                    1
+                );
+                if (!calendar.length) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Invalid resource_calendar_id"
+                    });
+                }
+            }
+
+            /* ───────── 7. VALIDATE OTHER MANY2ONE FIELDS ───────── */
+            const many2oneChecks = [
+                { id: department_id, model: "hr.department", field: "department_id" },
+                { id: contract_type_id, model: "hr.contract.type", field: "contract_type_id" }
+            ];
+
+            for (const item of many2oneChecks) {
+                if (item.id) {
+                    const record = await odooService.searchRead(
+                        item.model,
+                        [["id", "=", item.id]],
+                        ["id"],
+                        1
+                    );
+                    if (!record.length) {
+                        return res.status(400).json({
+                            status: "error",
+                            message: `Invalid ${item.field}`
+                        });
+                    }
+                }
+            }
+
+            /* ───────── 8. VALIDATE SELECTION FIELDS ───────── */
+            const validWageTypes = ["monthly", "hourly", "daily_attendance"];
+            if (wage_type && !validWageTypes.includes(wage_type)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid wage_type"
+                });
+            }
+
+            const validSchedulePay = [
+                "annually", "semi-annually", "quarterly",
+                "bi-monthly", "monthly", "semi-monthly",
+                "bi-weekly", "weekly", "daily"
+            ];
+            if (schedule_pay && !validSchedulePay.includes(schedule_pay)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid schedule_pay"
+                });
+            }
+
+            /* ───────── 9. CONSTRUCT PAYLOAD (ODOO FINAL) ───────── */
+            const vals = {
+                name,
+                state: "draft", // New → Running → Expired → Cancelled
+                client_id,
+
+                employee_code,
+                employee_id,
+                job_id: job_id || false,
+
+                date_start,
+                date_end: date_end || false,
+
+                work_entry_source,
+                resource_calendar_id: resource_calendar_id || false,
+
+                structure_type_id: structure_type_id || false,
+                department_id: department_id || false,
+                contract_type_id: contract_type_id || false,
+
+                wage_type: wage_type || "monthly",
+                schedule_pay: schedule_pay || "monthly",
+                wage,
+
+                conveyance_allowances: conveyance_allowances || 0,
+                skill_allowances: skill_allowances || 0,
+                food_allowances: food_allowances || 0,
+                washing_allowances: washing_allowances || 0,
+                special_allowances: special_allowances || 0,
+                medical_allowances: medical_allowances || 0,
+                uniform_allowances: uniform_allowances || 0,
+                child_eduction_allowances: child_eduction_allowances || 0,
+                other_allowances: other_allowances || 0,
+                variable_pay: variable_pay || 0,
+                gratuity: gratuity || 0,
+                professional_tax: professional_tax || 0,
+                lta: lta || 0
+            };
+
+            console.log("Payload sending to Odoo:", vals);
+
+            /* ───────── 10. CREATE CONTRACT ───────── */
+            const contractId = await odooService.create("hr.contract", vals);
+
+            /* ───────── 11. FETCH CREATED CONTRACT ───────── */
+            const rec = await odooService.searchRead(
+                "hr.contract",
+                [["id", "=", contractId]],
+                [
+                    "id",
+                    "name",
+                    "employee_code",
+                    "employee_id",
+                    "job_id",
+                    "department_id",
+                    "contract_type_id",
+                    "structure_type_id",
+                    "wage_type",
+                    "schedule_pay",
+                    "wage",
+                    "work_entry_source",
+                    "resource_calendar_id",
+                    "conveyance_allowances",
+                    "skill_allowances",
+                    "food_allowances",
+                    "washing_allowances",
+                    "special_allowances",
+                    "medical_allowances",
+                    "uniform_allowances",
+                    "child_eduction_allowances",
+                    "other_allowances",
+                    "variable_pay",
+                    "gratuity",
+                    "professional_tax",
+                    "lta",
+                    "date_start",
+                    "date_end",
+                    "state",
+                    "client_id"
+                ],
+                1
+            );
+
+            // const contractData = createdContract.length ? createdContract[0] : null;
+
+            const c = rec[0];
+
+            return res.status(201).json({
+                status: "success",
+                message: "Contract created successfully",
+                data: {
+                    contract_id: c.id,
+                    name: c.name,
+                    state: c.state,
+                    client: c.client_id,
+
+                    employee_code: c.employee_code,
+                    employee: c.employee_id,
+                    job_position: c.job_id,
+                    department: c.department_id,
+                    contract_type: c.contract_type_id,
+
+                    date_start: c.date_start,
+                    date_end: c.date_end,
+
+                    salary_structure_type: c.structure_type_id,
+                    wage_type: c.wage_type,
+                    schedule_pay: c.schedule_pay,
+                    wage: c.wage,
+
+                    work_entry_source: c.work_entry_source,
+                    working_schedule: c.resource_calendar_id,
+
+                    allowances: {
+                        conveyance: c.conveyance_allowances,
+                        skill: c.skill_allowances,
+                        food: c.food_allowances,
+                        washing: c.washing_allowances,
+                        special: c.special_allowances,
+                        medical: c.medical_allowances,
+                        uniform: c.uniform_allowances,
+                        child_education: c.child_eduction_allowances,
+                        other: c.other_allowances,
+                        variable_pay: c.variable_pay,
+                        gratuity: c.gratuity,
+                        professional_tax: c.professional_tax,
+                        lta: c.lta
+                    },
+
+                    meta: {
+                        created_at: c.create_date,
+                        updated_at: c.write_date
+                    }
+                }
+            });
+
+            // return res.status(201).json({
+            // status: "success",
+            // message: "Contract created successfully",
+            // data: createdContract[0] || null
+            // });
+
+        } catch (error) {
+            console.error("❌ Create Contract Error:", error);
+            return res.status(500).json({
+                status: "error",
+                message: error.message || "Failed to create contract"
+            });
+        }
+    }
+    async getContracts(req, res) {
+        try {
+            console.log("API called for Get Contracts");
+
+            const {
+                employee_id,
+                job_id,
+                state,
+                date_from,
+                date_to,
+                limit = 10,
+                offset = 0
+            } = req.query;
+            console.log(req.query);
+
+            /* ───────── 1. GET client_id FROM AUTH ───────── */
+            const { client_id } = await getClientFromRequest(req);
+
+            /* ───────── 2. BUILD DOMAIN ───────── */
+            const domain = [["client_id", "=", client_id]];
+
+            if (employee_id) {
+                domain.push(["employee_id", "=", Number(employee_id)]);
+            }
+
+            if (job_id) {
+                domain.push(["job_id", "=", Number(job_id)]);
+            }
+
+            if (state) {
+                domain.push(["state", "=", state]);
+            }
+
+            if (date_from) {
+                domain.push(["date_start", ">=", date_from]);
+            }
+
+            if (date_to) {
+                domain.push(["date_start", "<=", date_to]);
+            }
+
+            /* ───────── 3. FETCH CONTRACTS ───────── */
+            const records = await odooService.searchRead(
+                "hr.contract",
+                domain,
+                [
+                    "id",
+                    "name",
+                    "state",
+                    "client_id",
+
+                    "employee_code",
+                    "employee_id",
+                    "job_id",
+                    "department_id",
+                    "contract_type_id",
+
+                    "date_start",
+                    "date_end",
+
+                    "structure_type_id",
+                    "wage_type",
+                    "schedule_pay",
+                    "wage",
+
+                    "work_entry_source",
+                    "resource_calendar_id",
+
+                    "conveyance_allowances",
+                    "skill_allowances",
+                    "food_allowances",
+                    "washing_allowances",
+                    "special_allowances",
+                    "medical_allowances",
+                    "uniform_allowances",
+                    "child_eduction_allowances",
+                    "other_allowances",
+                    "variable_pay",
+                    "gratuity",
+                    "professional_tax",
+                    "lta",
+
+                    "create_date",
+                    "write_date"
+                ],
+                Number(limit),
+                Number(offset),
+                "create_date desc"
+            );
+
+            /* ───────── 4. FORMAT RESPONSE ───────── */
+            const data = records.map(c => ({
+                contract_id: c.id,
+                name: c.name,
+                state: c.state,
+                client: c.client_id,
+
+                employee_code: c.employee_code,
+                employee: c.employee_id,
+                job_position: c.job_id,
+                department: c.department_id,
+                contract_type: c.contract_type_id,
+
+                date_start: c.date_start,
+                date_end: c.date_end,
+
+                salary_structure_type: c.structure_type_id,
+                wage_type: c.wage_type,
+                schedule_pay: c.schedule_pay,
+                wage: c.wage,
+
+                work_entry_source: c.work_entry_source,
+                working_schedule: c.resource_calendar_id,
+
+                allowances: {
+                    conveyance: c.conveyance_allowances,
+                    skill: c.skill_allowances,
+                    food: c.food_allowances,
+                    washing: c.washing_allowances,
+                    special: c.special_allowances,
+                    medical: c.medical_allowances,
+                    uniform: c.uniform_allowances,
+                    child_education: c.child_eduction_allowances,
+                    other: c.other_allowances,
+                    variable_pay: c.variable_pay,
+                    gratuity: c.gratuity,
+                    professional_tax: c.professional_tax,
+                    lta: c.lta
+                },
+
+                meta: {
+                    created_at: c.create_date,
+                    updated_at: c.write_date
+                }
+            }));
+
+            /* ───────── 5. RESPONSE ───────── */
+            return res.status(200).json({
+                status: "success",
+                message: "Contracts fetched successfully",
+                data,
+                meta: {
+                    total: data.length,
+                    limit: Number(limit),
+                    offset: Number(offset)
+                }
+            });
+
+        } catch (error) {
+            console.error("❌ Get Contracts Error:", error);
+            return res.status(500).json({
+                status: "error",
+                message: error.message || "Failed to fetch contracts"
             });
         }
     }
