@@ -5213,6 +5213,280 @@ class ApiController {
       });
     }
   }
+  // async getAdminAttendances(req, res) {
+  //   try {
+  //     const {
+  //       user_id,
+  //       date_from,
+  //       date_to,
+  //       limit = 100,
+  //       offset = 0,
+  //     } = req.query;
+
+  //     if (!user_id) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: "user_id is required",
+  //       });
+  //     }
+
+  //     console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
+
+  //     const partner = await odooService.searchRead(
+  //       "res.users",
+  //       [["id", "=", parseInt(user_id)]],
+  //       ["id", "partner_id"]
+  //     );
+
+  //     if (!partner.length) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: `Partner not found for user_id: ${user_id}`,
+  //       });
+  //     }
+
+  //     const partnerId = partner[0].partner_id?.[0];
+
+  //     const adminEmployee = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["address_id", "=", partnerId]],
+  //       ["id", "address_id"]
+  //     );
+
+  //     if (!adminEmployee.length) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: `Employee not found for partner ${partnerId}`,
+  //       });
+  //     }
+
+  //     const client_id = adminEmployee[0].address_id?.[0];
+  //     console.log(client_id, "✔ client_id");
+
+  //     const totalEmployees = await odooService.callCustomMethod(
+  //       "simple.action",
+  //       "get_total_number_of_employee",
+  //       [[], client_id]
+  //     );
+
+  //     const Presentemployee = await odooService.callCustomMethod(
+  //       "simple.action",
+  //       "get_total_present_employee",
+  //       [client_id]
+  //     );
+
+  //     const TotalLateemployee = await odooService.callCustomMethod(
+  //       "simple.action",
+  //       "get_total_no_of_late_employee",
+  //       [client_id]
+  //     );
+
+  //     const Ununiformendemployee = await odooService.callCustomMethod(
+  //       "simple.action",
+  //       "get_total_no_of_uninformed_employee",
+  //       [client_id]
+  //     );
+
+  //     const TodayAbsetEmployee = await odooService.callCustomMethod(
+  //       "simple.action",
+  //       "get_employees_no_attendance_today",
+  //       [client_id]
+  //     );
+
+  //     const ApprovedLeaveOfEmployee = await odooService.callCustomMethod(
+  //       "simple.action",
+  //       "get_total_no_of_permited_employee",
+  //       [client_id]
+  //     );
+  //     console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee);
+
+  //     const allEmployees = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["address_id", "=", client_id]],
+  //       ["id", "name", "job_id"]
+  //     );
+
+  //     if (!allEmployees.length) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: "No employees found for this client_id",
+  //       });
+  //     }
+
+  //     const employeeIds = allEmployees.map((e) => e.id);
+
+  //     let domain = [["employee_id", "in", employeeIds]];
+  //     if (date_from) domain.push(["check_in", ">=", date_from]);
+  //     if (date_to) domain.push(["check_in", "<=", date_to]);
+
+  //     const FIELDS = [
+  //       "employee_id",
+  //       "check_in",
+  //       "checkin_lat",
+  //       "checkin_lon",
+  //       "check_out",
+  //       "checkout_lat",
+  //       "checkout_lon",
+  //       "worked_hours",
+  //       "early_out_minutes",
+  //       "overtime_hours",
+  //       "is_early_out",
+  //       "validated_overtime_hours",
+  //       "is_late_in",
+  //       "late_time_display",
+  //       "status_code",
+  //     ];
+
+  //     const attendances = await odooService.searchRead(
+  //       "hr.attendance",
+  //       domain,
+  //       FIELDS,
+  //       parseInt(offset),
+  //       parseInt(limit),
+  //       "check_in desc"
+  //     );
+
+  //     const convertToIST = (utcDateStr) => {
+  //       if (!utcDateStr) return null;
+  //       const utcDate = new Date(utcDateStr + " UTC");
+  //       const istOffset = 5.5 * 60 * 60 * 1000;
+  //       const istDate = new Date(utcDate.getTime() + istOffset);
+  //       return istDate.toISOString().slice(0, 19).replace("T", " ");
+  //     };
+
+  //     const attendanceIds = attendances.map((a) => a.id);
+
+  //     let breakLines = [];
+  //     if (attendanceIds.length > 0) {
+  //       breakLines = await odooService.searchRead(
+  //         "hr.attendance.line",
+  //         [["attendance_id", "in", attendanceIds]],
+  //         ["attendance_id", "break_start", "break_end", "break_hours"]
+  //       );
+  //     }
+
+  //     const breakMap = {};
+  //     breakLines.forEach((line) => {
+  //       const attId = line.attendance_id?.[0];
+  //       breakMap[attId] = line;
+  //     });
+
+  //     const attendancesByEmployee = {};
+  //     attendances.forEach((att) => {
+  //       const empId = att.employee_id?.[0];
+  //       if (!attendancesByEmployee[empId]) {
+  //         attendancesByEmployee[empId] = [];
+  //       }
+  //       attendancesByEmployee[empId].push(att);
+  //     });
+
+  //     const finalData = allEmployees
+  //       .map((emp) => {
+  //         const empAttendances = attendancesByEmployee[emp.id] || [];
+
+  //         if (empAttendances.length > 0) {
+  //           return empAttendances.map((att) => {
+  //             const breakLine = breakMap[att.id];
+  //             return {
+  //               id: att.id,
+  //               employee_id: att.employee_id,
+
+  //               check_in: convertToIST(att.check_in),
+  //               checkin_lat: att.checkin_lat,
+  //               checkin_lon: att.checkin_lon,
+
+  //               check_out: convertToIST(att.check_out),
+  //               checkout_lat: att.checkout_lat,
+  //               checkout_lon: att.checkout_lon,
+
+  //               worked_hours: att.worked_hours,
+  //               early_out_minutes: att.early_out_minutes,
+  //               overtime_hours: att.overtime_hours,
+  //               validated_overtime_hours: att.validated_overtime_hours,
+
+  //               is_late_in: att.is_late_in,
+  //               late_time_display: att.late_time_display,
+  //               is_early_out: att.is_early_out,
+  //               status_code: att.status_code,
+
+  //               break_start: convertToIST(breakLine?.break_start),
+  //               break_end: convertToIST(breakLine?.break_end),
+  //               break_hours: breakLine?.break_hours || null,
+
+  //               job_id: emp.job_id || null,
+  //               job_name: emp.job_id ? emp.job_id[1] : null,
+  //             };
+  //           });
+  //         } else {
+  //           return [
+  //             {
+  //               id: null,
+  //               employee_id: [emp.id, emp.name],
+
+  //               check_in: null,
+  //               checkin_lat: null,
+  //               checkin_lon: null,
+
+  //               check_out: null,
+  //               checkout_lat: null,
+  //               checkout_lon: null,
+
+  //               worked_hours: null,
+  //               early_out_minutes: null,
+  //               overtime_hours: null,
+  //               validated_overtime_hours: null,
+
+  //               is_late_in: null,
+  //               late_time_display: null,
+  //               is_early_out: null,
+  //               status_code: null,
+
+  //               break_start: null,
+  //               break_end: null,
+  //               break_hours: null,
+
+  //               job_id: emp.job_id || null,
+  //               job_name: emp.job_id ? emp.job_id[1] : null,
+  //             },
+  //           ];
+  //         }
+  //       })
+  //       .flat();
+
+  //     return res.status(200).json({
+  //       success: true,
+  //       status: "success",
+  //       successMessage: "Admin attendance records fetched",
+  //       data: finalData,
+  //       meta: {
+  //         total_Attendace_records: finalData.length,
+  //         total_employees: allEmployees.length,
+  //         limit: parseInt(limit),
+  //         offset: parseInt(offset),
+  //         admin_partner_id: partnerId,
+  //         admin_address_id: client_id,
+  //         TotalEmployee: totalEmployees,
+  //         Presentemployee: Presentemployee,
+  //         TotalLateemployee: TotalLateemployee,
+  //         Ununiformendemployee: Ununiformendemployee,
+  //         TodayAbsetEmployee: TodayAbsetEmployee,
+  //         ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee,
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("🔥 Admin Attendance Error:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       status: "error",
+  //       errorMessage: error.message || "Failed to fetch admin attendance",
+  //     });
+  //   }
+  // }
+
   async getAdminAttendances(req, res) {
     try {
       const {
@@ -5222,6 +5496,8 @@ class ApiController {
         limit = 100,
         offset = 0,
       } = req.query;
+
+      console.log("📥 Request Query Params:", req.query);
 
       if (!user_id) {
         return res.status(400).json({
@@ -5238,6 +5514,7 @@ class ApiController {
         [["id", "=", parseInt(user_id)]],
         ["id", "partner_id"]
       );
+      console.log("👤 Partner Data:", partner);
 
       if (!partner.length) {
         return res.status(404).json({
@@ -5248,12 +5525,14 @@ class ApiController {
       }
 
       const partnerId = partner[0].partner_id?.[0];
+      console.log("🆔 Partner ID:", partnerId);
 
       const adminEmployee = await odooService.searchRead(
         "hr.employee",
         [["address_id", "=", partnerId]],
         ["id", "address_id"]
       );
+      console.log("👨‍💼 Admin Employee Data:", adminEmployee);
 
       if (!adminEmployee.length) {
         return res.status(404).json({
@@ -5264,24 +5543,27 @@ class ApiController {
       }
 
       const client_id = adminEmployee[0].address_id?.[0];
-      console.log(client_id, "✔ client_id");
+      console.log("🏢 Client ID:", client_id);
+
+      console.log("\n📊 Fetching Custom Method Stats...");
 
       const totalEmployees = await odooService.callCustomMethod(
         "simple.action",
         "get_total_number_of_employee",
         [[], client_id]
       );
+      console.log("✅ Total Employees:", totalEmployees);
 
       const Presentemployee = await odooService.callCustomMethod(
         "simple.action",
         "get_total_present_employee",
-        [client_id]
+        [[], false, false, client_id]
       );
 
       const TotalLateemployee = await odooService.callCustomMethod(
         "simple.action",
         "get_total_no_of_late_employee",
-        [client_id]
+        [[], false, false, client_id] 
       );
 
       const Ununiformendemployee = await odooService.callCustomMethod(
@@ -5289,25 +5571,30 @@ class ApiController {
         "get_total_no_of_uninformed_employee",
         [client_id]
       );
+      console.log("❓ Uninformed Employees:", Ununiformendemployee);
 
       const TodayAbsetEmployee = await odooService.callCustomMethod(
         "simple.action",
         "get_employees_no_attendance_today",
         [client_id]
       );
+      console.log("🚫 Today Absent Employees:", TodayAbsetEmployee);
 
       const ApprovedLeaveOfEmployee = await odooService.callCustomMethod(
         "simple.action",
         "get_total_no_of_permited_employee",
         [client_id]
       );
-      console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee);
+      console.log("✅ Approved Leave Employees:", ApprovedLeaveOfEmployee);
 
+      console.log("\n👥 Fetching All Employees for client_id:", client_id);
       const allEmployees = await odooService.searchRead(
         "hr.employee",
         [["address_id", "=", client_id]],
         ["id", "name", "job_id"]
       );
+      console.log("📋 All Employees Count:", allEmployees.length);
+      console.log("📋 All Employees Data:", JSON.stringify(allEmployees, null, 2));
 
       if (!allEmployees.length) {
         return res.status(404).json({
@@ -5318,10 +5605,12 @@ class ApiController {
       }
 
       const employeeIds = allEmployees.map((e) => e.id);
+      console.log("🔢 Employee IDs:", employeeIds);
 
       let domain = [["employee_id", "in", employeeIds]];
       if (date_from) domain.push(["check_in", ">=", date_from]);
       if (date_to) domain.push(["check_in", "<=", date_to]);
+      console.log("🔍 Attendance Domain:", JSON.stringify(domain));
 
       const FIELDS = [
         "employee_id",
@@ -5341,6 +5630,7 @@ class ApiController {
         "status_code",
       ];
 
+      console.log("\n📅 Fetching Attendance Records...");
       const attendances = await odooService.searchRead(
         "hr.attendance",
         domain,
@@ -5349,6 +5639,8 @@ class ApiController {
         parseInt(limit),
         "check_in desc"
       );
+      console.log("📊 Attendance Records Count:", attendances.length);
+      console.log("📊 First 3 Attendance Records:", JSON.stringify(attendances.slice(0, 3), null, 2));
 
       const convertToIST = (utcDateStr) => {
         if (!utcDateStr) return null;
@@ -5359,14 +5651,18 @@ class ApiController {
       };
 
       const attendanceIds = attendances.map((a) => a.id);
+      console.log("🆔 Attendance IDs:", attendanceIds);
 
       let breakLines = [];
       if (attendanceIds.length > 0) {
+        console.log("\n☕ Fetching Break Lines...");
         breakLines = await odooService.searchRead(
           "hr.attendance.line",
           [["attendance_id", "in", attendanceIds]],
           ["attendance_id", "break_start", "break_end", "break_hours"]
         );
+        console.log("☕ Break Lines Count:", breakLines.length);
+        console.log("☕ Break Lines Data:", JSON.stringify(breakLines, null, 2));
       }
 
       const breakMap = {};
@@ -5374,6 +5670,7 @@ class ApiController {
         const attId = line.attendance_id?.[0];
         breakMap[attId] = line;
       });
+      console.log("🗺️ Break Map Keys:", Object.keys(breakMap));
 
       const attendancesByEmployee = {};
       attendances.forEach((att) => {
@@ -5383,12 +5680,18 @@ class ApiController {
         }
         attendancesByEmployee[empId].push(att);
       });
+      console.log("\n👥 Attendances by Employee:");
+      Object.entries(attendancesByEmployee).forEach(([empId, atts]) => {
+        console.log(`  Employee ${empId}: ${atts.length} attendance record(s)`);
+      });
 
+      console.log("\n🔄 Building Final Data...");
       const finalData = allEmployees
         .map((emp) => {
           const empAttendances = attendancesByEmployee[emp.id] || [];
 
           if (empAttendances.length > 0) {
+            console.log(`  ✓ Employee ${emp.id} (${emp.name}): ${empAttendances.length} records`);
             return empAttendances.map((att) => {
               const breakLine = breakMap[att.id];
               return {
@@ -5422,6 +5725,7 @@ class ApiController {
               };
             });
           } else {
+            console.log(`  ✗ Employee ${emp.id} (${emp.name}): No attendance records`);
             return [
               {
                 id: null,
@@ -5457,6 +5761,17 @@ class ApiController {
         })
         .flat();
 
+      console.log("\n📦 Final Data Count:", finalData.length);
+      console.log("\n📊 Meta Summary:");
+      console.log("  - Total Attendance Records:", finalData.length);
+      console.log("  - Total Employees:", allEmployees.length);
+      console.log("  - Custom Method - Total Employees:", totalEmployees);
+      console.log("  - Custom Method - Present:", Presentemployee);
+      console.log("  - Custom Method - Late:", TotalLateemployee);
+      console.log("  - Custom Method - Uninformed:", Ununiformendemployee);
+      console.log("  - Custom Method - Absent Today:", TodayAbsetEmployee);
+      console.log("  - Custom Method - Approved Leave:", ApprovedLeaveOfEmployee);
+
       return res.status(200).json({
         success: true,
         status: "success",
@@ -5479,6 +5794,7 @@ class ApiController {
       });
     } catch (error) {
       console.error("🔥 Admin Attendance Error:", error);
+      console.error("🔥 Error Stack:", error.stack);
       return res.status(500).json({
         success: false,
         status: "error",

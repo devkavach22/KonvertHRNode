@@ -188,7 +188,6 @@ class LeaveController {
       });
     }
   }
-
   async updateLeaveType(req, res) {
     try {
       console.log("API Called updateLeaveType");
@@ -1381,7 +1380,7 @@ async getLeaveRequest(req, res) {
         odooService.callCustomMethod(
           "simple.action",
           "get_total_present_employee",
-          [client_id]
+        [[], false, false, client_id]
         ),
 
         odooService.searchCount("hr.leave", [
