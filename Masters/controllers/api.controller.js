@@ -477,6 +477,203 @@ class ApiController {
       });
     }
   }
+  //   async createUser(req, res) {
+  //     console.log("Register Called ");
+  //     try {
+  //       const {
+  //         name,
+  //         client_image,
+  //         company_name,
+  //         gst_number,
+  //         mobile,
+  //         email,
+  //         designation,
+  //         street,
+  //         street2,
+  //         pincode,
+  //         state_id,
+  //         country_id,
+  //         city,
+  //         password,
+  //         first_name,
+  //         company_address,
+  //         last_name,
+  //       } = req.body;
+
+  //       const existingUsers = await odooService.searchRead(
+  //         "res.users",
+  //         [["login", "=", email]],
+  //         ["id"]
+  //       );
+
+  //       let cleanImage = null;
+  //       if (client_image) {
+  //         cleanImage = client_image.replace(/^data:image\/\w+;base64,/, "");
+  //       }
+
+  //       if (existingUsers && existingUsers.length > 0) {
+  //         return res.status(409).json({
+  //           status: "error",
+  //           message: "Already Registered Email",
+  //         });
+  //       }
+
+  //       const gstValidation = await odooService.execute(
+  //         "res.partner",
+  //         "autocomplete_by_vat",
+  //         [gst_number, parseInt(country_id)],
+  //         { timeout: 15 }
+  //       );
+
+  //       if (!gstValidation || gstValidation.length === 0) {
+  //         return res.status(400).json({
+  //           status: "error",
+  //           message: "Invalid GST number",
+  //         });
+  //       }
+
+  //       const superadminUser = await odooService.searchRead(
+  //         "res.users",
+  //         [["id", "=", 2]],
+  //         ["company_id"]
+  //       );
+
+  //       const superadminCompanyId = superadminUser[0].company_id[0];
+
+  //       const userVals = {
+  //         name: company_name,
+  //         company_name: company_name,
+  //         email: email,
+  //         login: email,
+  //         vat: gst_number,
+  //         function: designation,
+  //         street: street,
+  //         street2: street2,
+  //         city: city,
+  //         zip: pincode,
+  //         state_id: parseInt(state_id),
+  //         country_id: parseInt(country_id),
+  //         password: password,
+  //         company_ids: [[6, 0, [superadminCompanyId]]],
+  //         company_id: superadminCompanyId,
+  //         l10n_in_gst_treatment: "regular",
+  //         first_name: first_name,
+  //         last_name: last_name,
+  //         mobile: mobile,
+  //         company_address: company_address,
+  //         image_1920: cleanImage,
+  //       };
+  //       const userId = await odooService.create("res.users", userVals);
+  //       const userData = await odooService.searchRead(
+  //         "res.users",
+  //         [["id", "=", userId]],
+  //         ["partner_id"]
+  //       );
+
+  //       const companyPartnerId = userData[0].partner_id[0];
+  //       await odooService.write("res.partner", [companyPartnerId], {
+  //         company_type: "company",
+  //         name: company_name,
+  //         is_from_konvert_hr_portal: true,
+  //         customer_rank: 1,
+  //       });
+  //       const childContactVals = {
+  //         parent_id: companyPartnerId,
+  //         type: "contact",
+  //         name: `${first_name} ${last_name}`,
+  //         email: email,
+  //         phone: mobile,
+  //         phone_res: mobile,
+  //         mobile: mobile,
+  //       };
+
+  //       await odooService.create("res.partner", childContactVals);
+  //       await mailService.sendMail(
+  //         email,
+  //         "Welcome to Kavach Global",
+  //         `<!DOCTYPE html>
+  // <html>
+  // <head>
+  //   <meta charset="utf-8">
+  //   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  // </head>
+  // <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif;">
+  //   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
+  //     <tr>
+  //       <td align="center">
+  //         <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+  //           <tr>
+  //             <td style="background-color: #5f5cc4; height: 8px;"></td>
+  //           </tr>
+
+  //           <tr>
+  //             <td style="padding: 50px 60px;">
+  //               <h1 style="margin: 0 0 30px 0; font-size: 32px; font-weight: 600; color: #1a1a1a;">Welcome to Kavach Global!</h1>
+
+  //               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">Hello ${name},</p>
+
+  //               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
+  //                 Thank you for registering with Kavach Global Private Limited. We are thrilled to have you on board!
+  //               </p>
+
+  //               <div style="background-color: #f0f7ff; border-left: 4px solid #5f5cc4; padding: 20px; margin: 30px 0;">
+  //                 <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #1a1a1a;">
+  //                   Your Account is Ready
+  //                 </p>
+  //                 <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #555555;">
+  //                   You can now access all features and services available on our platform. Feel free to explore and reach out if you need any assistance.
+  //                 </p>
+  //               </div>
+
+  //               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
+  //                 If you have any questions or need support, please do not hesitate to contact us. We are here to help!
+  //               </p>
+
+  //               <p style="margin: 30px 0 0 0; font-size: 16px; line-height: 1.6; color: #333333;">
+  //                 We look forward to serving you.
+  //               </p>
+
+  //               <p style="margin: 40px 0 0 0; font-size: 16px; line-height: 1.6; color: #333333;">
+  //                 <strong>Best regards,<br>Kavach Global Private Limited</strong>
+  //               </p>
+  //             </td>
+  //           </tr>
+
+  //           <tr>
+  //             <td style="background-color: #5f5cc4; height: 8px;"></td>
+  //           </tr>
+  //         </table>
+
+  //         <table width="600" cellpadding="0" cellspacing="0" style="margin-top: 20px;">
+  //           <tr>
+  //             <td style="padding: 0 60px; text-align: center;">
+  //               <p style="margin: 0; font-size: 13px; color: #999999; line-height: 1.6;">
+  //                 This email was sent to ${email}. If you did not create an account, please contact our support team immediately.
+  //               </p>
+  //             </td>
+  //           </tr>
+  //         </table>
+  //       </td>
+  //     </tr>
+  //   </table>
+  // </body>
+  // </html>`
+  //       );
+
+  //       return res.status(200).json({
+  //         status: "OK",
+  //         message: "User Is Registered, Email Sent",
+  //         id: userId,
+  //       });
+  //     } catch (error) {
+  //       console.error("Create user error:", error);
+  //       return res.status(500).json({
+  //         status: "error",
+  //         message: "Failed to create user",
+  //       });
+  //     }
+  //   }
+
   async createUser(req, res) {
     console.log("Register Called ");
     try {
@@ -500,16 +697,12 @@ class ApiController {
         last_name,
       } = req.body;
 
+      // --- 1. UNIQUE EMAIL CHECK ---
       const existingUsers = await odooService.searchRead(
         "res.users",
         [["login", "=", email]],
         ["id"]
       );
-
-      let cleanImage = null;
-      if (client_image) {
-        cleanImage = client_image.replace(/^data:image\/\w+;base64,/, "");
-      }
 
       if (existingUsers && existingUsers.length > 0) {
         return res.status(409).json({
@@ -518,6 +711,22 @@ class ApiController {
         });
       }
 
+      // --- 2. UNIQUE GST (VAT) CHECK ---
+      // Odoo mein GST 'vat' field mein store hota hai res.partner table mein
+      const existingGST = await odooService.searchRead(
+        "res.partner",
+        [["vat", "=", gst_number]],
+        ["id"]
+      );
+
+      if (existingGST && existingGST.length > 0) {
+        return res.status(409).json({
+          status: "error",
+          message: "GST Number already registered with another account",
+        });
+      }
+
+      // --- 3. GST VALIDATION (Autocomplete Check) ---
       const gstValidation = await odooService.execute(
         "res.partner",
         "autocomplete_by_vat",
@@ -532,14 +741,26 @@ class ApiController {
         });
       }
 
+      // --- 4. IMAGE CLEANING ---
+      let cleanImage = null;
+      if (client_image) {
+        cleanImage = client_image.replace(/^data:image\/\w+;base64,/, "");
+      }
+
+      // --- 5. FETCH SUPERADMIN COMPANY ---
       const superadminUser = await odooService.searchRead(
         "res.users",
         [["id", "=", 2]],
         ["company_id"]
       );
 
+      if (!superadminUser || superadminUser.length === 0) {
+        throw new Error("Superadmin user not found");
+      }
+
       const superadminCompanyId = superadminUser[0].company_id[0];
 
+      // --- 6. PREPARE USER VALUES ---
       const userVals = {
         name: company_name,
         company_name: company_name,
@@ -563,6 +784,8 @@ class ApiController {
         company_address: company_address,
         image_1920: cleanImage,
       };
+
+      // --- 7. CREATE USER AND UPDATE PARTNER ---
       const userId = await odooService.create("res.users", userVals);
       const userData = await odooService.searchRead(
         "res.users",
@@ -577,6 +800,8 @@ class ApiController {
         is_from_konvert_hr_portal: true,
         customer_rank: 1,
       });
+
+      // Create Child Contact
       const childContactVals = {
         parent_id: companyPartnerId,
         type: "contact",
@@ -586,8 +811,9 @@ class ApiController {
         phone_res: mobile,
         mobile: mobile,
       };
-
       await odooService.create("res.partner", childContactVals);
+
+      // --- 8. SEND WELCOME MAIL ---
       await mailService.sendMail(
         email,
         "Welcome to Kavach Global",
@@ -675,92 +901,41 @@ class ApiController {
   }
   async loginUser(req, res) {
     try {
-      console.log("🔥 Login API called of the Register");
       const { email, password } = req.body;
-
       if (!email || !password) {
-        return res.status(400).json({
-          status: "error",
-          message: "Email and Password are required",
-        });
-      }
-
-      const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!validEmailRegex.test(email)) {
-        return res.status(400).json({
-          status: "error",
-          message: "Invalid email format",
-        });
+        return res.status(400).json({ status: "error", message: "Email and Password are required" });
       }
 
       const userRecord = await odooService.searchRead(
         "res.users",
         [["login", "=", email]],
-        [
-          "id",
-          "login",
-          "name",
-          "first_name",
-          "last_name",
-          "partner_id",
-          "unique_user_id",
-          "is_client_employee_user",
-          "is_client_employee_admin",
-        ]
+        ["id", "login", "name", "first_name", "last_name", "partner_id", "unique_user_id", "is_client_employee_user", "is_client_employee_admin"]
       );
 
       if (!userRecord || userRecord.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: "User not found. Please signup.",
-        });
+        return res.status(404).json({ status: "error", message: "User not found. Please signup." });
       }
 
-      const user = userRecord[0];
-      const partnerId = user.partner_id?.[0];
-
-      if (!partnerId) {
-        return res.status(400).json({
-          status: "error",
-          message: "Partner not linked with user",
-        });
-      }
-
-      const isEmployeeUser = user.is_client_employee_user === true;
-      const isAdminUser = user.is_client_employee_admin === true;
-
-      let user_role = "UNKNOWN";
-      if (isAdminUser) user_role = "REGISTER_ADMIN";
-      else if (isEmployeeUser) user_role = "EMPLOYEE_RELATED_OWN_USER";
-
-      const full_name = `${user.first_name || ""} ${user.last_name || ""
-        }`.trim();
+      let user = userRecord[0];
+      const userPartnerId = user.partner_id?.[0];
 
       const commonClient = odooService.createClient("/xmlrpc/2/common");
       const uid = await new Promise((resolve, reject) => {
-        commonClient.methodCall(
-          "authenticate",
-          [odooService.db, email, password, {}],
-          (err, uid) => {
-            if (err || !uid) reject(new Error("Incorrect password"));
-            else resolve(uid);
-          }
-        );
-      }).catch((err) => {
-        return res.status(401).json({
-          status: "error",
-          message: err.message || "Authentication failed",
+        commonClient.methodCall("authenticate", [odooService.db, email, password, {}], (err, authUid) => {
+          if (err || !authUid) reject(new Error("Incorrect password"));
+          else resolve(authUid);
         });
+      }).catch((err) => {
+        return res.status(401).json({ status: "error", message: "Authentication failed" });
       });
 
       if (!uid) return;
 
-      // Determine the partner ID to check for plan
-      let planCheckPartnerId = partnerId;
-      let adminUserId = null;
+      let planCheckPartnerId = userPartnerId;
+      let employeeId = null;
+      let adminUserIdFromEmployee = null;
 
-      // If employee user, get admin's partner_id from hr.employee.address_id
-      if (isEmployeeUser) {
+      if (user.is_client_employee_user) {
         const employeeRecord = await odooService.searchRead(
           "hr.employee",
           [["user_id", "=", user.id]],
@@ -769,118 +944,90 @@ class ApiController {
         );
 
         if (employeeRecord && employeeRecord.length > 0) {
-          const employeeData = employeeRecord[0];
+          employeeId = employeeRecord[0].id;
+          if (employeeRecord[0].address_id && employeeRecord[0].address_id[0]) {
+            planCheckPartnerId = employeeRecord[0].address_id[0];
 
-          // Use admin's partner_id (address_id) for plan check
-          if (employeeData.address_id && employeeData.address_id[0]) {
-            planCheckPartnerId = employeeData.address_id[0];
-
-            // Now find the admin user by partner_id
             const adminUser = await odooService.searchRead(
               "res.users",
-              [
-                ["partner_id", "=", employeeData.address_id[0]],
-                ["is_client_employee_admin", "=", true],
-              ],
+              [["partner_id", "=", planCheckPartnerId], ["is_client_employee_admin", "=", true]],
               ["id"],
               1
             );
-
-            if (adminUser && adminUser.length > 0) {
-              adminUserId = adminUser[0].id;
-            }
+            if (adminUser && adminUser.length > 0) adminUserIdFromEmployee = adminUser[0].id;
           }
         }
       }
 
-      // Check plan using the correct partner_id
       const plan = await odooService.searchRead(
         "client.plan.details",
         [
           ["partner_id", "=", planCheckPartnerId],
-          ["is_expier", "=", true],
+          ["is_expier", "=", true]
         ],
         ["id", "product_id", "start_date", "end_date"],
         1
       );
 
-      let planData = null;
-      if (plan && plan.length > 0) {
-        planData = plan[0];
+      let planData = (plan && plan.length > 0) ? plan[0] : null;
+
+      if (planData && userPartnerId === planCheckPartnerId && !user.is_client_employee_admin) {
+        await odooService.write("res.users", [user.id], { is_client_employee_admin: true });
+        user.is_client_employee_admin = true;
       }
 
-      let employeeId = null;
-      if (isEmployeeUser) {
-        const employeeRecord = await odooService.searchRead(
-          "hr.employee",
-          [["user_id", "=", user.id]],
-          ["id"],
-          1
-        );
-        if (employeeRecord && employeeRecord.length > 0) {
-          employeeId = employeeRecord[0].id;
-        }
-      }
+      const isAdminUser = user.is_client_employee_admin === true;
+      const isEmployeeUser = user.is_client_employee_user === true;
+      const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+      const token = jwt.sign({ userId: uid, email }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-      const token = jwt.sign(
-        {
-          userId: uid,
-          email,
-          name: user.name,
-          odoo_username: email,
-          odoo_password: password,
-          odoo_db: odooService.db,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-      // Determine plan status message
-      const planStatusMessage = planData
-        ? "Plan is active."
-        : "Plan has expired.";
 
       if (isAdminUser) {
+        if (!planData) {
+          return res.status(403).json({ status: "error", message: "Your plan has expired. Please renew." });
+        }
         return res.status(200).json({
           status: "success",
-          message: `You are logged in as a Register Admin. ${planStatusMessage}`,
+          message: "Logged in as Admin. Plan is active.",
           unique_user_id: user.unique_user_id,
           user_id: uid,
           email,
-          name: user.name,
           full_name,
-          user_role,
-          is_client_employee_admin: true,
-          plan_status: planData ? "ACTIVE" : "EXPIRED",
-          plan_id: planData?.id,
-          product_id: planData?.product_id,
-          plan_start_date: planData?.start_date,
-          plan_end_date: planData?.end_date,
+          user_role: "REGISTER_ADMIN",
+          plan_status: "ACTIVE",
+          plan_id: planData.id,
+          product_id: planData.product_id,
+          plan_start_date: planData.start_date,
+          plan_end_date: planData.end_date,
         });
-      } else {
+      }
+      else if (isEmployeeUser) {
         return res.status(200).json({
           status: "success",
-          message: `You are logged in as an Employee User. ${planStatusMessage}`,
+          message: `Logged in as Employee. Plan is ${planData ? "Active" : "Expired"}`,
           user_id: uid,
           email,
           full_name,
-          user_role,
+          user_role: "EMPLOYEE_RELATED_OWN_USER",
           plan_status: planData ? "ACTIVE" : "EXPIRED",
           is_client_employee_user: true,
           employee_id: employeeId,
-          admin_user_id: adminUserId, // Admin ka user ID
+          admin_user_id: adminUserIdFromEmployee,
+          // plan_id: planData?.id || null,
+          // product_id: planData?.product_id || null,
+          // plan_start_date: planData?.start_date || null,
+          // plan_end_date: planData?.end_date || null,
         });
       }
+      else {
+        return res.status(403).json({ status: "error", message: "You are not authorized. Please signup first." });
+      }
+
     } catch (error) {
       console.error("Login error:", error);
-      return res.status(500).json({
-        status: "error",
-        message: "Failed to login",
-      });
+      return res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
   }
-
-
   async loginMarketingPage(req, res) {
     try {
       console.log("🔥 Login API called");
@@ -5563,7 +5710,7 @@ class ApiController {
       const TotalLateemployee = await odooService.callCustomMethod(
         "simple.action",
         "get_total_no_of_late_employee",
-        [[], false, false, client_id] 
+        [[], false, false, client_id]
       );
 
       const Ununiformendemployee = await odooService.callCustomMethod(

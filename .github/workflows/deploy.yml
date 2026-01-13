@@ -1,19 +1,22 @@
-name: Auto Deploy to Server with GIthub action
+name: Auto Deploy on linux server
 
 on:
   push:
     branches:
-      - main   # or dev, production
+      - main
+      - staging-branch
 
 jobs:
-  deploy:
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Deploy to Server
+      - name: Check github.ref
+        run: echo "The full ref is ${{ github.ref }}"
+
+      - name: Deploy Production
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -24,3 +27,24 @@ jobs:
             git pull origin main
             npm install
             pm2 reload ecosystem.config.js --only konverthr-API
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/staging-branch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check github.ref
+        run: echo "The full ref is ${{ github.ref }}"
+
+      - name: Deploy Staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /var/www/staging.konverthr.com
+            git pull origin staging-branch
+            npm install
+            pm2 reload ecosystem.config.js --only konverthr-staging
