@@ -227,22 +227,32 @@ class PayrollController {
     async createSalaryRuleCategory(req, res) {
         try {
             const { name, parent_id, note } = req.body;
+
+            // 1. Get client_id from request
+            const { client_id } = await getClientFromRequest(req);
+
             if (!name) {
                 return res.status(400).json({
                     status: "error",
                     message: "Name is required",
                 });
             }
+
+            // Generate Base Code
             let baseCode = name
                 .toUpperCase()
                 .replace(/[^A-Z0-9\s]/g, '')
                 .trim()
                 .replace(/\s+/g, '_');
 
+            // Check if Code exists within the same Client
             const checkCodeExists = async (code) => {
                 const existing = await odooService.searchRead(
                     "hr.salary.rule.category",
-                    [["code", "=", code]],
+                    [
+                        ["code", "=", code],
+                        ["client_id", "=", client_id] // Filter by client_id
+                    ],
                     ["id", "name", "code"]
                 );
                 return existing.length > 0;
@@ -251,38 +261,51 @@ class PayrollController {
             let uniqueCode = baseCode;
             let counter = 1;
 
+            // Loop to generate unique code for this client
             while (await checkCodeExists(uniqueCode)) {
                 uniqueCode = `${baseCode}_${counter}`;
                 counter++;
             }
+
+            // 2. Check if Name already exists for this Client
             const existingByName = await odooService.searchRead(
                 "hr.salary.rule.category",
-                [["name", "=", name]],
+                [
+                    ["name", "=", name],
+                    ["client_id", "=", client_id] // Filter by client_id
+                ],
                 ["id", "name", "code"]
             );
+
             if (existingByName.length) {
                 return res.status(409).json({
                     status: "error",
-                    message: `Salary Rule Category with name '${name}' already exists`,
+                    message: `Salary Rule Category with name '${name}' already exists for this client`,
                     existing_id: existingByName[0].id,
                     existing_code: existingByName[0].code,
                 });
             }
+
+            // 3. Prepare values with client_id
             const vals = {
                 name,
                 code: uniqueCode,
-                parent_id: parent_id || false,
+                parent_id: parent_id ? parseInt(parent_id) : false,
                 note: note || false,
+                client_id, // Added client_id here
             };
+
             const categoryId = await odooService.create(
                 "hr.salary.rule.category",
                 vals
             );
+
             const createdRecord = await odooService.searchRead(
                 "hr.salary.rule.category",
                 [["id", "=", categoryId]],
-                ["id", "name", "code", "parent_id", "note"]
+                ["id", "name", "code", "parent_id", "note", "client_id"]
             );
+
             return res.status(201).json({
                 status: "success",
                 message: "Salary Rule Category created successfully",
@@ -290,6 +313,7 @@ class PayrollController {
             });
 
         } catch (error) {
+            console.error("Create Salary Rule Category Error:", error);
             return res.status(error.status || 500).json({
                 status: "error",
                 message: error.message || "Failed to create salary rule category",
@@ -301,85 +325,59 @@ class PayrollController {
         try {
             console.log("API Called getSalaryRuleCategories");
 
-            // ✅ user_id resolve (same fix as before)
-            const user_id = Number(req.query.user_id || req.params.user_id);
+            const { client_id } = await getClientFromRequest(req);
 
-            if (!user_id) {
+            if (!client_id) {
                 return res.status(400).json({
                     status: "error",
-                    message: "user_id is required",
+                    message: "client_id not found in request context",
                 });
             }
 
-            // ───────── COUNT (user-wise) ─────────
-            const count = await odooService.execute(
+            const records = await odooService.searchRead(
                 "hr.salary.rule.category",
-                "search_count",
-                [[["create_uid", "=", user_id]]]
+                [["client_id", "=", client_id]],
+                ["id", "name", "code", "parent_id", "note"]
             );
 
-            if (count === 0) {
+            if (!records || records.length === 0) {
                 return res.status(200).json({
                     status: "success",
                     count: 0,
                     data: [],
-                    message: "No salary rule categories found for this user",
+                    message: "No salary rule categories found for this client",
                 });
             }
 
-            // ───────── FETCH IDS (only created by this user) ─────────
-            const ids = await odooService.execute(
-                "hr.salary.rule.category",
-                "search",
-                [[["create_uid", "=", user_id]]],
-                { limit: 1000 }
-            );
-
-            if (!ids || ids.length === 0) {
-                return res.status(200).json({
-                    status: "success",
-                    count: 0,
-                    data: [],
-                    message: "No accessible salary rule categories",
-                });
-            }
-
-            // ───────── READ RECORDS ─────────
-            try {
-                const records = await odooService.execute(
-                    "hr.salary.rule.category",
-                    "read",
-                    [ids, ["id", "name", "code", "parent_id", "note"]]
-                );
-
-                return res.status(200).json({
-                    status: "success",
-                    count: records.length,
-                    data: records,
-                });
-
-            } catch (readError) {
-                console.error("Read error:", readError);
-
-                const recordsWithoutNote = await odooService.execute(
-                    "hr.salary.rule.category",
-                    "read",
-                    [ids, ["id", "name", "code", "parent_id"]]
-                );
-
-                return res.status(200).json({
-                    status: "success",
-                    count: recordsWithoutNote.length,
-                    data: recordsWithoutNote,
-                    warning: "Note field not available",
-                });
-            }
+            return res.status(200).json({
+                status: "success",
+                count: records.length,
+                data: records,
+            });
 
         } catch (error) {
-            return res.status(500).json({
-                status: "error",
-                message: error.message || "Failed to fetch salary rule categories",
-            });
+            console.error("Get Salary Rule Categories Error:", error);
+
+            try {
+                const { client_id } = await getClientFromRequest(req);
+                const fallbackRecords = await odooService.searchRead(
+                    "hr.salary.rule.category",
+                    [["client_id", "=", client_id]],
+                    ["id", "name", "code", "parent_id"]
+                );
+
+                return res.status(200).json({
+                    status: "success",
+                    count: fallbackRecords.length,
+                    data: fallbackRecords,
+                    warning: "Note field not available or an error occurred during full fetch",
+                });
+            } catch (innerError) {
+                return res.status(error.status || 500).json({
+                    status: "error",
+                    message: error.message || "Failed to fetch salary rule categories",
+                });
+            }
         }
     }
 
@@ -1660,6 +1658,8 @@ class PayrollController {
                 default_no_end_date,
             } = req.body;
 
+            const { client_id } = await getClientFromRequest(req);
+
             if (!name) {
                 return res.status(400).json({
                     status: "error",
@@ -1676,7 +1676,10 @@ class PayrollController {
             const checkCodeExists = async (code) => {
                 const existing = await odooService.searchRead(
                     "hr.payslip.input.type",
-                    [["code", "=", code]],
+                    [
+                        ["code", "=", code],
+                        ["client_id", "=", client_id]
+                    ],
                     ["id", "name", "code"]
                 );
                 return existing.length > 0;
@@ -1692,7 +1695,10 @@ class PayrollController {
 
             const existingByName = await odooService.searchRead(
                 "hr.payslip.input.type",
-                [["name", "=", name]],
+                [
+                    ["name", "=", name],
+                    ["client_id", "=", client_id]
+                ],
                 ["id", "name", "code"]
             );
 
@@ -1748,6 +1754,7 @@ class PayrollController {
                 code: uniqueCode,
                 country_id: safeCountryId,
                 available_in_attachments: !!available_in_attachments,
+                client_id
             };
 
             if (available_in_attachments && safeStructIds.length > 0) {
@@ -1785,6 +1792,7 @@ class PayrollController {
             });
 
         } catch (error) {
+            console.error("Create Input Type Error:", error);
             return res.status(error.status || 500).json({
                 status: "error",
                 message: error.message || "Failed to create payroll input type",
@@ -1799,6 +1807,10 @@ class PayrollController {
                 limit = 100,
                 offset = 0,
             } = req.query;
+
+            // ✅ Get client_id from request
+            const { client_id } = await getClientFromRequest(req);
+
             const fields = [
                 "id",
                 "name",
@@ -1809,18 +1821,25 @@ class PayrollController {
                 "is_quantity",
                 "default_no_end_date",
             ];
+
+            // ✅ Apply client_id filter in domain
+            const domain = [["client_id", "=", client_id]];
+
             const inputTypes = await odooService.searchRead(
                 "hr.payslip.input.type",
-                [],
+                domain,
                 fields,
                 parseInt(offset),
                 parseInt(limit),
                 "name asc"
             );
+
+            // ✅ Count only for specific client
             const totalCount = await odooService.searchCount(
                 "hr.payslip.input.type",
-                []
+                domain
             );
+
             return res.status(200).json({
                 status: "success",
                 message: "Input types fetched successfully",
