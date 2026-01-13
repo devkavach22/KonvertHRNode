@@ -583,7 +583,16 @@ router.get(
   authenticate,
   PayrollController.getStructureTypes.bind(PayrollController)
 );
-
+router.post(
+  "/create/Input-Type",
+  authenticate,
+  PayrollController.createInputType.bind(PayrollController)
+);
+router.get(
+  "/Input-Type",
+  authenticate,
+  PayrollController.getInputTypes.bind(PayrollController)
+);
 router.post(
   "/create/salary-rule-category",
   authenticate,

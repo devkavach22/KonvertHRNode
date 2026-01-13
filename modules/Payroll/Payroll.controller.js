@@ -15,6 +15,9 @@ class PayrollController {
                 default_resource_calendar_id,
                 default_struct_id,
             } = req.body;
+
+            console.log("📥 Create Structure Type Request Body:", JSON.stringify(req.body, null, 2));
+
             if (!name) {
                 return res.status(400).json({
                     status: "error",
@@ -33,43 +36,140 @@ class PayrollController {
                     message: "default_work_entry_type_id is required",
                 });
             }
+
             const { client_id } = await getClientFromRequest(req);
+            console.log("🏢 Client ID:", client_id);
+            const workEntryExists = await odooService.searchRead(
+                "hr.work.entry.type",
+                [["id", "=", default_work_entry_type_id]],
+                ["id", "name"]
+            );
+
+            console.log("🔍 Work Entry Type Validation:", workEntryExists);
+
+            if (!workEntryExists.length) {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Invalid Work Entry Type ID: ${default_work_entry_type_id}`,
+                });
+            }
+
+            let safeCountryId = false;
+            if (country_id) {
+                const countryExists = await odooService.searchRead(
+                    "res.country",
+                    [["id", "=", country_id]],
+                    ["id", "name"]
+                );
+                console.log("🌍 Country Validation:", countryExists);
+                if (countryExists.length) {
+                    safeCountryId = country_id;
+                } else {
+                    console.log("⚠️ Warning: Invalid country_id, setting to false");
+                }
+            }
+
+            let safeResourceCalendarId = false;
+            if (default_resource_calendar_id) {
+                const calendarExists = await odooService.searchRead(
+                    "resource.calendar",
+                    [["id", "=", default_resource_calendar_id]],
+                    ["id", "name"]
+                );
+                console.log("📅 Resource Calendar Validation:", calendarExists);
+                if (calendarExists.length) {
+                    safeResourceCalendarId = default_resource_calendar_id;
+                } else {
+                    console.log("⚠️ Warning: Invalid resource_calendar_id, setting to false");
+                }
+            }
+
+            let safeStructId = false;
+            if (default_struct_id) {
+                const structExists = await odooService.searchRead(
+                    "hr.payroll.structure",
+                    [
+                        ["id", "=", default_struct_id],
+                        ["client_id", "=", client_id]
+                    ],
+                    ["id", "name"]
+                );
+                console.log("💰 Salary Structure Validation:", structExists);
+                if (structExists.length) {
+                    safeStructId = default_struct_id;
+                } else {
+                    console.log("⚠️ Warning: Invalid or unauthorized struct_id, setting to false");
+                }
+            }
+
+            // 5️⃣ Check if Structure Type already exists
             const existing = await odooService.searchRead(
                 "hr.payroll.structure.type",
                 [
                     ["name", "=", name],
                     ["client_id", "=", client_id],
                 ],
+                ["id", "name"]
             );
+
+            console.log("🔍 Existing Structure Type Check:", existing);
+
             if (existing.length) {
                 return res.status(409).json({
                     status: "error",
-                    message: `Structure Type '${name}' already exists`,
+                    message: `Structure Type '${name}' already exists for this organization`,
+                    existing_id: existing[0].id,
                 });
             }
             const vals = {
                 name,
                 wage_type,
                 default_schedule_pay: default_schedule_pay || false,
-                country_id: country_id || false,
+                country_id: safeCountryId,
                 default_work_entry_type_id,
-                default_resource_calendar_id: default_resource_calendar_id || false,
-                default_struct_id: default_struct_id || false,
+                default_resource_calendar_id: safeResourceCalendarId,
+                default_struct_id: safeStructId,
                 client_id,
             };
+
+            console.log("📦 Final Payload:", JSON.stringify(vals, null, 2));
             const structTypeId = await odooService.create(
                 "hr.payroll.structure.type",
                 vals
             );
-            return res.status(200).json({
+
+            console.log("✅ Structure Type Created - ID:", structTypeId);
+            const createdStructType = await odooService.searchRead(
+                "hr.payroll.structure.type",
+                [["id", "=", structTypeId]],
+                [
+                    "name",
+                    "wage_type",
+                    "default_schedule_pay",
+                    "country_id",
+                    "default_work_entry_type_id",
+                    "default_resource_calendar_id",
+                    "default_struct_id",
+                ]
+            );
+
+            console.log("📋 Created Structure Type Details:", JSON.stringify(createdStructType, null, 2));
+
+            return res.status(201).json({
                 status: "success",
                 message: "Payroll Structure Type created successfully",
-                structTypeId,
+                data: createdStructType[0] || { id: structTypeId },
             });
+
         } catch (error) {
+            console.error("❌ Create Structure Type Error:", error);
+            console.error("🔥 Error Stack:", error.stack);
+            console.error("🔥 Error Details:", JSON.stringify(error, null, 2));
+
             return res.status(error.status || 500).json({
                 status: "error",
                 message: error.message || "Failed to create payroll structure type",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }
@@ -106,7 +206,6 @@ class PayrollController {
                 "default_work_entry_type_id",
                 "default_resource_calendar_id",
                 "default_struct_id",
-                "client_id"
             ];
             const records = await odooService.execute(
                 "hr.payroll.structure.type",
@@ -125,139 +224,65 @@ class PayrollController {
             });
         }
     }
-
     async createSalaryRuleCategory(req, res) {
         try {
-            console.log("API Called createSalaryRuleCategory");
-
-            const user_id = Number(req.query.user_id || req.params.user_id);
-
-            if (!user_id) {
-                return res.status(400).json({
-                    status: "error",
-                    message: "user_id is required",
-                });
-            }
-
-            // ───────── FIND EMPLOYEE USING USER_ID ─────────
-            const employee = await odooService.searchRead(
-                "hr.employee",
-                [["user_id", "=", user_id]],
-                ["id", "address_id"],
-                1
-            );
-
-            if (!employee.length) {
-                return res.status(404).json({
-                    status: "error",
-                    message: "Employee not linked with this user",
-                });
-            }
-
-            const employeeAddressId = employee[0].address_id?.[0];
-
-            if (!employeeAddressId) {
-                return res.status(400).json({
-                    status: "error",
-                    message: "Employee does not have address_id",
-                });
-            }
-
-            // ───────── PARTNER CHECK ─────────
-            const partner = await odooService.searchRead(
-                "res.partner",
-                [["id", "=", employeeAddressId]],
-                ["id"],
-                1
-            );
-
-            if (!partner.length) {
-                return res.status(403).json({
-                    status: "error",
-                    message: "User is not authorized to create Salary Rule Category",
-                });
-            }
-
-            // ───────── EXISTING LOGIC (UNCHANGED) ─────────
-            const { name, code, parent_id, note } = req.body;
-
+            const { name, parent_id, note } = req.body;
             if (!name) {
                 return res.status(400).json({
                     status: "error",
                     message: "Name is required",
                 });
             }
+            let baseCode = name
+                .toUpperCase()
+                .replace(/[^A-Z0-9\s]/g, '')
+                .trim()
+                .replace(/\s+/g, '_');
 
-            if (!code) {
-                return res.status(400).json({
-                    status: "error",
-                    message: "Code is required",
-                });
+            const checkCodeExists = async (code) => {
+                const existing = await odooService.searchRead(
+                    "hr.salary.rule.category",
+                    [["code", "=", code]],
+                    ["id", "name", "code"]
+                );
+                return existing.length > 0;
+            };
+
+            let uniqueCode = baseCode;
+            let counter = 1;
+
+            while (await checkCodeExists(uniqueCode)) {
+                uniqueCode = `${baseCode}_${counter}`;
+                counter++;
             }
-
-            const existingCode = await odooService.searchRead(
-                "hr.salary.rule.category",
-                [["code", "=", code]],
-                ["id"],
-                1
-            );
-
-            if (existingCode.length) {
-                return res.status(409).json({
-                    status: "error",
-                    message: `Salary Rule Category with code '${code}' already exists`,
-                });
-            }
-
-            const existingName = await odooService.searchRead(
+            const existingByName = await odooService.searchRead(
                 "hr.salary.rule.category",
                 [["name", "=", name]],
-                ["id"],
-                1
+                ["id", "name", "code"]
             );
-
-            if (existingName.length) {
+            if (existingByName.length) {
                 return res.status(409).json({
                     status: "error",
                     message: `Salary Rule Category with name '${name}' already exists`,
+                    existing_id: existingByName[0].id,
+                    existing_code: existingByName[0].code,
                 });
             }
-
-            if (parent_id) {
-                const parentExists = await odooService.searchRead(
-                    "hr.salary.rule.category",
-                    [["id", "=", parent_id]],
-                    ["id"],
-                    1
-                );
-
-                if (!parentExists.length) {
-                    return res.status(404).json({
-                        status: "error",
-                        message: `Parent category with ID ${parent_id} not found`,
-                    });
-                }
-            }
-
             const vals = {
                 name,
-                code,
+                code: uniqueCode,
                 parent_id: parent_id || false,
                 note: note || false,
             };
-
             const categoryId = await odooService.create(
                 "hr.salary.rule.category",
                 vals
             );
-
             const createdRecord = await odooService.searchRead(
                 "hr.salary.rule.category",
                 [["id", "=", categoryId]],
-                ["id", "name", "code", "parent_id", "note"],
-                1
+                ["id", "name", "code", "parent_id", "note"]
             );
-
             return res.status(201).json({
                 status: "success",
                 message: "Salary Rule Category created successfully",
@@ -268,6 +293,7 @@ class PayrollController {
             return res.status(error.status || 500).json({
                 status: "error",
                 message: error.message || "Failed to create salary rule category",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }
@@ -1619,6 +1645,199 @@ class PayrollController {
             return res.status(500).json({
                 status: "error",
                 message: error.message || "Failed to fetch contracts"
+            });
+        }
+    }
+
+    async createInputType(req, res) {
+        try {
+            const {
+                name,
+                country_id,
+                available_in_attachments,
+                struct_ids,
+                is_quantity,
+                default_no_end_date,
+            } = req.body;
+
+            if (!name) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Name is required",
+                });
+            }
+
+            let baseCode = name
+                .toUpperCase()
+                .replace(/[^A-Z0-9\s]/g, '')
+                .trim()
+                .replace(/\s+/g, '_');
+
+            const checkCodeExists = async (code) => {
+                const existing = await odooService.searchRead(
+                    "hr.payslip.input.type",
+                    [["code", "=", code]],
+                    ["id", "name", "code"]
+                );
+                return existing.length > 0;
+            };
+
+            let uniqueCode = baseCode;
+            let counter = 1;
+
+            while (await checkCodeExists(uniqueCode)) {
+                uniqueCode = `${baseCode}_${counter}`;
+                counter++;
+            }
+
+            const existingByName = await odooService.searchRead(
+                "hr.payslip.input.type",
+                [["name", "=", name]],
+                ["id", "name", "code"]
+            );
+
+            if (existingByName.length) {
+                return res.status(409).json({
+                    status: "error",
+                    message: `Input Type with name '${name}' already exists`,
+                    existing_id: existingByName[0].id,
+                    existing_code: existingByName[0].code,
+                });
+            }
+
+            let safeCountryId = false;
+            if (country_id) {
+                const countryExists = await odooService.searchRead(
+                    "res.country",
+                    [["id", "=", country_id]],
+                    ["id", "name"]
+                );
+
+                if (countryExists.length) {
+                    safeCountryId = country_id;
+                } else {
+                    return res.status(400).json({
+                        status: "error",
+                        message: `Invalid Country ID: ${country_id}`,
+                    });
+                }
+            }
+
+            let safeStructIds = [];
+            if (struct_ids && Array.isArray(struct_ids) && struct_ids.length > 0) {
+                const structsExist = await odooService.searchRead(
+                    "hr.payroll.structure",
+                    [["id", "in", struct_ids]],
+                    ["id", "name"]
+                );
+
+                if (structsExist.length !== struct_ids.length) {
+                    const foundIds = structsExist.map(s => s.id);
+                    const invalidIds = struct_ids.filter(id => !foundIds.includes(id));
+                    return res.status(400).json({
+                        status: "error",
+                        message: `Invalid Payroll Structure IDs: ${invalidIds.join(', ')}`,
+                    });
+                }
+
+                safeStructIds = [[6, 0, struct_ids]];
+            }
+
+            const payload = {
+                name,
+                code: uniqueCode,
+                country_id: safeCountryId,
+                available_in_attachments: !!available_in_attachments,
+            };
+
+            if (available_in_attachments && safeStructIds.length > 0) {
+                payload.struct_ids = safeStructIds;
+            }
+
+            if (available_in_attachments) {
+                payload.is_quantity = !!is_quantity;
+                payload.default_no_end_date = !!default_no_end_date;
+            }
+
+            const inputTypeId = await odooService.create(
+                "hr.payslip.input.type",
+                payload
+            );
+
+            const createdInputType = await odooService.searchRead(
+                "hr.payslip.input.type",
+                [["id", "=", inputTypeId]],
+                [
+                    "name",
+                    "code",
+                    "country_id",
+                    "available_in_attachments",
+                    "struct_ids",
+                    "is_quantity",
+                    "default_no_end_date",
+                ]
+            );
+
+            return res.status(201).json({
+                status: "success",
+                message: "Payroll Input Type created successfully",
+                data: createdInputType[0] || { id: inputTypeId },
+            });
+
+        } catch (error) {
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to create payroll input type",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            });
+        }
+    }
+
+    async getInputTypes(req, res) {
+        try {
+            const {
+                limit = 100,
+                offset = 0,
+            } = req.query;
+            const fields = [
+                "id",
+                "name",
+                "code",
+                "country_id",
+                "available_in_attachments",
+                "struct_ids",
+                "is_quantity",
+                "default_no_end_date",
+            ];
+            const inputTypes = await odooService.searchRead(
+                "hr.payslip.input.type",
+                [],
+                fields,
+                parseInt(offset),
+                parseInt(limit),
+                "name asc"
+            );
+            const totalCount = await odooService.searchCount(
+                "hr.payslip.input.type",
+                []
+            );
+            return res.status(200).json({
+                status: "success",
+                message: "Input types fetched successfully",
+                data: inputTypes,
+                meta: {
+                    total: totalCount,
+                    limit: parseInt(limit),
+                    offset: parseInt(offset),
+                    returned: inputTypes.length,
+                },
+            });
+
+        } catch (error) {
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to fetch input types",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }
