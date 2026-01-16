@@ -1088,87 +1088,121 @@ class LeaveController {
 
 
   async getLeaveRequest(req, res) {
-    try {
-      console.log("API called for getLeaveRequest");
-      // console.log(req.body);
+  try {
+    console.log("API called for getLeaveRequest");
 
-      const {
-        employee_id,
-        leave_type_id,
-        status,
-        date_from,
-        date_to
-      } = req.query;
-      console.log(req.query);
+    // -----------------------------
+    // 1. Get client_id from auth (SAME AS getAccrualPlan)
+    // -----------------------------
+    const { client_id } = await getClientFromRequest(req);
+    console.log("Resolved client_id:", client_id);
 
-      console.log("Query parameters received:", req.query);
-
-      const domain = [];
-
-      if (employee_id) {
-        domain.push(["employee_id", "=", parseInt(employee_id)]);
-      }
-
-      if (leave_type_id) {
-        domain.push(["holiday_status_id", "=", parseInt(leave_type_id)]);
-      }
-
-      if (status) {
-        domain.push(["state", "=", status]);
-      }
-      if (date_from && date_to) {
-        domain.push(["request_date_from", ">=", date_from]);
-        domain.push(["request_date_to", ">=", date_to]);
-      }
-
-      const fields = [
-        "employee_id",
-        "holiday_status_id",
-        "department_id",
-        "company_id",
-        "date_from",
-        "date_to",
-        "number_of_days",
-        "name",
-        "state",
-        "create_date",
-        "name"
-      ];
-
-      const records = await odooService.searchRead("hr.leave", domain, fields);
-
-      const data = records.map(rec => ({
-        id: rec.id,
-        employee_name: rec.employee_id?.[1] || "Unknown Employee",
-        leave_type_name: rec.holiday_status_id?.[1] || "Unknown Type",
-        department_name: rec.department_id?.[1] || "No Department Found",
-        company_name: rec.company_id?.[1] || "No Company Found",
-        validity: {
-          from: rec.date_from,
-          to: rec.date_to
-        },
-        duration_days: rec.number_of_days,
-        reason: rec.name || null,
-        status: rec.state,
-        requested_on: rec.create_date
-      }));
-
-      console.log(`Success:Fetched ${data.length} leave requests from Odoo.`);
-
-      return res.status(200).json({
-        status: "success",
-        total: data.length,
-        data: data
-      });
-    }
-    catch (error) {
-      console.error("Fatal error in get leave request:", error);
-      return res.status(error.status || 500).json({
+    if (!client_id) {
+      console.error("❌ client_id missing from auth context");
+      return res.status(400).json({
         status: "error",
-        message: error.message || "Failed to fetch leave requests"
+        message: "client_id is required"
       });
     }
+
+    // -----------------------------
+    // 2. Optional query filters
+    // -----------------------------
+    const {
+      employee_id,
+      leave_type_id,
+      status,
+      date_from,
+      date_to
+    } = req.query;
+
+    console.log("Query parameters received:", req.query);
+
+    // -----------------------------
+    // 3. Domain (NEVER BLANK)
+    // -----------------------------
+    const domain = [["client_id", "=", client_id]];
+
+    if (employee_id) {
+      domain.push(["employee_id", "=", parseInt(employee_id)]);
+    }
+
+    if (leave_type_id) {
+      domain.push(["holiday_status_id", "=", parseInt(leave_type_id)]);
+    }
+
+    if (status) {
+      domain.push(["state", "=", status]);
+    }
+
+    if (date_from && date_to) {
+      domain.push(["request_date_from", ">=", date_from]);
+      domain.push(["request_date_to", "<=", date_to]);
+    }
+
+    console.log("Final Odoo Domain:", JSON.stringify(domain, null, 2));
+
+    // -----------------------------
+    // 4. Fields to fetch
+    // -----------------------------
+    const fields = [
+      "employee_id",
+      "holiday_status_id",
+      "department_id",
+      "company_id",
+      "date_from",
+      "date_to",
+      "number_of_days",
+      "name",
+      "state",
+      "create_date"
+    ];
+
+    // -----------------------------
+    // 5. Fetch from Odoo
+    // -----------------------------
+    const records = await odooService.searchRead(
+      "hr.leave",
+      domain,
+      fields
+    );
+
+    // -----------------------------
+    // 6. Response mapping (preserved)
+    // -----------------------------
+    const data = records.map(rec => ({
+      id: rec.id,
+      employee_name: rec.employee_id?.[1] || "Unknown Employee",
+      leave_type_name: rec.holiday_status_id?.[1] || "Unknown Type",
+      department_name: rec.department_id?.[1] || "No Department Found",
+      company_name: rec.company_id?.[1] || "No Company Found",
+      validity: {
+        from: rec.date_from,
+        to: rec.date_to
+      },
+      duration_days: rec.number_of_days,
+      reason: rec.name || null,
+      status: rec.state,
+      requested_on: rec.create_date
+    }));
+
+    console.log(`✅ Success: Fetched ${data.length} leave requests`);
+
+    return res.status(200).json({
+      status: "success",
+      total: data.length,
+      data
+    });
+
+  } catch (error) {
+    console.error("❌ Fatal error in getLeaveRequest:", error);
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to fetch leave requests"
+    });
   }
+}
+
   async updateLeaveRequest(req, res) {
     try {
       console.log("API called for updateLeaveRequest");
