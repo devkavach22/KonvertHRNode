@@ -380,171 +380,8 @@ class PayrollController {
             }
         }
     }
-
-    // async createSalaryRule(req, res) {
-    //     try {
-    //         console.log("API Called createSalaryRule");
-    //         const {
-    //             name,
-    //             active = true,
-    //             appears_on_payslip = false,
-    //             appears_on_employee_cost_dashboard = false,
-    //             appears_on_payroll_report = false,
-    //             category_id,
-    //             code,
-    //             sequence,
-    //             condition_select = "none",
-    //             condition_range,
-    //             condition_range_min,
-    //             condition_range_max,
-    //             condition_python,
-    //             condition_other_input_id,
-    //             quantity = "1",
-    //             partner_id,
-    //             amount_fix,
-    //             amount_select = "fix",
-    //             amount_percentage_base,
-    //             amount_percentage,
-    //             amount_other_input_id,
-    //             amount_python_compute,
-    //             note,
-    //             struct_id
-    //         } = req.body;
-
-    //         const { client_id } = await getClientFromRequest(req);
-
-    //         if (!name) return res.status(400).json({ status: "error", message: "Name is required" });
-    //         if (!category_id) return res.status(400).json({ status: "error", message: "Category is required" });
-    //         if (!code) return res.status(400).json({ status: "error", message: "Code is required" });
-    //         if (sequence === undefined || sequence === null) return res.status(400).json({ status: "error", message: "Sequence is required" });
-    //         if (!struct_id) return res.status(400).json({ status: "error", message: "Salary Structure (struct_id) is required" });
-
-    //         const validConditions = ["none", "range", "input", "python"];
-    //         if (!validConditions.includes(condition_select)) {
-    //             return res.status(400).json({ status: "error", message: `Invalid condition_select. Must be: ${validConditions.join(", ")}` });
-    //         }
-
-    //         if (condition_select === "range") {
-    //             if (!condition_range || condition_range_min === undefined || condition_range_max === undefined) {
-    //                 return res.status(400).json({ status: "error", message: "Range Based on, Minimum, and Maximum are required for 'Range' condition" });
-    //             }
-    //         }
-
-    //         if (condition_select === "python" && !condition_python) {
-    //             return res.status(400).json({ status: "error", message: "Python Condition code is required" });
-    //         }
-
-    //         if (condition_select === "input" && !condition_other_input_id) {
-    //             return res.status(400).json({ status: "error", message: "Condition Other Input is required" });
-    //         }
-
-    //         const validAmountTypes = ["percentage", "fix", "input", "code"];
-    //         if (!validAmountTypes.includes(amount_select)) {
-    //             return res.status(400).json({ status: "error", message: `Invalid amount_select. Must be: ${validAmountTypes.join(", ")}` });
-    //         }
-
-    //         if (amount_select === "fix" && (amount_fix === undefined || amount_fix === null)) {
-    //             return res.status(400).json({ status: "error", message: "Fixed amount is required" });
-    //         }
-
-    //         if (amount_select === "percentage") {
-    //             if (!amount_percentage_base || amount_percentage === undefined) {
-    //                 return res.status(400).json({ status: "error", message: "Percentage base and value are required" });
-    //             }
-    //         }
-
-    //         if (amount_select === "input" && !amount_other_input_id) {
-    //             return res.status(400).json({ status: "error", message: "Amount Other Input is required" });
-    //         }
-
-    //         if (amount_select === "code" && !amount_python_compute) {
-    //             return res.status(400).json({ status: "error", message: "Python Code for computation is required" });
-    //         }
-
-    //         const existingCode = await odooService.searchRead(
-    //             "hr.salary.rule",
-    //             [
-    //                 ["code", "=", code],
-    //                 ["client_id", "=", client_id]
-    //             ],
-    //             ["id"],
-    //             1
-    //         );
-    //         if (existingCode.length) {
-    //             return res.status(409).json({
-    //                 status: "error",
-    //                 message: `Salary Rule with code '${code}' already exists`
-    //             });
-    //         }
-
-    //         const vals = {
-    //             name,
-    //             active,
-    //             appears_on_payslip,
-    //             appears_on_employee_cost_dashboard,
-    //             appears_on_payroll_report,
-    //             category_id,
-    //             code,
-    //             sequence,
-    //             condition_select,
-    //             amount_select,
-    //             struct_id,
-    //             client_id,
-    //             note
-    //         };
-
-    //         if (condition_select === "range") {
-    //             vals.condition_range = condition_range;
-    //             vals.condition_range_min = parseFloat(condition_range_min);
-    //             vals.condition_range_max = parseFloat(condition_range_max);
-    //         } else if (condition_select === "python") {
-    //             vals.condition_python = condition_python;
-    //         } else if (condition_select === "input") {
-    //             vals.condition_other_input_id = condition_other_input_id;
-    //         }
-
-    //         if (!["code", "input"].includes(amount_select)) vals.quantity = quantity;
-    //         if (amount_select === "fix") vals.amount_fix = amount_fix;
-    //         if (amount_select === "percentage") {
-    //             vals.amount_percentage_base = amount_percentage_base;
-    //             vals.amount_percentage = amount_percentage;
-    //         }
-    //         if (amount_select === "input") vals.amount_other_input_id = amount_other_input_id;
-    //         if (amount_select === "code") vals.amount_python_compute = amount_python_compute;
-    //         if (partner_id) vals.partner_id = partner_id;
-
-    //         const ruleId = await odooService.create("hr.salary.rule", vals);
-
-    //         const createdRecord = await odooService.execute(
-    //             "hr.salary.rule",
-    //             "read",
-    //             [[ruleId], [
-    //                 "id", "name", "code", "sequence", "condition_select",
-    //                 "condition_range", "condition_range_min", "condition_range_max",
-    //                 "condition_python", "condition_other_input_id",
-    //                 "amount_select", "amount_fix", "amount_percentage", "struct_id"
-    //             ]]
-    //         );
-
-    //         return res.status(201).json({
-    //             status: "success",
-    //             message: "Salary Rule created successfully",
-    //             data: createdRecord[0],
-    //         });
-
-    //     } catch (error) {
-    //         console.error("Create Salary Rule Error:", error);
-    //         return res.status(error.status || 500).json({
-    //             status: "error",
-    //             message: error.message || "Failed to create salary rule"
-    //         });
-    //     }
-    // }
     async createSalaryRule(req, res) {
         try {
-            console.log("API Called createSalaryRule");
-            console.log("Request Body:", JSON.stringify(req.body, null, 2));
-
             const {
                 name,
                 active = true,
@@ -573,12 +410,8 @@ class PayrollController {
             } = req.body;
 
             let { client_id } = await getClientFromRequest(req);
-            console.log("Client ID from request:", client_id);
-            console.log("Client ID type:", typeof client_id);
-
             if (typeof client_id === 'string') {
                 client_id = parseInt(client_id, 10);
-                console.log("Client ID converted to integer:", client_id);
             }
 
             if (!name) return res.status(400).json({ status: "error", message: "Name is required" });
@@ -628,8 +461,6 @@ class PayrollController {
             if (amount_select === "code" && !amount_python_compute) {
                 return res.status(400).json({ status: "error", message: "Python Code for computation is required" });
             }
-
-            console.log("Checking for existing code with:", { code, client_id });
             const existingCode = await odooService.searchRead(
                 "hr.salary.rule",
                 [
@@ -639,7 +470,6 @@ class PayrollController {
                 ["id"],
                 1
             );
-            console.log("Existing code check result:", existingCode);
 
             if (existingCode.length) {
                 return res.status(409).json({
@@ -683,23 +513,14 @@ class PayrollController {
             if (amount_select === "input") vals.amount_other_input_id = amount_other_input_id;
             if (amount_select === "code") vals.amount_python_compute = amount_python_compute;
             if (partner_id) vals.partner_id = partner_id;
-
-            console.log("Values to be created:", JSON.stringify(vals, null, 2));
-            console.log("client_id in vals:", vals.client_id, "Type:", typeof vals.client_id);
-
             const ruleId = await odooService.create("hr.salary.rule", vals);
-            console.log("Created Rule ID:", ruleId);
-
             try {
-                console.log("Writing client_id separately to ensure it's saved...");
                 await odooService.execute(
                     "hr.salary.rule",
                     "write",
                     [[ruleId], { client_id: client_id }]
                 );
-                console.log("client_id written successfully");
             } catch (writeError) {
-                console.error("Error writing client_id:", writeError);
             }
 
             const createdRecord = await odooService.execute(
@@ -713,13 +534,9 @@ class PayrollController {
                     "client_id"
                 ]]
             );
-
-            console.log("Created Record after write:", JSON.stringify(createdRecord[0], null, 2));
-
             return res.status(201).json({
                 status: "success",
                 message: "Salary Rule created successfully",
-                data: createdRecord[0],
             });
 
         } catch (error) {
@@ -733,12 +550,15 @@ class PayrollController {
     }
     async getSalaryRules(req, res) {
         try {
+            const { client_id } = await getClientFromRequest(req);
+
             const ids = await odooService.execute(
                 "hr.salary.rule",
                 "search",
-                [[]],
+                [[["client_id", "=", client_id]]],
                 { limit: 1000, order: 'sequence asc' }
             );
+
             if (!ids || ids.length === 0) {
                 return res.status(200).json({
                     status: "success",
@@ -763,7 +583,8 @@ class PayrollController {
                 "amount_fix",
                 "amount_select",
                 "note",
-                "struct_id"
+                "struct_id",
+                "client_id"
             ];
 
             const records = await odooService.execute(
@@ -777,10 +598,9 @@ class PayrollController {
                 count: records.length,
                 data: records,
             });
-
         } catch (error) {
             console.error("Get Salary Rules Error:", error);
-            return res.status(500).json({
+            return res.status(error.status || 500).json({
                 status: "error",
                 message: error.message || "Failed to fetch salary rules",
             });
