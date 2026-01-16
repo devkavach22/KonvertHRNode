@@ -136,58 +136,81 @@ class LeaveController {
     }
   }
   async getLeaveTypes(req, res) {
-    try {
-      console.log("------------------------------------------------");
-      console.log("API Called: getLeaveTypes");
-      console.log("Request Body:", JSON.stringify(req.body, null, 2));
+  try {
+    console.log("------------------------------------------------");
+    console.log("API Called: getLeaveTypes");
+    console.log("Request Body:", JSON.stringify(req.body, null, 2));
 
-      // Get client context
-      console.log("Attempting to get client context from request...");
-      const { user_id, client_id } = await getClientFromRequest(req);
-      console.log(`Context Retrieved - User ID: ${user_id}, Client ID: ${client_id}`);
+    // -----------------------------
+    // 1. Get client context from request
+    // -----------------------------
+    console.log("Attempting to get client context from request...");
+    const { user_id, client_id } = await getClientFromRequest(req);
+    console.log(`Context Retrieved - User ID: ${user_id}, Client ID: ${client_id}`);
 
-      // Define fields
-      const fields = [
-        "name",                 // Leave Name
-        "leave_type_code",      // Leave Type Code
-        "leave_category",       // Leave Category
-        "leave_validation_type" // Approved By
-      ];
-      console.log("Fields defined for search:", fields);
-
-      // Fetch from Odoo model 'hr.leave.type'
-      console.log(`Calling odooService.searchRead for model 'hr.leave.type' with Client ID: ${client_id}...`);
-
-      const leaveTypes = await odooService.searchRead(
-        "hr.leave.type",
-        [],
-        fields,
-        user_id,
-        client_id
-      );
-
-      console.log("Odoo Service call successful.");
-      console.log(`Total Leave Types Found: ${leaveTypes ? leaveTypes.length : 0}`);
-      console.log("Leave Types Data:", JSON.stringify(leaveTypes, null, 2));
-
-      console.log("Sending success response to client...");
-      return res.status(200).json({
-        status: "success",
-        total: leaveTypes.length,
-        data: leaveTypes
-      });
-
-    } catch (error) {
-      console.error("!!! ERROR in getLeaveTypes !!!");
-      console.error("Error Message:", error.message);
-      console.error("Error Stack:", error.stack);
-
-      return res.status(error.status || 500).json({
+    if (!client_id) {
+      console.error("❌ Client ID missing from auth context");
+      return res.status(400).json({
         status: "error",
-        message: error.message || "Failed to fetch leave types"
+        message: "client_id is required"
       });
     }
+
+    // -----------------------------
+    // 2. Define fields to fetch
+    // -----------------------------
+    const fields = [
+      "name",                 // Leave Name
+      "leave_type_code",      // Leave Type Code
+      "leave_category",       // Leave Category
+      "leave_validation_type" // Approved By
+    ];
+    console.log("Fields defined for search:", fields);
+
+    // -----------------------------
+    // 3. Domain (client scoped)
+    // -----------------------------
+    const domain = [["client_id", "=", client_id]];
+    console.log("Odoo Domain:", JSON.stringify(domain));
+
+    // -----------------------------
+    // 4. Fetch from Odoo
+    // -----------------------------
+    console.log(`Calling odooService.searchRead for model 'hr.leave.type' with client_id: ${client_id}...`);
+    const leaveTypes = await odooService.searchRead(
+      "hr.leave.type",
+      domain,
+      fields,
+      user_id,
+      client_id
+    );
+
+    console.log("Odoo Service call successful.");
+    console.log(`Total Leave Types Found: ${leaveTypes ? leaveTypes.length : 0}`);
+    console.log("Leave Types Data:", JSON.stringify(leaveTypes, null, 2));
+
+    // -----------------------------
+    // 5. Send Response
+    // -----------------------------
+    console.log("Sending success response to client...");
+    return res.status(200).json({
+      status: "success",
+      total: leaveTypes.length,
+      data: leaveTypes
+    });
+
+  } catch (error) {
+    console.error("!!! ERROR in getLeaveTypes !!!");
+    console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
+
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to fetch leave types"
+    });
   }
+}
+
   async updateLeaveType(req, res) {
     try {
       console.log("API Called updateLeaveType");
