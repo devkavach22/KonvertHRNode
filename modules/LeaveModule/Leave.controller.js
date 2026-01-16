@@ -1131,7 +1131,8 @@ class LeaveController {
         "number_of_days",
         "name",
         "state",
-        "create_date"
+        "create_date",
+        "name"
       ];
 
       const records = await odooService.searchRead("hr.leave", domain, fields);
