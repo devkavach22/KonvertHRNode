@@ -6800,73 +6800,129 @@ class ApiController {
   }
 
   async getAllApprovalRequests(req, res) {
-    try {
-      const { client_id, currentUser } = await getClientFromRequest(req);
+  try {
+    console.log("========== GET ALL APPROVAL REQUESTS START ==========");
 
-      if (!client_id) {
-        return res.status(400).json({ status: "error", message: "Client ID missing." });
-      }
+    /* ───────── 1. AUTH CONTEXT ───────── */
+    console.log("Resolving client and user from request...");
+    const { client_id, currentUser } = await getClientFromRequest(req);
 
-      let domain = [["req_employee_id.address_id", "=", client_id]];
+    console.log("Auth Context:", {
+      client_id,
+      currentUser_id: currentUser?.id,
+      is_client_employee_admin: currentUser?.is_client_employee_admin
+    });
 
-      if (!currentUser.is_client_employee_admin) {
-        domain.push(["approval_log_list.approver_id", "=", currentUser.id]);
-        console.log("👤 Manager View: Filtering requests specifically for User ID:", currentUser.id);
-      } else {
-        console.log("🛠️ Admin Access: Loading all company requests.");
-      }
-
-      const fields = [
-        "name",
-        "req_employee_id",
-        "attendance_regulzie_id",
-        "hr_leave_id",
-        "hr_expense_id",
-        "description",
-        "state",
-        "reason",
-        "approval_log_list"
-      ];
-
-      const requests = await odooService.searchRead(
-        "approval.request",
-        domain,
-        fields,
-        0,
-        100,
-        "id desc",
-        currentUser.id
-      );
-
-      if (requests.length === 0) {
-        return res.status(200).json({
-          status: "success",
-          message: "There is no any Request for you.",
-          total: 0,
-          data: []
-        });
-      }
-
-      const processedRequests = requests.map((item) => {
-        const newItem = { ...item };
-        // Odoo mein state 'refused' aur 'cancel' ho sakti hai, 'reject' ki jagah
-        if (newItem.state !== "refused" && newItem.state !== "reject") {
-          delete newItem.reason;
-        }
-        return newItem;
+    if (!client_id) {
+      console.error("❌ Client ID missing from auth context");
+      return res.status(400).json({
+        status: "error",
+        message: "Client ID missing."
       });
+    }
 
+    /* ───────── 2. DOMAIN BUILDING ───────── */
+    let domain = [["req_employee_id.address_id", "=", client_id]];
+    console.log("Initial Domain (Client Scoped):", JSON.stringify(domain));
+
+    if (!currentUser.is_client_employee_admin) {
+      console.log("👤 Manager View detected");
+      console.log("Adding approver filter for user:", currentUser.id);
+
+      domain.push(["approval_log_list.approver_id", "=", currentUser.id]);
+    } else {
+      console.log("🛠️ Admin Access detected — loading all company requests");
+    }
+
+    console.log("Final Odoo Domain:", JSON.stringify(domain, null, 2));
+
+    /* ───────── 3. FIELDS ───────── */
+    const fields = [
+      "name",
+      "req_employee_id",
+      "attendance_regulzie_id",
+      "hr_leave_id",
+      "hr_expense_id",
+      "description",
+      "state",
+      "reason",
+      "approval_log_list"
+    ];
+
+    console.log("Fields requested from Odoo:", fields);
+
+    /* ───────── 4. FETCH FROM ODOO ───────── */
+    console.log("Calling Odoo searchRead on approval.request...");
+    const requests = await odooService.searchRead(
+      "approval.request",
+      domain,
+      fields,
+      0,
+      100,
+      "id desc",
+      currentUser.id
+    );
+
+    console.log(`Odoo returned ${requests.length} approval request(s)`);
+
+    /* ───────── 5. EMPTY RESPONSE HANDLING ───────── */
+    if (requests.length === 0) {
+      console.log("ℹ️ No approval requests found for current user");
       return res.status(200).json({
         status: "success",
-        total: processedRequests.length,
-        data: processedRequests,
+        message: "There is no any Request for you.",
+        total: 0,
+        data: []
+      });
+    }
+
+    /* ───────── 6. POST-PROCESSING ───────── */
+    console.log("Processing approval request states...");
+    const processedRequests = requests.map((item, index) => {
+      const newItem = { ...item };
+
+      console.log(`Processing request #${index + 1}`, {
+        request_name: newItem.name,
+        state: newItem.state
       });
 
-    } catch (error) {
-      console.error("❌ Node.js Error:", error.message);
-      return res.status(500).json({ status: "error", message: error.message });
-    }
+      // Odoo state handling: refused / cancel instead of reject
+      if (newItem.state !== "refused" && newItem.state !== "reject") {
+        delete newItem.reason;
+        console.log("Reason removed (state is not refused/reject)");
+      } else {
+        console.log("Reason retained (state is refused/reject)");
+      }
+
+      return newItem;
+    });
+
+    console.log(
+      `✅ Successfully processed ${processedRequests.length} approval request(s)`
+    );
+
+    /* ───────── 7. RESPONSE ───────── */
+    console.log("Sending final response to client");
+    console.log("========== GET ALL APPROVAL REQUESTS END ==========");
+
+    return res.status(200).json({
+      status: "success",
+      total: processedRequests.length,
+      data: processedRequests
+    });
+
+  } catch (error) {
+    console.error("❌ GET ALL APPROVAL REQUESTS FAILED");
+    console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
+
+    return res.status(500).json({
+      status: "error",
+      message: error.message
+    });
   }
+}
+
 
   async approveAttendanceRegularization(req, res) {
     try {
