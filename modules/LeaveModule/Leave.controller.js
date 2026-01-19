@@ -3,6 +3,138 @@ const odooService = require("../../Masters/services/odoo.service");
 const { getClientFromRequest } = require("../../Masters/services/plan.helper");
 
 class LeaveController {
+  // async createLeaveType(req, res) {
+  //   try {
+  //     console.log("API Called createLeaveType");
+
+  //     const {
+  //       name,
+
+  //       // Approval
+  //       leave_validation_type,
+  //       allocation_validation_type,
+
+  //       // Allocation behavior
+  //       requires_allocation,
+  //       employee_requests,
+
+  //       // Officers
+  //       responsible_ids,
+
+  //       // Meta
+  //       leave_type_code,
+  //       leave_category,
+  //       request_unit,
+
+  //       // Flags
+  //       include_public_holidays_in_duration,
+  //       overtime_deductible,
+  //       is_earned_leave
+  //     } = req.body;
+  //     console.log(req.body);
+
+  //     const { user_id, client_id } = await getClientFromRequest(req);
+
+  //     /* ---------------- REQUIRED ---------------- */
+  //     if (!name) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "name is required"
+  //       });
+  //     }
+
+  //     /* ---------------- VALIDATIONS ---------------- */
+  //     const approvalTypes = ["no_validation", "hr", "manager", "both"];
+  //     const yesNo = ["yes", "no"];
+  //     const categories = ["statutory", "non_statutory", "custom"];
+  //     const requestUnits = ["day", "half_day", "hour"];
+
+  //     if (leave_validation_type && !approvalTypes.includes(leave_validation_type)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid leave_validation_type" });
+  //     }
+
+  //     if (allocation_validation_type && !approvalTypes.includes(allocation_validation_type)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid allocation_validation_type" });
+  //     }
+
+  //     if (requires_allocation && !yesNo.includes(requires_allocation)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid requires_allocation" });
+  //     }
+
+  //     if (employee_requests && !yesNo.includes(employee_requests)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid employee_requests" });
+  //     }
+
+  //     if (leave_category && !categories.includes(leave_category)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid leave_category" });
+  //     }
+
+  //     if (request_unit && !requestUnits.includes(request_unit)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid request_unit" });
+  //     }
+
+  //     /* ---------------- DUPLICATE CHECK ---------------- */
+  //     const existing = await odooService.searchRead(
+  //       "hr.leave.type",
+  //       [["name", "=", name], ["client_id", "=", client_id]],
+  //       ["id"],
+  //       1
+  //     );
+
+  //     if (existing.length) {
+  //       return res.status(409).json({
+  //         status: "error",
+  //         message: `Leave type '${name}' already exists`
+  //       });
+  //     }
+
+  //     /* ---------------- PAYLOAD ---------------- */
+  //     const vals = {
+  //       name,
+  //       client_id,
+  //       leave_validation_type: leave_validation_type || "no_validation",
+  //       allocation_validation_type: allocation_validation_type || "no_validation",
+
+  //       requires_allocation: requires_allocation || "yes",
+  //       employee_requests: employee_requests || "no",
+
+  //       leave_type_code: leave_type_code || null,
+  //       leave_category: leave_category || "custom",
+  //       request_unit: request_unit || "day",
+
+  //       include_public_holidays_in_duration: Boolean(include_public_holidays_in_duration),
+  //       overtime_deductible: Boolean(overtime_deductible),
+  //       is_earned_leave: Boolean(is_earned_leave),
+
+  //       active: true,
+  //       create_uid: user_id
+  //     };
+
+  //     /* ---------------- MANY2MANY ---------------- */
+  //     if (Array.isArray(responsible_ids)) {
+  //       vals.responsible_ids = [[6, 0, responsible_ids]];
+  //     }
+
+  //     console.log("Leave Type Payload:", vals);
+
+  //     /* ---------------- CREATE ---------------- */
+  //     const leaveTypeId = await odooService.create("hr.leave.type", vals);
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Leave type created successfully",
+  //       leave_type_id: leaveTypeId
+  //     });
+
+  //   } catch (error) {
+  //     console.error("Create Leave Type Error:", error);
+
+  //     return res.status(error.status || 500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to create leave type"
+  //     });
+  //   }
+  // }
   async createLeaveType(req, res) {
     try {
       console.log("API Called createLeaveType");
@@ -33,7 +165,18 @@ class LeaveController {
       } = req.body;
       console.log(req.body);
 
-      const { user_id, client_id } = await getClientFromRequest(req);
+      let user_id, client_id;
+      try {
+        const clientData = await getClientFromRequest(req);
+        user_id = clientData.user_id;
+        client_id = clientData.client_id;
+      } catch (authError) {
+        console.error("Auth error:", authError);
+        return res.status(400).json({
+          status: "error",
+          message: authError.message || "Either user_id or unique_user_id is required"
+        });
+      }
 
       /* ---------------- REQUIRED ---------------- */
       if (!name) {
@@ -50,36 +193,78 @@ class LeaveController {
       const requestUnits = ["day", "half_day", "hour"];
 
       if (leave_validation_type && !approvalTypes.includes(leave_validation_type)) {
-        return res.status(400).json({ status: "error", message: "Invalid leave_validation_type" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid leave_validation_type: '${leave_validation_type}'. Allowed values: ${approvalTypes.join(', ')}`
+        });
       }
 
       if (allocation_validation_type && !approvalTypes.includes(allocation_validation_type)) {
-        return res.status(400).json({ status: "error", message: "Invalid allocation_validation_type" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid allocation_validation_type: '${allocation_validation_type}'. Allowed values: ${approvalTypes.join(', ')}`
+        });
       }
 
       if (requires_allocation && !yesNo.includes(requires_allocation)) {
-        return res.status(400).json({ status: "error", message: "Invalid requires_allocation" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid requires_allocation: '${requires_allocation}'. Allowed values: ${yesNo.join(', ')}`
+        });
       }
 
       if (employee_requests && !yesNo.includes(employee_requests)) {
-        return res.status(400).json({ status: "error", message: "Invalid employee_requests" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid employee_requests: '${employee_requests}'. Allowed values: ${yesNo.join(', ')}`
+        });
       }
 
       if (leave_category && !categories.includes(leave_category)) {
-        return res.status(400).json({ status: "error", message: "Invalid leave_category" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid leave_category: '${leave_category}'. Allowed values: ${categories.join(', ')}`
+        });
       }
 
       if (request_unit && !requestUnits.includes(request_unit)) {
-        return res.status(400).json({ status: "error", message: "Invalid request_unit" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid request_unit: '${request_unit}'. Allowed values: ${requestUnits.join(', ')}`
+        });
+      }
+
+      // Validate responsible_ids if provided
+      if (responsible_ids !== undefined && !Array.isArray(responsible_ids)) {
+        return res.status(400).json({
+          status: "error",
+          message: "responsible_ids must be an array of user IDs"
+        });
+      }
+
+      if (Array.isArray(responsible_ids) && responsible_ids.some(id => typeof id !== 'number')) {
+        return res.status(400).json({
+          status: "error",
+          message: "All responsible_ids must be valid numbers"
+        });
       }
 
       /* ---------------- DUPLICATE CHECK ---------------- */
-      const existing = await odooService.searchRead(
-        "hr.leave.type",
-        [["name", "=", name], ["client_id", "=", client_id]],
-        ["id"],
-        1
-      );
+      let existing;
+      try {
+        existing = await odooService.searchRead(
+          "hr.leave.type",
+          [["name", "=", name], ["client_id", "=", client_id]],
+          ["id"],
+          1
+        );
+      } catch (searchError) {
+        console.error("Error checking duplicate leave type:", searchError);
+        return res.status(400).json({
+          status: "error",
+          message: "Failed to check for duplicate leave type"
+        });
+      }
 
       if (existing.length) {
         return res.status(409).json({
@@ -118,7 +303,89 @@ class LeaveController {
       console.log("Leave Type Payload:", vals);
 
       /* ---------------- CREATE ---------------- */
-      const leaveTypeId = await odooService.create("hr.leave.type", vals);
+      let leaveTypeId;
+      try {
+        leaveTypeId = await odooService.create("hr.leave.type", vals);
+      } catch (createError) {
+        console.error("Odoo Create Error:", createError);
+
+        const errorMessage = createError.message || createError.faultString || "Unknown error";
+
+        // Duplicate name constraint (in case race condition)
+        if (errorMessage.includes("duplicate") ||
+          errorMessage.includes("already exists") ||
+          errorMessage.includes("unique constraint")) {
+          return res.status(409).json({
+            status: "error",
+            message: `Leave type '${name}' already exists`
+          });
+        }
+
+        // Access Denied
+        if (errorMessage.includes("Access Denied") ||
+          errorMessage.includes("AccessError") ||
+          errorMessage.includes("access rights")) {
+          return res.status(403).json({
+            status: "error",
+            message: "Access Denied: You don't have permission to create leave types"
+          });
+        }
+
+        // Required field missing (Odoo constraint)
+        if (errorMessage.includes("required") ||
+          errorMessage.includes("cannot be empty") ||
+          errorMessage.includes("null value")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Missing required field in Odoo: " + errorMessage
+          });
+        }
+
+        // Invalid field value
+        if (errorMessage.includes("invalid") ||
+          errorMessage.includes("not valid") ||
+          errorMessage.includes("ValidationError")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid field value: " + errorMessage
+          });
+        }
+
+        // Foreign key constraint (invalid responsible_ids, client_id, etc.)
+        if (errorMessage.includes("foreign key") ||
+          errorMessage.includes("does not exist") ||
+          errorMessage.includes("not found")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid reference: One or more IDs are invalid"
+          });
+        }
+
+        // Wrong credentials
+        if (errorMessage.includes("password") ||
+          errorMessage.includes("credentials") ||
+          errorMessage.includes("authentication")) {
+          return res.status(401).json({
+            status: "error",
+            message: "Invalid credentials"
+          });
+        }
+
+        // Generic XML-RPC fault
+        if (createError.faultCode) {
+          return res.status(400).json({
+            status: "error",
+            message: errorMessage,
+            code: createError.faultCode
+          });
+        }
+
+        // Default case - return 400 for Odoo business logic errors
+        return res.status(400).json({
+          status: "error",
+          message: errorMessage || "Failed to create leave type"
+        });
+      }
 
       return res.status(200).json({
         status: "success",
@@ -129,87 +396,88 @@ class LeaveController {
     } catch (error) {
       console.error("Create Leave Type Error:", error);
 
-      return res.status(error.status || 500).json({
+      // Only return 500 for actual server errors
+      return res.status(500).json({
         status: "error",
-        message: error.message || "Failed to create leave type"
+        message: "Internal server error. Please contact support."
       });
     }
   }
   async getLeaveTypes(req, res) {
-  try {
-    console.log("------------------------------------------------");
-    console.log("API Called: getLeaveTypes");
-    console.log("Request Body:", JSON.stringify(req.body, null, 2));
+    try {
+      console.log("------------------------------------------------");
+      console.log("API Called: getLeaveTypes");
+      console.log("Request Body:", JSON.stringify(req.body, null, 2));
 
-    // -----------------------------
-    // 1. Get client context from request
-    // -----------------------------
-    console.log("Attempting to get client context from request...");
-    const { user_id, client_id } = await getClientFromRequest(req);
-    console.log(`Context Retrieved - User ID: ${user_id}, Client ID: ${client_id}`);
+      // -----------------------------
+      // 1. Get client context from request
+      // -----------------------------
+      console.log("Attempting to get client context from request...");
+      const { user_id, client_id } = await getClientFromRequest(req);
+      console.log(`Context Retrieved - User ID: ${user_id}, Client ID: ${client_id}`);
 
-    if (!client_id) {
-      console.error("❌ Client ID missing from auth context");
-      return res.status(400).json({
+      if (!client_id) {
+        console.error("❌ Client ID missing from auth context");
+        return res.status(400).json({
+          status: "error",
+          message: "client_id is required"
+        });
+      }
+
+      // -----------------------------
+      // 2. Define fields to fetch
+      // -----------------------------
+      const fields = [
+        "name",                 // Leave Name
+        "leave_type_code",      // Leave Type Code
+        "leave_category",       // Leave Category
+        "leave_validation_type" // Approved By
+      ];
+      console.log("Fields defined for search:", fields);
+
+      // -----------------------------
+      // 3. Domain (client scoped)
+      // -----------------------------
+      const domain = [["client_id", "=", client_id]];
+      console.log("Odoo Domain:", JSON.stringify(domain));
+
+      // -----------------------------
+      // 4. Fetch from Odoo
+      // -----------------------------
+      console.log(`Calling odooService.searchRead for model 'hr.leave.type' with client_id: ${client_id}...`);
+      const leaveTypes = await odooService.searchRead(
+        "hr.leave.type",
+        domain,
+        fields,
+        user_id,
+        client_id
+      );
+
+      console.log("Odoo Service call successful.");
+      console.log(`Total Leave Types Found: ${leaveTypes ? leaveTypes.length : 0}`);
+      console.log("Leave Types Data:", JSON.stringify(leaveTypes, null, 2));
+
+      // -----------------------------
+      // 5. Send Response
+      // -----------------------------
+      console.log("Sending success response to client...");
+      return res.status(200).json({
+        status: "success",
+        total: leaveTypes.length,
+        data: leaveTypes
+      });
+
+    } catch (error) {
+      console.error("!!! ERROR in getLeaveTypes !!!");
+      console.error("Error Message:", error.message);
+      console.error("Error Stack:", error.stack);
+
+      return res.status(error.status || 500).json({
         status: "error",
-        message: "client_id is required"
+        message: error.message || "Failed to fetch leave types"
       });
     }
-
-    // -----------------------------
-    // 2. Define fields to fetch
-    // -----------------------------
-    const fields = [
-      "name",                 // Leave Name
-      "leave_type_code",      // Leave Type Code
-      "leave_category",       // Leave Category
-      "leave_validation_type" // Approved By
-    ];
-    console.log("Fields defined for search:", fields);
-
-    // -----------------------------
-    // 3. Domain (client scoped)
-    // -----------------------------
-    const domain = [["client_id", "=", client_id]];
-    console.log("Odoo Domain:", JSON.stringify(domain));
-
-    // -----------------------------
-    // 4. Fetch from Odoo
-    // -----------------------------
-    console.log(`Calling odooService.searchRead for model 'hr.leave.type' with client_id: ${client_id}...`);
-    const leaveTypes = await odooService.searchRead(
-      "hr.leave.type",
-      domain,
-      fields,
-      user_id,
-      client_id
-    );
-
-    console.log("Odoo Service call successful.");
-    console.log(`Total Leave Types Found: ${leaveTypes ? leaveTypes.length : 0}`);
-    console.log("Leave Types Data:", JSON.stringify(leaveTypes, null, 2));
-
-    // -----------------------------
-    // 5. Send Response
-    // -----------------------------
-    console.log("Sending success response to client...");
-    return res.status(200).json({
-      status: "success",
-      total: leaveTypes.length,
-      data: leaveTypes
-    });
-
-  } catch (error) {
-    console.error("!!! ERROR in getLeaveTypes !!!");
-    console.error("Error Message:", error.message);
-    console.error("Error Stack:", error.stack);
-
-    return res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "Failed to fetch leave types"
-    });
   }
-}
 
   async updateLeaveType(req, res) {
     try {
@@ -382,6 +650,141 @@ class LeaveController {
       });
     }
   }
+  // async createLeaveAllocation(req, res) {
+  //   try {
+  //     console.log("------------------------------------------------");
+  //     console.log("API Called: createLeaveAllocation");
+  //     console.log("Request Body:", JSON.stringify(req.body, null, 2));
+
+  //     const {
+  //       holiday_status_id,
+  //       employee_id,
+  //       allocation_type,
+  //       date_from,
+  //       date_to,
+  //       number_of_days,
+  //       description,
+  //       accrual_plan_id // <-- Added for accrual allocation
+  //     } = req.body;
+
+  //     // 1. Fetch Context & Debug Logs
+  //     console.log("Fetching client context from request...");
+  //     const context = await getClientFromRequest(req);
+
+  //     console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
+
+  //     if (!context) {
+  //       throw new Error("Client context is null or undefined");
+  //     }
+
+  //     const { user_id, client_id } = context;
+  //     console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
+
+  //     // Validation Checks
+  //     console.log("Starting Input Validation...");
+
+  //     if (!holiday_status_id || !employee_id || !allocation_type || !date_from) {
+  //       console.warn("Validation Failed: Missing required fields");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Required missing fields: holiday_status_id, employee_id, allocation_type, date_from"
+  //       });
+  //     }
+
+  //     if (!["regular", "accrual"].includes(allocation_type)) {
+  //       console.warn(`Validation Failed: Invalid allocation_type '${allocation_type}'`);
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Invalid allocation type"
+  //       });
+  //     }
+
+  //     // For regular allocation, number_of_days is required
+  //     if (allocation_type === "regular" && (!number_of_days || number_of_days <= 0)) {
+  //       console.warn("Validation Failed: Invalid number_of_days for regular allocation");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Allocation days are required for regular allocation."
+  //       });
+  //     }
+
+  //     // For accrual allocation, accrual_plan_id is required
+  //     if (allocation_type === "accrual" && !accrual_plan_id) {
+  //       console.warn("Validation Failed: accrual_plan_id is required for accrual allocation");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Accrual Plan is required for accrual allocation."
+  //       });
+  //     }
+
+  //     console.log("Validation Passed.");
+
+  //     // Fetch Leave Type Name
+  //     console.log(`Fetching Leave Type Name for ID: ${holiday_status_id} with Client ID: ${client_id}...`);
+
+  //     const leaveTypeInfo = await odooService.searchRead(
+  //       "hr.leave.type",
+  //       [["id", "=", parseInt(holiday_status_id)]],
+  //       ["name"],
+  //       1,
+  //       client_id
+  //     );
+
+  //     console.log("Leave Type Info Retrieved:", JSON.stringify(leaveTypeInfo, null, 2));
+
+  //     const leave_type_name = leaveTypeInfo.length > 0 ? leaveTypeInfo[0].name : "Unknown Leave Type";
+  //     console.log("Resolved Leave Type Name:", leave_type_name);
+
+  //     // Prepare Payload
+  //     const vals = {
+  //       holiday_status_id: parseInt(holiday_status_id),
+  //       employee_id: parseInt(employee_id),
+  //       allocation_type: allocation_type === "accrual" ? "accrual" : allocation_type,
+  //       date_from: date_from,
+  //       date_to: date_to || null,
+  //       number_of_days: allocation_type === "regular" ? parseFloat(number_of_days) : 0, // 0 for accrual
+  //       name: description || null,
+  //       state: "confirm",
+  //       create_uid: user_id,
+  //       accrual_plan_id: allocation_type === "accrual" ? parseInt(accrual_plan_id) : null // <-- Add accrual plan
+  //     };
+
+  //     console.log("Constructed Odoo Payload:", JSON.stringify(vals, null, 2));
+  //     console.log(`Attempting to create record in 'hr.leave.allocation' for Client ID: ${client_id}...`);
+
+  //     const allocationId = await odooService.create(
+  //       "hr.leave.allocation",
+  //       vals,
+  //       client_id
+  //     );
+
+  //     console.log(`Odoo Create Success! New Allocation ID: ${allocationId}`);
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Leave allocation created successfully",
+  //       data: {
+  //         allocation_id: allocationId,
+  //         leave_type_id: leave_type_name,
+  //         validity_period: {
+  //           from: date_from,
+  //           to: date_to
+  //         },
+  //         accrual_plan_id: allocation_type === "accrual" ? accrual_plan_id : null
+  //       }
+  //     });
+
+  //   } catch (error) {
+  //     console.error("!!! ERROR in createLeaveAllocation !!!");
+  //     console.error("Error Message:", error.message);
+  //     console.error("Error Stack:", error.stack);
+
+  //     return res.status(error.status || 500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to create leave allocation"
+  //     });
+  //   }
+  // }
   async createLeaveAllocation(req, res) {
     try {
       console.log("------------------------------------------------");
@@ -401,16 +804,27 @@ class LeaveController {
 
       // 1. Fetch Context & Debug Logs
       console.log("Fetching client context from request...");
-      const context = await getClientFromRequest(req);
 
-      console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
+      let user_id, client_id;
+      try {
+        const context = await getClientFromRequest(req);
 
-      if (!context) {
-        throw new Error("Client context is null or undefined");
+        console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
+
+        if (!context) {
+          throw new Error("Client context is null or undefined");
+        }
+
+        user_id = context.user_id;
+        client_id = context.client_id;
+        console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
+      } catch (authError) {
+        console.error("Auth error:", authError);
+        return res.status(400).json({
+          status: "error",
+          message: authError.message || "Either user_id or unique_user_id is required"
+        });
       }
-
-      const { user_id, client_id } = context;
-      console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
 
       // Validation Checks
       console.log("Starting Input Validation...");
@@ -427,25 +841,52 @@ class LeaveController {
         console.warn(`Validation Failed: Invalid allocation_type '${allocation_type}'`);
         return res.status(400).json({
           status: "error",
-          message: "Invalid allocation type"
+          message: `Invalid allocation_type: '${allocation_type}'. Allowed values: regular, accrual`
+        });
+      }
+
+      // Validate IDs are numbers
+      if (isNaN(parseInt(holiday_status_id))) {
+        return res.status(400).json({
+          status: "error",
+          message: "holiday_status_id must be a valid number"
+        });
+      }
+
+      if (isNaN(parseInt(employee_id))) {
+        return res.status(400).json({
+          status: "error",
+          message: "employee_id must be a valid number"
         });
       }
 
       // For regular allocation, number_of_days is required
-      if (allocation_type === "regular" && (!number_of_days || number_of_days <= 0)) {
-        console.warn("Validation Failed: Invalid number_of_days for regular allocation");
-        return res.status(400).json({
-          status: "error",
-          message: "Allocation days are required for regular allocation."
-        });
+      if (allocation_type === "regular") {
+        if (!number_of_days || isNaN(parseFloat(number_of_days)) || parseFloat(number_of_days) <= 0) {
+          console.warn("Validation Failed: Invalid number_of_days for regular allocation");
+          return res.status(400).json({
+            status: "error",
+            message: "number_of_days must be a positive number for regular allocation"
+          });
+        }
       }
 
       // For accrual allocation, accrual_plan_id is required
-      if (allocation_type === "accrual" && !accrual_plan_id) {
-        console.warn("Validation Failed: accrual_plan_id is required for accrual allocation");
+      if (allocation_type === "accrual") {
+        if (!accrual_plan_id || isNaN(parseInt(accrual_plan_id))) {
+          console.warn("Validation Failed: accrual_plan_id is required for accrual allocation");
+          return res.status(400).json({
+            status: "error",
+            message: "accrual_plan_id must be a valid number for accrual allocation"
+          });
+        }
+      }
+
+      // Validate dates
+      if (date_to && new Date(date_to) < new Date(date_from)) {
         return res.status(400).json({
           status: "error",
-          message: "Accrual Plan is required for accrual allocation."
+          message: "End Date cannot be earlier than Start Date "
         });
       }
 
@@ -454,17 +895,33 @@ class LeaveController {
       // Fetch Leave Type Name
       console.log(`Fetching Leave Type Name for ID: ${holiday_status_id} with Client ID: ${client_id}...`);
 
-      const leaveTypeInfo = await odooService.searchRead(
-        "hr.leave.type",
-        [["id", "=", parseInt(holiday_status_id)]],
-        ["name"],
-        1,
-        client_id
-      );
+      let leaveTypeInfo;
+      try {
+        leaveTypeInfo = await odooService.searchRead(
+          "hr.leave.type",
+          [["id", "=", parseInt(holiday_status_id)]],
+          ["name"],
+          1,
+          client_id
+        );
+      } catch (searchError) {
+        console.error("Error fetching leave type:", searchError);
+        return res.status(400).json({
+          status: "error",
+          message: "Failed to fetch leave type information"
+        });
+      }
 
       console.log("Leave Type Info Retrieved:", JSON.stringify(leaveTypeInfo, null, 2));
 
-      const leave_type_name = leaveTypeInfo.length > 0 ? leaveTypeInfo[0].name : "Unknown Leave Type";
+      if (!leaveTypeInfo || leaveTypeInfo.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: `Leave type with ID ${holiday_status_id} not found`
+        });
+      }
+
+      const leave_type_name = leaveTypeInfo[0].name;
       console.log("Resolved Leave Type Name:", leave_type_name);
 
       // Prepare Payload
@@ -484,11 +941,129 @@ class LeaveController {
       console.log("Constructed Odoo Payload:", JSON.stringify(vals, null, 2));
       console.log(`Attempting to create record in 'hr.leave.allocation' for Client ID: ${client_id}...`);
 
-      const allocationId = await odooService.create(
-        "hr.leave.allocation",
-        vals,
-        client_id
-      );
+      let allocationId;
+      try {
+        allocationId = await odooService.create(
+          "hr.leave.allocation",
+          vals,
+          client_id
+        );
+      } catch (createError) {
+        console.error("Odoo Create Error:", createError);
+
+        const errorMessage = createError.message || createError.faultString || "Unknown error";
+
+        // Duplicate allocation
+        if (errorMessage.includes("duplicate") ||
+          errorMessage.includes("already exists") ||
+          errorMessage.includes("unique constraint")) {
+          return res.status(409).json({
+            status: "error",
+            message: "Leave allocation already exists for this employee and period"
+          });
+        }
+
+        // Access Denied
+        if (errorMessage.includes("Access Denied") ||
+          errorMessage.includes("AccessError") ||
+          errorMessage.includes("access rights")) {
+          return res.status(403).json({
+            status: "error",
+            message: "Access Denied: You don't have permission to create leave allocations"
+          });
+        }
+
+        // Invalid employee_id
+        if (errorMessage.includes("employee") &&
+          (errorMessage.includes("not found") || errorMessage.includes("does not exist"))) {
+          return res.status(404).json({
+            status: "error",
+            message: `Employee with ID ${employee_id} not found`
+          });
+        }
+
+        // Invalid holiday_status_id
+        if (errorMessage.includes("leave type") ||
+          errorMessage.includes("holiday_status")) {
+          return res.status(404).json({
+            status: "error",
+            message: `Leave type with ID ${holiday_status_id} not found`
+          });
+        }
+
+        // Invalid accrual_plan_id
+        if (errorMessage.includes("accrual") &&
+          (errorMessage.includes("not found") || errorMessage.includes("does not exist"))) {
+          return res.status(404).json({
+            status: "error",
+            message: `Accrual plan with ID ${accrual_plan_id} not found`
+          });
+        }
+
+        // Date validation errors
+        if (errorMessage.includes("date") ||
+          errorMessage.includes("time") ||
+          errorMessage.includes("datetime")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid date format or date range"
+          });
+        }
+
+        // Required field missing (Odoo constraint)
+        if (errorMessage.includes("required") ||
+          errorMessage.includes("cannot be empty") ||
+          errorMessage.includes("null value")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Missing required field in Odoo: " + errorMessage
+          });
+        }
+
+        // Invalid field value
+        if (errorMessage.includes("invalid") ||
+          errorMessage.includes("not valid") ||
+          errorMessage.includes("ValidationError")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid field value: " + errorMessage
+          });
+        }
+
+        // Foreign key constraint
+        if (errorMessage.includes("foreign key") ||
+          errorMessage.includes("does not exist")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid reference: One or more IDs are invalid"
+          });
+        }
+
+        // Wrong credentials
+        if (errorMessage.includes("password") ||
+          errorMessage.includes("credentials") ||
+          errorMessage.includes("authentication")) {
+          return res.status(401).json({
+            status: "error",
+            message: "Invalid credentials"
+          });
+        }
+
+        // Generic XML-RPC fault
+        if (createError.faultCode) {
+          return res.status(400).json({
+            status: "error",
+            message: errorMessage,
+            code: createError.faultCode
+          });
+        }
+
+        // Default case - return 400 for Odoo business logic errors
+        return res.status(400).json({
+          status: "error",
+          message: errorMessage || "Failed to create leave allocation"
+        });
+      }
 
       console.log(`Odoo Create Success! New Allocation ID: ${allocationId}`);
 
@@ -511,128 +1086,129 @@ class LeaveController {
       console.error("Error Message:", error.message);
       console.error("Error Stack:", error.stack);
 
-      return res.status(error.status || 500).json({
+      // Only return 500 for actual server errors
+      return res.status(500).json({
         status: "error",
-        message: error.message || "Failed to create leave allocation"
+        message: "Internal server error. Please contact support."
       });
     }
   }
 
   async getLeaveAllocation(req, res) {
-  try {
-    console.log("API called for getLeaveAllocation");
+    try {
+      console.log("API called for getLeaveAllocation");
 
-    // -----------------------------
-    // 1. Get client_id from auth
-    // -----------------------------
-    const { client_id } = await getClientFromRequest(req);
-    console.log("Resolved client_id:", client_id);
+      // -----------------------------
+      // 1. Get client_id from auth
+      // -----------------------------
+      const { client_id } = await getClientFromRequest(req);
+      console.log("Resolved client_id:", client_id);
 
-    if (!client_id) {
-      return res.status(400).json({
+      if (!client_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "client_id is required"
+        });
+      }
+
+      // -----------------------------
+      // 2. Optional query filters
+      // -----------------------------
+      const {
+        employee_id,
+        leave_type_id,
+        date_from,
+        date_to,
+        status
+      } = req.query;
+
+      // -----------------------------
+      // 3. Domain (CLIENT SCOPED)
+      // -----------------------------
+      const domain = [["client_id", "=", client_id]];
+
+      if (employee_id) {
+        domain.push(["employee_id", "=", Number(employee_id)]);
+      }
+
+      if (leave_type_id) {
+        domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
+      }
+
+      if (status) {
+        domain.push(["state", "=", status]);
+      }
+
+      if (date_from) {
+        domain.push(["date_from", ">=", date_from]);
+      }
+
+      if (date_to) {
+        domain.push(["date_to", "<=", date_to]);
+      }
+
+      console.log("Final Odoo Domain:", JSON.stringify(domain));
+
+      // -----------------------------
+      // 4. Fields
+      // -----------------------------
+      const fields = [
+        "employee_id",
+        "holiday_status_id",
+        "allocation_type",
+        "date_from",
+        "date_to",
+        "number_of_days",
+        "name",
+        "state",
+        "create_uid",
+        "create_date"
+      ];
+
+      const records = await odooService.searchRead(
+        "hr.leave.allocation",
+        domain,
+        fields
+      );
+
+      // -----------------------------
+      // 5. Response formatting
+      // -----------------------------
+      const data = records.map(rec => ({
+        id: rec.id,
+
+        employee_id: rec.employee_id?.[0],
+        employee_name: rec.employee_id?.[1],
+
+        leave_type_id: rec.holiday_status_id?.[0],
+        leave_type_name: rec.holiday_status_id?.[1],
+
+        date_from: rec.date_from,
+        date_to: rec.date_to,
+        status: rec.state,
+
+        allocation_type: rec.allocation_type,
+        number_of_days: rec.number_of_days,
+        description: rec.name || null,
+
+        created_by: rec.create_uid?.[0] || null,
+        created_on: rec.create_date
+      }));
+
+      return res.status(200).json({
+        status: "success",
+        total: data.length,
+        data
+      });
+
+    } catch (error) {
+      console.error("Get Leave Allocation error:", error);
+      return res.status(error.status || 500).json({
         status: "error",
-        message: "client_id is required"
+        message: error.message || "Failed to fetch leave allocations"
       });
     }
-
-    // -----------------------------
-    // 2. Optional query filters
-    // -----------------------------
-    const {
-      employee_id,
-      leave_type_id,
-      date_from,
-      date_to,
-      status
-    } = req.query;
-
-    // -----------------------------
-    // 3. Domain (CLIENT SCOPED)
-    // -----------------------------
-    const domain = [["client_id", "=", client_id]];
-
-    if (employee_id) {
-      domain.push(["employee_id", "=", Number(employee_id)]);
-    }
-
-    if (leave_type_id) {
-      domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
-    }
-
-    if (status) {
-      domain.push(["state", "=", status]);
-    }
-
-    if (date_from) {
-      domain.push(["date_from", ">=", date_from]);
-    }
-
-    if (date_to) {
-      domain.push(["date_to", "<=", date_to]);
-    }
-
-    console.log("Final Odoo Domain:", JSON.stringify(domain));
-
-    // -----------------------------
-    // 4. Fields
-    // -----------------------------
-    const fields = [
-      "employee_id",
-      "holiday_status_id",
-      "allocation_type",
-      "date_from",
-      "date_to",
-      "number_of_days",
-      "name",
-      "state",
-      "create_uid",
-      "create_date"
-    ];
-
-    const records = await odooService.searchRead(
-      "hr.leave.allocation",
-      domain,
-      fields
-    );
-
-    // -----------------------------
-    // 5. Response formatting
-    // -----------------------------
-    const data = records.map(rec => ({
-      id: rec.id,
-
-      employee_id: rec.employee_id?.[0],
-      employee_name: rec.employee_id?.[1],
-
-      leave_type_id: rec.holiday_status_id?.[0],
-      leave_type_name: rec.holiday_status_id?.[1],
-
-      date_from: rec.date_from,
-      date_to: rec.date_to,
-      status: rec.state,
-
-      allocation_type: rec.allocation_type,
-      number_of_days: rec.number_of_days,
-      description: rec.name || null,
-
-      created_by: rec.create_uid?.[0] || null,
-      created_on: rec.create_date
-    }));
-
-    return res.status(200).json({
-      status: "success",
-      total: data.length,
-      data
-    });
-
-  } catch (error) {
-    console.error("Get Leave Allocation error:", error);
-    return res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "Failed to fetch leave allocations"
-    });
   }
-}
 
 
   async updateLeaveAllocation(req, res) {
@@ -1086,112 +1662,112 @@ class LeaveController {
 
 
   async getLeaveRequest(req, res) {
-  try {
-    console.log("API called for getLeaveRequest");
+    try {
+      console.log("API called for getLeaveRequest");
 
-    // -----------------------------
-    // 1. Get client_id from auth
-    // -----------------------------
-    const { client_id } = await getClientFromRequest(req);
-    console.log("Resolved client_id:", client_id);
+      // -----------------------------
+      // 1. Get client_id from auth
+      // -----------------------------
+      const { client_id } = await getClientFromRequest(req);
+      console.log("Resolved client_id:", client_id);
 
-    if (!client_id) {
-      return res.status(400).json({
+      if (!client_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "client_id is required"
+        });
+      }
+
+      // -----------------------------
+      // 2. Optional query filters
+      // -----------------------------
+      const {
+        employee_id,
+        leave_type_id,
+        status,
+        date_from,
+        date_to
+      } = req.query;
+
+      console.log("Query parameters received:", req.query);
+
+      // -----------------------------
+      // 3. Domain (CLIENT SCOPED)
+      // -----------------------------
+      const domain = [["client_id", "=", client_id]];
+
+      if (employee_id) {
+        domain.push(["employee_id", "=", Number(employee_id)]);
+      }
+
+      if (leave_type_id) {
+        domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
+      }
+
+      if (status) {
+        domain.push(["state", "=", status]);
+      }
+
+      if (date_from && date_to) {
+        domain.push(["request_date_from", ">=", date_from]);
+        domain.push(["request_date_to", "<=", date_to]);
+      }
+
+      console.log("Final Odoo Domain:", JSON.stringify(domain));
+
+      // -----------------------------
+      // 4. Fields
+      // -----------------------------
+      const fields = [
+        "employee_id",
+        "holiday_status_id",
+        "department_id",
+        "date_from",
+        "date_to",
+        "number_of_days",
+        "name",
+        "state",
+        "create_date"
+      ];
+
+      const records = await odooService.searchRead(
+        "hr.leave",
+        domain,
+        fields
+      );
+
+      // -----------------------------
+      // 5. Response formatting
+      // -----------------------------
+      const data = records.map(rec => ({
+        id: rec.id,
+        employee_name: rec.employee_id?.[1] || "Unknown Employee",
+        leave_type_name: rec.holiday_status_id?.[1] || "Unknown Type",
+        department_name: rec.department_id?.[1] || "No Department Found",
+        validity: {
+          from: rec.date_from,
+          to: rec.date_to
+        },
+        duration_days: rec.number_of_days,
+        reason: rec.name || null,
+        status: rec.state,
+        requested_on: rec.create_date
+      }));
+
+      return res.status(200).json({
+        status: "success",
+        total: data.length,
+        data
+      });
+
+    } catch (error) {
+      console.error("Fatal error in getLeaveRequest:", error);
+      return res.status(error.status || 500).json({
         status: "error",
-        message: "client_id is required"
+        message: error.message || "Failed to fetch leave requests"
       });
     }
-
-    // -----------------------------
-    // 2. Optional query filters
-    // -----------------------------
-    const {
-      employee_id,
-      leave_type_id,
-      status,
-      date_from,
-      date_to
-    } = req.query;
-
-    console.log("Query parameters received:", req.query);
-
-    // -----------------------------
-    // 3. Domain (CLIENT SCOPED)
-    // -----------------------------
-    const domain = [["client_id", "=", client_id]];
-
-    if (employee_id) {
-      domain.push(["employee_id", "=", Number(employee_id)]);
-    }
-
-    if (leave_type_id) {
-      domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
-    }
-
-    if (status) {
-      domain.push(["state", "=", status]);
-    }
-
-    if (date_from && date_to) {
-      domain.push(["request_date_from", ">=", date_from]);
-      domain.push(["request_date_to", "<=", date_to]);
-    }
-
-    console.log("Final Odoo Domain:", JSON.stringify(domain));
-
-    // -----------------------------
-    // 4. Fields
-    // -----------------------------
-    const fields = [
-      "employee_id",
-      "holiday_status_id",
-      "department_id",
-      "date_from",
-      "date_to",
-      "number_of_days",
-      "name",
-      "state",
-      "create_date"
-    ];
-
-    const records = await odooService.searchRead(
-      "hr.leave",
-      domain,
-      fields
-    );
-
-    // -----------------------------
-    // 5. Response formatting
-    // -----------------------------
-    const data = records.map(rec => ({
-      id: rec.id,
-      employee_name: rec.employee_id?.[1] || "Unknown Employee",
-      leave_type_name: rec.holiday_status_id?.[1] || "Unknown Type",
-      department_name: rec.department_id?.[1] || "No Department Found",
-      validity: {
-        from: rec.date_from,
-        to: rec.date_to
-      },
-      duration_days: rec.number_of_days,
-      reason: rec.name || null,
-      status: rec.state,
-      requested_on: rec.create_date
-    }));
-
-    return res.status(200).json({
-      status: "success",
-      total: data.length,
-      data
-    });
-
-  } catch (error) {
-    console.error("Fatal error in getLeaveRequest:", error);
-    return res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "Failed to fetch leave requests"
-    });
   }
-}
 
 
   async updateLeaveRequest(req, res) {

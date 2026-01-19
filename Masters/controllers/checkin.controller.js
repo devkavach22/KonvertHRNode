@@ -206,7 +206,7 @@ exports.apiAttendance = async (req, res) => {
       ? moment(check_in).tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss")
       : moment().tz("Asia/Kolkata").format("YYYY-MM-DD HH:mm:ss");
 
-    const location = `${Longitude}, ${Latitude}`;
+    const location = `${Latitude},${Longitude}`;
 
     if (!existingCheckin.length) {
       const createData = {
