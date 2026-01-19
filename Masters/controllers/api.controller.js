@@ -4759,7 +4759,6 @@ class ApiController {
           message: `Category validation failed: ${categoryError.message}`,
         });
       }
-
       const existing = await odooService.searchRead(
         "attendance.regular",
         [
@@ -4771,7 +4770,6 @@ class ApiController {
         ["id"],
         1
       );
-
       if (existing.length) {
         return res.status(409).json({
           status: "error",
@@ -4784,9 +4782,12 @@ class ApiController {
         from_date,
         to_date,
         reg_category: parseInt(reg_category),
-        state_select: "draft", 
+        state_select: "draft",
         client_id: client_id,
       };
+
+      const regId = await odooService.create("attendance.regular", vals);
+
       try {
         const submitResult = await odooService.callMethod(
           "attendance.regular",
@@ -4797,14 +4798,12 @@ class ApiController {
         try {
           await odooService.delete("attendance.regular", regId);
         } catch (deleteError) { }
-
         return res.status(500).json({
           status: "error",
           message: "Failed to submit regularization request",
           details: submitError.message,
         });
       }
-
       return res.status(200).json({
         status: "success",
         message:
@@ -4822,7 +4821,6 @@ class ApiController {
             "Category not found. The provided reg_category does not exist in the system.",
         });
       }
-
       return res.status(error.status || 500).json({
         status: "error",
         message:
