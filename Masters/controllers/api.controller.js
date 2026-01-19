@@ -4721,19 +4721,9 @@ class ApiController {
 
   async createAttendanceRegularization(req, res) {
     try {
-      console.log("API Called createAttendanceRegularization");
-      console.log("========================================");
-
       const { employee_id, reg_reason, from_date, to_date, reg_category } =
         req.body;
-
       const { client_id } = await getClientFromRequest(req);
-
-      console.log("📥 Request Body:", req.body);
-      console.log("🏢 Client ID:", client_id);
-      console.log("========================================");
-
-      // Validate required fields
       const requiredFields = {
         employee_id,
         reg_reason,
@@ -4741,7 +4731,6 @@ class ApiController {
         to_date,
         reg_category,
       };
-
       for (const [key, value] of Object.entries(requiredFields)) {
         if (!value) {
           return res.status(400).json({
@@ -4750,23 +4739,13 @@ class ApiController {
           });
         }
       }
-
-      // ✅ Validate that reg_category exists
       try {
-        console.log("🔍 Validating category ID:", reg_category);
-
         const categoryExists = await odooService.searchRead(
           "reg.categories",
           [["id", "=", parseInt(reg_category)]],
           ["id", "type", "client_id"],
           1
         );
-
-        console.log(
-          "🔎 Category search result:",
-          JSON.stringify(categoryExists, null, 2)
-        );
-
         if (!categoryExists || categoryExists.length === 0) {
           console.log("❌ Category not found!");
           return res.status(400).json({
@@ -4774,20 +4753,13 @@ class ApiController {
             message: `Category not found. The reg_category ID '${reg_category}' does not exist.`,
           });
         }
-
-        console.log("✅ Valid category found:", categoryExists[0]);
-        console.log("========================================");
       } catch (categoryError) {
-        console.error("❌ Category validation error:", categoryError);
-        console.error("Error details:", categoryError.message);
         return res.status(400).json({
           status: "error",
           message: `Category validation failed: ${categoryError.message}`,
         });
       }
 
-      // Check for existing regularization
-      console.log("🔍 Checking for existing regularization...");
       const existing = await odooService.searchRead(
         "attendance.regular",
         [
@@ -4800,71 +4772,31 @@ class ApiController {
         1
       );
 
-      console.log("Existing regularization result:", existing);
-
       if (existing.length) {
-        console.log("❌ Duplicate regularization found!");
         return res.status(409).json({
           status: "error",
           message: "A regularization request already exists for this duration.",
         });
       }
-
-      console.log("✅ No duplicate found, proceeding...");
-      console.log("========================================");
-
-      // Prepare payload - CREATE IN DRAFT STATE
       const vals = {
         employee_id: parseInt(employee_id),
         reg_reason,
         from_date,
         to_date,
         reg_category: parseInt(reg_category),
-        state_select: "draft", // ✅ Changed from "requested" to "draft"
+        state_select: "draft", 
         client_id: client_id,
       };
-
-      console.log(
-        "📤 Attendance Regularization Payload:",
-        JSON.stringify(vals, null, 2)
-      );
-      console.log("========================================");
-
-      // Create regularization
-      console.log("🚀 Creating regularization record...");
-      const regId = await odooService.create("attendance.regular", vals);
-      console.log("✅ Regularization created with ID:", regId);
-      console.log("========================================");
-
-      // Auto-submit regularization (only works when state is 'draft')
       try {
-        console.log("==========================================");
-        console.log("🔄 AUTO-SUBMITTING REGULARIZATION");
-        console.log("Regularization ID:", regId);
-        console.log("==========================================");
-
-        // Call the submit method
         const submitResult = await odooService.callMethod(
           "attendance.regular",
           "action_submit_reg",
           [regId]
         );
-
-        console.log("Submit result:", submitResult);
-        console.log("✅ Regularization submitted successfully!");
-        console.log("==========================================");
       } catch (submitError) {
-        console.error("❌ ERROR submitting regularization:", submitError);
-        console.error("Submit error details:", submitError.message);
-
-        // If submit fails, delete the draft record to avoid orphaned drafts
         try {
-          console.log("🗑️ Cleaning up draft record...");
           await odooService.delete("attendance.regular", regId);
-          console.log("✅ Draft record deleted");
-        } catch (deleteError) {
-          console.error("Failed to delete draft:", deleteError.message);
-        }
+        } catch (deleteError) { }
 
         return res.status(500).json({
           status: "error",
@@ -4880,13 +4812,6 @@ class ApiController {
         regId,
       });
     } catch (error) {
-      console.error("==========================================");
-      console.error("❌ ATTENDANCE REGULARIZATION ERROR");
-      console.error("Error message:", error.message);
-      console.error("Error stack:", error.stack);
-      console.error("==========================================");
-
-      // ✅ Handle specific foreign key constraint errors
       if (
         error.message &&
         error.message.includes("attendance_regular_reg_category_fkey")
