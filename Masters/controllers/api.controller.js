@@ -477,202 +477,7 @@ class ApiController {
       });
     }
   }
-  //   async createUser(req, res) {
-  //     console.log("Register Called ");
-  //     try {
-  //       const {
-  //         name,
-  //         client_image,
-  //         company_name,
-  //         gst_number,
-  //         mobile,
-  //         email,
-  //         designation,
-  //         street,
-  //         street2,
-  //         pincode,
-  //         state_id,
-  //         country_id,
-  //         city,
-  //         password,
-  //         first_name,
-  //         company_address,
-  //         last_name,
-  //       } = req.body;
 
-  //       const existingUsers = await odooService.searchRead(
-  //         "res.users",
-  //         [["login", "=", email]],
-  //         ["id"]
-  //       );
-
-  //       let cleanImage = null;
-  //       if (client_image) {
-  //         cleanImage = client_image.replace(/^data:image\/\w+;base64,/, "");
-  //       }
-
-  //       if (existingUsers && existingUsers.length > 0) {
-  //         return res.status(409).json({
-  //           status: "error",
-  //           message: "Already Registered Email",
-  //         });
-  //       }
-
-  //       const gstValidation = await odooService.execute(
-  //         "res.partner",
-  //         "autocomplete_by_vat",
-  //         [gst_number, parseInt(country_id)],
-  //         { timeout: 15 }
-  //       );
-
-  //       if (!gstValidation || gstValidation.length === 0) {
-  //         return res.status(400).json({
-  //           status: "error",
-  //           message: "Invalid GST number",
-  //         });
-  //       }
-
-  //       const superadminUser = await odooService.searchRead(
-  //         "res.users",
-  //         [["id", "=", 2]],
-  //         ["company_id"]
-  //       );
-
-  //       const superadminCompanyId = superadminUser[0].company_id[0];
-
-  //       const userVals = {
-  //         name: company_name,
-  //         company_name: company_name,
-  //         email: email,
-  //         login: email,
-  //         vat: gst_number,
-  //         function: designation,
-  //         street: street,
-  //         street2: street2,
-  //         city: city,
-  //         zip: pincode,
-  //         state_id: parseInt(state_id),
-  //         country_id: parseInt(country_id),
-  //         password: password,
-  //         company_ids: [[6, 0, [superadminCompanyId]]],
-  //         company_id: superadminCompanyId,
-  //         l10n_in_gst_treatment: "regular",
-  //         first_name: first_name,
-  //         last_name: last_name,
-  //         mobile: mobile,
-  //         company_address: company_address,
-  //         image_1920: cleanImage,
-  //       };
-  //       const userId = await odooService.create("res.users", userVals);
-  //       const userData = await odooService.searchRead(
-  //         "res.users",
-  //         [["id", "=", userId]],
-  //         ["partner_id"]
-  //       );
-
-  //       const companyPartnerId = userData[0].partner_id[0];
-  //       await odooService.write("res.partner", [companyPartnerId], {
-  //         company_type: "company",
-  //         name: company_name,
-  //         is_from_konvert_hr_portal: true,
-  //         customer_rank: 1,
-  //       });
-  //       const childContactVals = {
-  //         parent_id: companyPartnerId,
-  //         type: "contact",
-  //         name: `${first_name} ${last_name}`,
-  //         email: email,
-  //         phone: mobile,
-  //         phone_res: mobile,
-  //         mobile: mobile,
-  //       };
-
-  //       await odooService.create("res.partner", childContactVals);
-  //       await mailService.sendMail(
-  //         email,
-  //         "Welcome to Kavach Global",
-  //         `<!DOCTYPE html>
-  // <html>
-  // <head>
-  //   <meta charset="utf-8">
-  //   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  // </head>
-  // <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, sans-serif;">
-  //   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-  //     <tr>
-  //       <td align="center">
-  //         <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-  //           <tr>
-  //             <td style="background-color: #5f5cc4; height: 8px;"></td>
-  //           </tr>
-
-  //           <tr>
-  //             <td style="padding: 50px 60px;">
-  //               <h1 style="margin: 0 0 30px 0; font-size: 32px; font-weight: 600; color: #1a1a1a;">Welcome to Kavach Global!</h1>
-
-  //               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">Hello ${name},</p>
-
-  //               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
-  //                 Thank you for registering with Kavach Global Private Limited. We are thrilled to have you on board!
-  //               </p>
-
-  //               <div style="background-color: #f0f7ff; border-left: 4px solid #5f5cc4; padding: 20px; margin: 30px 0;">
-  //                 <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #1a1a1a;">
-  //                   Your Account is Ready
-  //                 </p>
-  //                 <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #555555;">
-  //                   You can now access all features and services available on our platform. Feel free to explore and reach out if you need any assistance.
-  //                 </p>
-  //               </div>
-
-  //               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
-  //                 If you have any questions or need support, please do not hesitate to contact us. We are here to help!
-  //               </p>
-
-  //               <p style="margin: 30px 0 0 0; font-size: 16px; line-height: 1.6; color: #333333;">
-  //                 We look forward to serving you.
-  //               </p>
-
-  //               <p style="margin: 40px 0 0 0; font-size: 16px; line-height: 1.6; color: #333333;">
-  //                 <strong>Best regards,<br>Kavach Global Private Limited</strong>
-  //               </p>
-  //             </td>
-  //           </tr>
-
-  //           <tr>
-  //             <td style="background-color: #5f5cc4; height: 8px;"></td>
-  //           </tr>
-  //         </table>
-
-  //         <table width="600" cellpadding="0" cellspacing="0" style="margin-top: 20px;">
-  //           <tr>
-  //             <td style="padding: 0 60px; text-align: center;">
-  //               <p style="margin: 0; font-size: 13px; color: #999999; line-height: 1.6;">
-  //                 This email was sent to ${email}. If you did not create an account, please contact our support team immediately.
-  //               </p>
-  //             </td>
-  //           </tr>
-  //         </table>
-  //       </td>
-  //     </tr>
-  //   </table>
-  // </body>
-  // </html>`
-  //       );
-
-  //       return res.status(200).json({
-  //         status: "OK",
-  //         message: "User Is Registered, Email Sent",
-  //         id: userId,
-  //       });
-  //     } catch (error) {
-  //       console.error("Create user error:", error);
-  //       return res.status(500).json({
-  //         status: "error",
-  //         message: "Failed to create user",
-  //       });
-  //     }
-  //   }
 
   async createUser(req, res) {
     console.log("Register Called ");
@@ -712,7 +517,6 @@ class ApiController {
       }
 
       // --- 2. UNIQUE GST (VAT) CHECK ---
-      // Odoo mein GST 'vat' field mein store hota hai res.partner table mein
       const existingGST = await odooService.searchRead(
         "res.partner",
         [["vat", "=", gst_number]],
@@ -786,7 +590,28 @@ class ApiController {
       };
 
       // --- 7. CREATE USER AND UPDATE PARTNER ---
-      const userId = await odooService.create("res.users", userVals);
+      let userId;
+      try {
+        userId = await odooService.create("res.users", userVals);
+      } catch (createError) {
+        // Check if it's a duplicate login error
+        if (createError.message && createError.message.includes('same login')) {
+          return res.status(409).json({
+            status: "error",
+            message: "Already Registered Email",
+          });
+        }
+        // Check if it's a duplicate GST error
+        if (createError.message && createError.message.includes('vat')) {
+          return res.status(409).json({
+            status: "error",
+            message: "GST Number already registered with another account",
+          });
+        }
+        // Re-throw other errors
+        throw createError;
+      }
+
       const userData = await odooService.searchRead(
         "res.users",
         [["id", "=", userId]],
@@ -6800,128 +6625,128 @@ class ApiController {
   }
 
   async getAllApprovalRequests(req, res) {
-  try {
-    console.log("========== GET ALL APPROVAL REQUESTS START ==========");
+    try {
+      console.log("========== GET ALL APPROVAL REQUESTS START ==========");
 
-    /* ───────── 1. AUTH CONTEXT ───────── */
-    console.log("Resolving client and user from request...");
-    const { client_id, currentUser } = await getClientFromRequest(req);
+      /* ───────── 1. AUTH CONTEXT ───────── */
+      console.log("Resolving client and user from request...");
+      const { client_id, currentUser } = await getClientFromRequest(req);
 
-    console.log("Auth Context:", {
-      client_id,
-      currentUser_id: currentUser?.id,
-      is_client_employee_admin: currentUser?.is_client_employee_admin
-    });
-
-    if (!client_id) {
-      console.error("❌ Client ID missing from auth context");
-      return res.status(400).json({
-        status: "error",
-        message: "Client ID missing."
-      });
-    }
-
-    /* ───────── 2. DOMAIN BUILDING ───────── */
-    let domain = [["req_employee_id.address_id", "=", client_id]];
-    console.log("Initial Domain (Client Scoped):", JSON.stringify(domain));
-
-    if (!currentUser.is_client_employee_admin) {
-      console.log("👤 Manager View detected");
-      console.log("Adding approver filter for user:", currentUser.id);
-
-      domain.push(["approval_log_list.approver_id", "=", currentUser.id]);
-    } else {
-      console.log("🛠️ Admin Access detected — loading all company requests");
-    }
-
-    console.log("Final Odoo Domain:", JSON.stringify(domain, null, 2));
-
-    /* ───────── 3. FIELDS ───────── */
-    const fields = [
-      "name",
-      "req_employee_id",
-      "attendance_regulzie_id",
-      "hr_leave_id",
-      "hr_expense_id",
-      "description",
-      "state",
-      "reason",
-      "approval_log_list"
-    ];
-
-    console.log("Fields requested from Odoo:", fields);
-
-    /* ───────── 4. FETCH FROM ODOO ───────── */
-    console.log("Calling Odoo searchRead on approval.request...");
-    const requests = await odooService.searchRead(
-      "approval.request",
-      domain,
-      fields,
-      0,
-      100,
-      "id desc",
-      currentUser.id
-    );
-
-    console.log(`Odoo returned ${requests.length} approval request(s)`);
-
-    /* ───────── 5. EMPTY RESPONSE HANDLING ───────── */
-    if (requests.length === 0) {
-      console.log("ℹ️ No approval requests found for current user");
-      return res.status(200).json({
-        status: "success",
-        message: "There is no any Request for you.",
-        total: 0,
-        data: []
-      });
-    }
-
-    /* ───────── 6. POST-PROCESSING ───────── */
-    console.log("Processing approval request states...");
-    const processedRequests = requests.map((item, index) => {
-      const newItem = { ...item };
-
-      console.log(`Processing request #${index + 1}`, {
-        request_name: newItem.name,
-        state: newItem.state
+      console.log("Auth Context:", {
+        client_id,
+        currentUser_id: currentUser?.id,
+        is_client_employee_admin: currentUser?.is_client_employee_admin
       });
 
-      // Odoo state handling: refused / cancel instead of reject
-      if (newItem.state !== "refused" && newItem.state !== "reject") {
-        delete newItem.reason;
-        console.log("Reason removed (state is not refused/reject)");
-      } else {
-        console.log("Reason retained (state is refused/reject)");
+      if (!client_id) {
+        console.error("❌ Client ID missing from auth context");
+        return res.status(400).json({
+          status: "error",
+          message: "Client ID missing."
+        });
       }
 
-      return newItem;
-    });
+      /* ───────── 2. DOMAIN BUILDING ───────── */
+      let domain = [["req_employee_id.address_id", "=", client_id]];
+      console.log("Initial Domain (Client Scoped):", JSON.stringify(domain));
 
-    console.log(
-      `✅ Successfully processed ${processedRequests.length} approval request(s)`
-    );
+      if (!currentUser.is_client_employee_admin) {
+        console.log("👤 Manager View detected");
+        console.log("Adding approver filter for user:", currentUser.id);
 
-    /* ───────── 7. RESPONSE ───────── */
-    console.log("Sending final response to client");
-    console.log("========== GET ALL APPROVAL REQUESTS END ==========");
+        domain.push(["approval_log_list.approver_id", "=", currentUser.id]);
+      } else {
+        console.log("🛠️ Admin Access detected — loading all company requests");
+      }
 
-    return res.status(200).json({
-      status: "success",
-      total: processedRequests.length,
-      data: processedRequests
-    });
+      console.log("Final Odoo Domain:", JSON.stringify(domain, null, 2));
 
-  } catch (error) {
-    console.error("❌ GET ALL APPROVAL REQUESTS FAILED");
-    console.error("Error Message:", error.message);
-    console.error("Error Stack:", error.stack);
+      /* ───────── 3. FIELDS ───────── */
+      const fields = [
+        "name",
+        "req_employee_id",
+        "attendance_regulzie_id",
+        "hr_leave_id",
+        "hr_expense_id",
+        "description",
+        "state",
+        "reason",
+        "approval_log_list"
+      ];
 
-    return res.status(500).json({
-      status: "error",
-      message: error.message
-    });
+      console.log("Fields requested from Odoo:", fields);
+
+      /* ───────── 4. FETCH FROM ODOO ───────── */
+      console.log("Calling Odoo searchRead on approval.request...");
+      const requests = await odooService.searchRead(
+        "approval.request",
+        domain,
+        fields,
+        0,
+        100,
+        "id desc",
+        currentUser.id
+      );
+
+      console.log(`Odoo returned ${requests.length} approval request(s)`);
+
+      /* ───────── 5. EMPTY RESPONSE HANDLING ───────── */
+      if (requests.length === 0) {
+        console.log("ℹ️ No approval requests found for current user");
+        return res.status(200).json({
+          status: "success",
+          message: "There is no any Request for you.",
+          total: 0,
+          data: []
+        });
+      }
+
+      /* ───────── 6. POST-PROCESSING ───────── */
+      console.log("Processing approval request states...");
+      const processedRequests = requests.map((item, index) => {
+        const newItem = { ...item };
+
+        console.log(`Processing request #${index + 1}`, {
+          request_name: newItem.name,
+          state: newItem.state
+        });
+
+        // Odoo state handling: refused / cancel instead of reject
+        if (newItem.state !== "refused" && newItem.state !== "reject") {
+          delete newItem.reason;
+          console.log("Reason removed (state is not refused/reject)");
+        } else {
+          console.log("Reason retained (state is refused/reject)");
+        }
+
+        return newItem;
+      });
+
+      console.log(
+        `✅ Successfully processed ${processedRequests.length} approval request(s)`
+      );
+
+      /* ───────── 7. RESPONSE ───────── */
+      console.log("Sending final response to client");
+      console.log("========== GET ALL APPROVAL REQUESTS END ==========");
+
+      return res.status(200).json({
+        status: "success",
+        total: processedRequests.length,
+        data: processedRequests
+      });
+
+    } catch (error) {
+      console.error("❌ GET ALL APPROVAL REQUESTS FAILED");
+      console.error("Error Message:", error.message);
+      console.error("Error Stack:", error.stack);
+
+      return res.status(500).json({
+        status: "error",
+        message: error.message
+      });
+    }
   }
-}
 
 
   async approveAttendanceRegularization(req, res) {
