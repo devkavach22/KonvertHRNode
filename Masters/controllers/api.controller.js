@@ -4739,6 +4739,33 @@ class ApiController {
           });
         }
       }
+
+      // ✅ DATE VALIDATION ADD KARO
+      const fromDateObj = new Date(from_date);
+      const toDateObj = new Date(to_date);
+
+      if (isNaN(fromDateObj.getTime()) || isNaN(toDateObj.getTime())) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date format. Please provide valid dates.",
+        });
+      }
+
+      if (toDateObj < fromDateObj) {
+        return res.status(400).json({
+          status: "error",
+          message: "End date cannot be earlier than start date",
+        });
+      }
+
+      const now = new Date();
+      if (fromDateObj > now || toDateObj > now) {
+        return res.status(400).json({
+          status: "error",
+          message: "Future dates are not allowed",
+        });
+      }
+
       try {
         const categoryExists = await odooService.searchRead(
           "reg.categories",
@@ -4785,9 +4812,7 @@ class ApiController {
         state_select: "draft",
         client_id: client_id,
       };
-
       const regId = await odooService.create("attendance.regular", vals);
-
       try {
         const submitResult = await odooService.callMethod(
           "attendance.regular",
@@ -4811,16 +4836,21 @@ class ApiController {
         regId,
       });
     } catch (error) {
-      if (
-        error.message &&
-        error.message.includes("attendance_regular_reg_category_fkey")
-      ) {
-        return res.status(400).json({
-          status: "error",
-          message:
-            "Category not found. The provided reg_category does not exist in the system.",
-        });
+      if (error.message) {
+        if (error.message.includes("Future dates are not allowed")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Future dates are not allowed",
+          });
+        }
+        if (error.message.includes("attendance_regular_reg_category_fkey")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Category not found. The provided reg_category does not exist in the system.",
+          });
+        }
       }
+
       return res.status(error.status || 500).json({
         status: "error",
         message:
