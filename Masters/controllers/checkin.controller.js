@@ -297,7 +297,7 @@ exports.apiAttendance = async (req, res) => {
     return res.status(500).json({
       success: false,
       statuscode: 500,
-      errorMessage: "Something went wrong....",
+      errorMessage: "Internal Server Error",
     });
   }
 };
