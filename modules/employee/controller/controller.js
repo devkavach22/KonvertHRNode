@@ -1734,6 +1734,340 @@ const getEmployeeById = async (req, res) => {
     });
   }
 };
+// const updateEmployee = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     if (!id) {
+//       return res.status(400).json({
+//         status: "error",
+//         message: "Employee ID is required",
+//       });
+//     }
+
+//     const {
+//       name,
+//       father_name,
+//       gender,
+//       birthday,
+//       blood_group,
+//       private_email,
+//       present_address,
+//       permanent_address,
+//       emergency_contact_name,
+//       emergency_contact_relation,
+//       emergency_contact_mobile,
+//       emergency_contact_address,
+//       mobile_phone,
+//       pin_code,
+//       attendance_policy_id,
+//       employee_category,
+//       shift_roster_id,
+//       resource_calendar_id,
+//       district_id,
+//       state_id,
+//       bussiness_type_id,
+//       business_location_id,
+//       job_id,
+//       department_id,
+//       work_location_id,
+//       country_id,
+//       is_geo_tracking,
+//       aadhaar_number,
+//       pan_number,
+//       voter_id,
+//       passport_id,
+//       esi_number,
+//       category,
+//       is_uan_number_applicable,
+//       uan_number,
+//       cd_employee_num,
+//       name_of_post_graduation,
+//       name_of_any_other_education,
+//       total_experiance,
+//       religion,
+//       date_of_marriage,
+//       probation_period,
+//       confirmation_date,
+//       hold_remarks,
+//       is_lapse_allocation,
+//       group_company_joining_date,
+//       week_off,
+//       grade_band,
+//       status,
+//       employee_password,
+//       hold_status,
+//       bank_account_id,
+//       attendance_capture_mode,
+//       reporting_manager_id,
+//       head_of_department_id,
+//       barcode,
+//       pin,
+//       type_of_sepration,
+//       resignation_date,
+//       notice_period_days,
+//       joining_date,
+//       employment_type,
+//       work_phone,
+//       marital,
+//       driving_license,
+//       upload_passbook,
+//       image_1920,
+//     } = req.body;
+
+//     const existingEmployee = await odooHelpers.searchRead(
+//       "hr.employee",
+//       [["id", "=", parseInt(id)]],
+//       ["id", "private_email", "user_id"]
+//     );
+
+//     if (existingEmployee.length === 0) {
+//       return res.status(404).json({
+//         status: "error",
+//         message: "Employee not found",
+//       });
+//     }
+
+//     const currentEmployee = existingEmployee[0];
+
+//     if (name || private_email) {
+//       const trimmedName = name?.trim();
+//       const trimmedEmail = private_email?.trim();
+
+//       let duplicateCheckDomain = [];
+//       if (trimmedName && trimmedEmail) {
+//         duplicateCheckDomain = [
+//           "&",
+//           ["id", "!=", parseInt(id)],
+//           "|",
+//           ["name", "=", trimmedName],
+//           ["private_email", "=", trimmedEmail],
+//         ];
+//       } else if (trimmedName) {
+//         duplicateCheckDomain = [
+//           "&",
+//           ["id", "!=", parseInt(id)],
+//           ["name", "=", trimmedName],
+//         ];
+//       } else if (trimmedEmail) {
+//         duplicateCheckDomain = [
+//           "&",
+//           ["id", "!=", parseInt(id)],
+//           ["private_email", "=", trimmedEmail],
+//         ];
+//       }
+
+//       if (duplicateCheckDomain.length > 0) {
+//         const duplicate = await odooHelpers.searchRead(
+//           "hr.employee",
+//           duplicateCheckDomain,
+//           ["id"]
+//         );
+
+//         if (duplicate.length > 0) {
+//           return res.status(409).json({
+//             status: "error",
+//             message:
+//               "Another employee with the same name or email already exists",
+//           });
+//         }
+//       }
+//     }
+
+//     if (is_uan_number_applicable === true) {
+//       if (!uan_number && !currentEmployee.uan_number) {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "UAN Number is required",
+//         });
+//       }
+//       if (!esi_number && !currentEmployee.esi_number) {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "ESI Number is required",
+//         });
+//       }
+//     }
+
+//     const { client_id } = await getClientFromRequest(req);
+//     const userIdFromParams = req.query.user_id
+//       ? parseInt(req.query.user_id)
+//       : null;
+
+//     console.log("user_id from params (for write_uid):", userIdFromParams);
+//     console.log("client_id:", client_id);
+
+//     const data = {};
+
+//     if (name !== undefined) data.name = name.trim();
+//     if (father_name !== undefined) data.father_name = father_name;
+//     if (gender !== undefined) data.gender = gender;
+//     if (birthday !== undefined) data.birthday = birthday;
+//     if (blood_group !== undefined) data.blood_group = blood_group;
+//     if (private_email !== undefined) data.private_email = private_email.trim();
+//     if (present_address !== undefined) data.present_address = present_address;
+//     if (permanent_address !== undefined)
+//       data.permanent_address = permanent_address;
+//     if (emergency_contact_name !== undefined)
+//       data.emergency_contact_name = emergency_contact_name;
+//     if (emergency_contact_relation !== undefined)
+//       data.emergency_contact_relation = emergency_contact_relation;
+//     if (emergency_contact_address !== undefined)
+//       data.emergency_contact_address = emergency_contact_address;
+//     if (emergency_contact_mobile !== undefined)
+//       data.emergency_contact_mobile = emergency_contact_mobile;
+//     if (mobile_phone !== undefined) data.mobile_phone = mobile_phone;
+//     if (pin_code !== undefined) data.pin_code = pin_code;
+
+//     if (client_id) {
+//       data.address_id = parseInt(client_id);
+//     }
+//     if (work_phone !== undefined) data.work_phone = work_phone;
+//     if (marital !== undefined) data.marital = marital;
+//     if (attendance_policy_id !== undefined)
+//       data.attendance_policy_id = parseInt(attendance_policy_id);
+//     if (employee_category !== undefined)
+//       data.employee_category = employee_category;
+//     if (shift_roster_id !== undefined)
+//       data.shift_roster_id = parseInt(shift_roster_id);
+//     if (resource_calendar_id !== undefined)
+//       data.resource_calendar_id = parseInt(resource_calendar_id);
+//     if (district_id !== undefined) data.district_id = parseInt(district_id);
+//     if (state_id !== undefined) data.state_id = parseInt(state_id);
+//     if (bussiness_type_id !== undefined)
+//       data.bussiness_type_id = parseInt(bussiness_type_id);
+//     if (business_location_id !== undefined)
+//       data.business_location_id = parseInt(business_location_id);
+//     if (job_id !== undefined) data.job_id = parseInt(job_id);
+//     if (department_id !== undefined)
+//       data.department_id = parseInt(department_id);
+//     if (work_location_id !== undefined)
+//       data.work_location_id = parseInt(work_location_id);
+//     if (country_id !== undefined) data.country_id = parseInt(country_id);
+//     if (is_geo_tracking !== undefined) data.is_geo_tracking = is_geo_tracking;
+//     if (aadhaar_number !== undefined) data.aadhaar_number = aadhaar_number;
+//     if (pan_number !== undefined) data.pan_number = pan_number;
+//     if (voter_id !== undefined) data.voter_id = voter_id;
+//     if (passport_id !== undefined) data.passport_id = passport_id;
+//     if (esi_number !== undefined) data.esi_number = esi_number;
+//     if (category !== undefined) data.category = category;
+//     if (is_uan_number_applicable !== undefined)
+//       data.is_uan_number_applicable = is_uan_number_applicable;
+//     if (uan_number !== undefined) data.uan_number = uan_number;
+//     if (cd_employee_num !== undefined) data.cd_employee_num = cd_employee_num;
+//     if (name_of_post_graduation !== undefined)
+//       data.name_of_post_graduation = name_of_post_graduation;
+//     if (name_of_any_other_education !== undefined)
+//       data.name_of_any_other_education = name_of_any_other_education;
+//     if (total_experiance !== undefined)
+//       data.total_experiance = total_experiance;
+//     if (religion !== undefined) data.religion = religion;
+//     if (date_of_marriage !== undefined)
+//       data.date_of_marriage = date_of_marriage;
+//     if (probation_period !== undefined)
+//       data.probation_period = probation_period;
+//     if (confirmation_date !== undefined)
+//       data.confirmation_date = confirmation_date;
+//     if (hold_remarks !== undefined) data.hold_remarks = hold_remarks;
+//     if (is_lapse_allocation !== undefined)
+//       data.is_lapse_allocation = is_lapse_allocation;
+//     if (group_company_joining_date !== undefined)
+//       data.group_company_joining_date = group_company_joining_date;
+//     if (week_off !== undefined) data.week_off = week_off;
+//     if (grade_band !== undefined) data.grade_band = grade_band;
+//     if (status !== undefined) data.status = status;
+//     if (employee_password !== undefined)
+//       data.employee_password = employee_password;
+//     if (hold_status !== undefined) data.hold_status = hold_status;
+//     if (bank_account_id !== undefined) data.bank_account_id = bank_account_id;
+//     if (attendance_capture_mode !== undefined)
+//       data.attendance_capture_mode = attendance_capture_mode;
+//     if (reporting_manager_id !== undefined)
+//       data.reporting_manager_id = parseInt(reporting_manager_id);
+//     if (head_of_department_id !== undefined)
+//       data.head_of_department_id = parseInt(head_of_department_id);
+//     if (barcode !== undefined) data.barcode = barcode;
+//     if (pin !== undefined) data.pin = pin;
+//     if (type_of_sepration !== undefined)
+//       data.type_of_sepration = type_of_sepration;
+//     if (resignation_date !== undefined)
+//       data.resignation_date = resignation_date;
+//     if (notice_period_days !== undefined)
+//       data.notice_period_days = notice_period_days;
+//     if (joining_date !== undefined) data.joining_date = joining_date;
+//     if (employment_type !== undefined) data.employment_type = employment_type;
+//     if (driving_license !== undefined) data.driving_license = driving_license;
+//     if (upload_passbook !== undefined) data.upload_passbook = upload_passbook;
+//     if (image_1920 !== undefined) data.image_1920 = image_1920;
+
+//     await odooHelpers.write("hr.employee", parseInt(id), data);
+//     console.log("Employee updated with ID:", id);
+
+//     const write_uid_value =
+//       userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+//     console.log("write_uid will be set to:", write_uid_value);
+
+//     if (write_uid_value) {
+//       try {
+//         const tableName = "hr_employee";
+
+//         await odooHelpers.updateAuditFields(
+//           tableName,
+//           [parseInt(id)],
+//           null,
+//           write_uid_value
+//         );
+
+//         console.log(
+//           `Successfully updated write_uid to ${write_uid_value} for employee ${id}`
+//         );
+//       } catch (auditError) {
+//         console.error("Failed to update write_uid:", auditError.message);
+//       }
+//     }
+
+//     let userUpdateStatus = null;
+//     if (private_email && currentEmployee.user_id) {
+//       try {
+//         const trimmedEmail = private_email.trim();
+//         const updateUserData = {
+//           login: trimmedEmail,
+//           email: trimmedEmail,
+//         };
+
+//         if (name) updateUserData.name = name.trim();
+//         if (work_phone) updateUserData.phone = work_phone;
+//         if (mobile_phone) updateUserData.mobile = mobile_phone;
+
+//         await odooHelpers.write(
+//           "res.users",
+//           currentEmployee.user_id,
+//           updateUserData
+//         );
+//         console.log("User updated with ID:", currentEmployee.user_id);
+//         userUpdateStatus = "updated";
+//       } catch (userError) {
+//         console.error("Error updating user:", userError);
+//         userUpdateStatus = "failed";
+//       }
+//     }
+
+//     return res.status(200).json({
+//       status: "success",
+//       message: "Employee updated successfully",
+//       id: parseInt(id),
+//       user_id: currentEmployee.user_id,
+//       updated_by: write_uid_value
+//     });
+//   } catch (error) {
+//     console.error("Error updating employee:", error);
+//     return res.status(error.status || 500).json({
+//       status: "error",
+//       message: error.message || "Failed to update employee",
+//     });
+//   }
+// };
+
 const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1813,6 +2147,20 @@ const updateEmployee = async (req, res) => {
       driving_license,
       upload_passbook,
       image_1920,
+      spouse_name,
+      name_of_site,
+      group_id,
+      approval_user_id,
+      approval_sequance,
+      longitude,
+      device_id,
+      device_unique_id,
+      latitude,
+      device_name,
+      system_version,
+      ip_address,
+      device_platform,
+      account_number,
     } = req.body;
 
     const existingEmployee = await odooHelpers.searchRead(
@@ -1924,6 +2272,7 @@ const updateEmployee = async (req, res) => {
     }
     if (work_phone !== undefined) data.work_phone = work_phone;
     if (marital !== undefined) data.marital = marital;
+    if (spouse_name !== undefined) data.spouse_name = spouse_name;
     if (attendance_policy_id !== undefined)
       data.attendance_policy_id = parseInt(attendance_policy_id);
     if (employee_category !== undefined)
@@ -1999,6 +2348,15 @@ const updateEmployee = async (req, res) => {
     if (driving_license !== undefined) data.driving_license = driving_license;
     if (upload_passbook !== undefined) data.upload_passbook = upload_passbook;
     if (image_1920 !== undefined) data.image_1920 = image_1920;
+    if (name_of_site !== undefined) data.name_of_site = parseInt(name_of_site);
+    if (longitude !== undefined) data.longitude = longitude;
+    if (device_id !== undefined) data.device_id = device_id;
+    if (device_unique_id !== undefined) data.device_unique_id = device_unique_id;
+    if (latitude !== undefined) data.latitude = latitude;
+    if (device_name !== undefined) data.device_name = device_name;
+    if (system_version !== undefined) data.system_version = system_version;
+    if (ip_address !== undefined) data.ip_address = ip_address;
+    if (device_platform !== undefined) data.device_platform = device_platform;
 
     await odooHelpers.write("hr.employee", parseInt(id), data);
     console.log("Employee updated with ID:", id);

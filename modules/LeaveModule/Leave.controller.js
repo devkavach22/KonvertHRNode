@@ -785,11 +785,12 @@ class LeaveController {
   //     });
   //   }
   // }
+
+
   async createLeaveAllocation(req, res) {
     try {
       console.log("------------------------------------------------");
       console.log("API Called: createLeaveAllocation");
-      console.log("Request Body:", JSON.stringify(req.body, null, 2));
 
       const {
         holiday_status_id,
@@ -799,129 +800,69 @@ class LeaveController {
         date_to,
         number_of_days,
         description,
-        accrual_plan_id // <-- Added for accrual allocation
+        accrual_plan_id
       } = req.body;
 
       // 1. Fetch Context & Debug Logs
       console.log("Fetching client context from request...");
+      const context = await getClientFromRequest(req);
 
-      let user_id, client_id;
-      try {
-        const context = await getClientFromRequest(req);
+      console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
 
-        console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
-
-        if (!context) {
-          throw new Error("Client context is null or undefined");
-        }
-
-        user_id = context.user_id;
-        client_id = context.client_id;
-        console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
-      } catch (authError) {
-        console.error("Auth error:", authError);
-        return res.status(400).json({
-          status: "error",
-          message: authError.message || "Either user_id or unique_user_id is required"
-        });
+      if (!context) {
+        throw new Error("Client context is null or undefined");
       }
 
-      // Validation Checks
-      console.log("Starting Input Validation...");
+      const { user_id, client_id } = context;
+      console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
 
+      // Validation Checks
       if (!holiday_status_id || !employee_id || !allocation_type || !date_from) {
-        console.warn("Validation Failed: Missing required fields");
         return res.status(400).json({
           status: "error",
-          message: "Required missing fields: holiday_status_id, employee_id, allocation_type, date_from"
+          message: "Missing required fields: holiday_status_id, employee_id, allocation_type, or date_from"
         });
       }
 
       if (!["regular", "accrual"].includes(allocation_type)) {
-        console.warn(`Validation Failed: Invalid allocation_type '${allocation_type}'`);
         return res.status(400).json({
           status: "error",
-          message: `Invalid allocation_type: '${allocation_type}'. Allowed values: regular, accrual`
-        });
-      }
-
-      // Validate IDs are numbers
-      if (isNaN(parseInt(holiday_status_id))) {
-        return res.status(400).json({
-          status: "error",
-          message: "holiday_status_id must be a valid number"
-        });
-      }
-
-      if (isNaN(parseInt(employee_id))) {
-        return res.status(400).json({
-          status: "error",
-          message: "employee_id must be a valid number"
+          message: "Invalid allocation type"
         });
       }
 
       // For regular allocation, number_of_days is required
-      if (allocation_type === "regular") {
-        if (!number_of_days || isNaN(parseFloat(number_of_days)) || parseFloat(number_of_days) <= 0) {
-          console.warn("Validation Failed: Invalid number_of_days for regular allocation");
-          return res.status(400).json({
-            status: "error",
-            message: "number_of_days must be a positive number for regular allocation"
-          });
-        }
-      }
-
-      // For accrual allocation, accrual_plan_id is required
-      if (allocation_type === "accrual") {
-        if (!accrual_plan_id || isNaN(parseInt(accrual_plan_id))) {
-          console.warn("Validation Failed: accrual_plan_id is required for accrual allocation");
-          return res.status(400).json({
-            status: "error",
-            message: "accrual_plan_id must be a valid number for accrual allocation"
-          });
-        }
-      }
-
-      // Validate dates
-      if (date_to && new Date(date_to) < new Date(date_from)) {
+      if (allocation_type === "regular" && (!number_of_days || number_of_days <= 0)) {
+        console.warn("Validation Failed: Invalid number_of_days for regular allocation");
         return res.status(400).json({
           status: "error",
-          message: "End Date cannot be earlier than Start Date "
+          message: "Allocation days are required for regular allocation."
         });
       }
 
-      console.log("Validation Passed.");
+      // For accrual allocation, accrual_plan_id is required
+      if (allocation_type === "accrual" && !accrual_plan_id) {
+        console.warn("Validation Failed: accrual_plan_id is required for accrual allocation");
+        return res.status(400).json({
+          status: "error",
+          message: "Accrual Plan is required for accrual allocation."
+        });
+      }
 
       // Fetch Leave Type Name
       console.log(`Fetching Leave Type Name for ID: ${holiday_status_id} with Client ID: ${client_id}...`);
 
-      let leaveTypeInfo;
-      try {
-        leaveTypeInfo = await odooService.searchRead(
-          "hr.leave.type",
-          [["id", "=", parseInt(holiday_status_id)]],
-          ["name"],
-          1,
-          client_id
-        );
-      } catch (searchError) {
-        console.error("Error fetching leave type:", searchError);
-        return res.status(400).json({
-          status: "error",
-          message: "Failed to fetch leave type information"
-        });
-      }
+      const leaveTypeInfo = await odooService.searchRead(
+        "hr.leave.type",
+        [["id", "=", parseInt(holiday_status_id)]],
+        ["name"],
+        1,
+        client_id
+      );
 
       console.log("Leave Type Info Retrieved:", JSON.stringify(leaveTypeInfo, null, 2));
 
-      if (!leaveTypeInfo || leaveTypeInfo.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: `Leave type with ID ${holiday_status_id} not found`
-        });
-      }
-
-      const leave_type_name = leaveTypeInfo[0].name;
+      const leave_type_name = leaveTypeInfo.length > 0 ? leaveTypeInfo[0].name : "Unknown Leave Type";
       console.log("Resolved Leave Type Name:", leave_type_name);
 
       // Prepare Payload
@@ -931,139 +872,18 @@ class LeaveController {
         allocation_type: allocation_type === "accrual" ? "accrual" : allocation_type,
         date_from: date_from,
         date_to: date_to || null,
-        number_of_days: allocation_type === "regular" ? parseFloat(number_of_days) : 0, // 0 for accrual
+        number_of_days: allocation_type === "regular" ? parseFloat(number_of_days) : 0,
         name: description || null,
         state: "confirm",
         create_uid: user_id,
-        accrual_plan_id: allocation_type === "accrual" ? parseInt(accrual_plan_id) : null // <-- Add accrual plan
+        accrual_plan_id: allocation_type === "accrual" ? parseInt(accrual_plan_id) : null
       };
 
-      console.log("Constructed Odoo Payload:", JSON.stringify(vals, null, 2));
-      console.log(`Attempting to create record in 'hr.leave.allocation' for Client ID: ${client_id}...`);
-
-      let allocationId;
-      try {
-        allocationId = await odooService.create(
-          "hr.leave.allocation",
-          vals,
-          client_id
-        );
-      } catch (createError) {
-        console.error("Odoo Create Error:", createError);
-
-        const errorMessage = createError.message || createError.faultString || "Unknown error";
-
-        // Duplicate allocation
-        if (errorMessage.includes("duplicate") ||
-          errorMessage.includes("already exists") ||
-          errorMessage.includes("unique constraint")) {
-          return res.status(409).json({
-            status: "error",
-            message: "Leave allocation already exists for this employee and period"
-          });
-        }
-
-        // Access Denied
-        if (errorMessage.includes("Access Denied") ||
-          errorMessage.includes("AccessError") ||
-          errorMessage.includes("access rights")) {
-          return res.status(403).json({
-            status: "error",
-            message: "Access Denied: You don't have permission to create leave allocations"
-          });
-        }
-
-        // Invalid employee_id
-        if (errorMessage.includes("employee") &&
-          (errorMessage.includes("not found") || errorMessage.includes("does not exist"))) {
-          return res.status(404).json({
-            status: "error",
-            message: `Employee with ID ${employee_id} not found`
-          });
-        }
-
-        // Invalid holiday_status_id
-        if (errorMessage.includes("leave type") ||
-          errorMessage.includes("holiday_status")) {
-          return res.status(404).json({
-            status: "error",
-            message: `Leave type with ID ${holiday_status_id} not found`
-          });
-        }
-
-        // Invalid accrual_plan_id
-        if (errorMessage.includes("accrual") &&
-          (errorMessage.includes("not found") || errorMessage.includes("does not exist"))) {
-          return res.status(404).json({
-            status: "error",
-            message: `Accrual plan with ID ${accrual_plan_id} not found`
-          });
-        }
-
-        // Date validation errors
-        if (errorMessage.includes("date") ||
-          errorMessage.includes("time") ||
-          errorMessage.includes("datetime")) {
-          return res.status(400).json({
-            status: "error",
-            message: "Invalid date format or date range"
-          });
-        }
-
-        // Required field missing (Odoo constraint)
-        if (errorMessage.includes("required") ||
-          errorMessage.includes("cannot be empty") ||
-          errorMessage.includes("null value")) {
-          return res.status(400).json({
-            status: "error",
-            message: "Missing required field in Odoo: " + errorMessage
-          });
-        }
-
-        // Invalid field value
-        if (errorMessage.includes("invalid") ||
-          errorMessage.includes("not valid") ||
-          errorMessage.includes("ValidationError")) {
-          return res.status(400).json({
-            status: "error",
-            message: "Invalid field value: " + errorMessage
-          });
-        }
-
-        // Foreign key constraint
-        if (errorMessage.includes("foreign key") ||
-          errorMessage.includes("does not exist")) {
-          return res.status(400).json({
-            status: "error",
-            message: "Invalid reference: One or more IDs are invalid"
-          });
-        }
-
-        // Wrong credentials
-        if (errorMessage.includes("password") ||
-          errorMessage.includes("credentials") ||
-          errorMessage.includes("authentication")) {
-          return res.status(401).json({
-            status: "error",
-            message: "Invalid credentials"
-          });
-        }
-
-        // Generic XML-RPC fault
-        if (createError.faultCode) {
-          return res.status(400).json({
-            status: "error",
-            message: errorMessage,
-            code: createError.faultCode
-          });
-        }
-
-        // Default case - return 400 for Odoo business logic errors
-        return res.status(400).json({
-          status: "error",
-          message: errorMessage || "Failed to create leave allocation"
-        });
-      }
+      const allocationId = await odooService.create(
+        "hr.leave.allocation",
+        vals,
+        client_id
+      );
 
       console.log(`Odoo Create Success! New Allocation ID: ${allocationId}`);
 
@@ -1072,11 +892,8 @@ class LeaveController {
         message: "Leave allocation created successfully",
         data: {
           allocation_id: allocationId,
-          leave_type_id: leave_type_name,
-          validity_period: {
-            from: date_from,
-            to: date_to
-          },
+          leave_type_id: holiday_status_id,
+          validity_period: { from: date_from, to: date_to },
           accrual_plan_id: allocation_type === "accrual" ? accrual_plan_id : null
         }
       });
@@ -1086,10 +903,9 @@ class LeaveController {
       console.error("Error Message:", error.message);
       console.error("Error Stack:", error.stack);
 
-      // Only return 500 for actual server errors
-      return res.status(500).json({
+      return res.status(error.status || 500).json({
         status: "error",
-        message: "Internal server error. Please contact support."
+        message: error.message || "Failed to create leave allocation"
       });
     }
   }
