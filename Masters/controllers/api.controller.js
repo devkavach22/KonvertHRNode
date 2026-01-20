@@ -5537,50 +5537,27 @@ class ApiController {
       });
     }
   }
-  // async getGroupList(req, res) {
-  //   try {
-  //     const allowedGroupIds = [130, 164, 16];
-
-  //     const groups = await odooService.searchRead(
-  //       "res.groups",
-  //       [["id", "in", allowedGroupIds]],
-  //       ["id", "name"]
-  //     );
-
-  //     const data = groups.map((g) => ({
-  //       group_id: g.id,
-  //       group_name: g.name,
-  //     }));
-
-  //     return res.status(200).json({
-  //       status: "success",
-  //       message: "Group list fetched",
-  //       data,
-  //     });
-  //   } catch (error) {
-  //     console.error("❌ Get Group List Error:", error);
-  //     return res.status(500).json({
-  //       status: "error",
-  //       message: error.message,
-  //     });
-  //   }
-  // }
   async getGroupList(req, res) {
     try {
-      // Group names you want to fetch
-      const allowedGroupNames = ["Client Admin", "Employee Own"];
-
-      // Search using names instead of IDs
+      const allowedGroupNames = ["Client  Admin", "Employee Own"];
       const groups = await odooService.searchRead(
         "res.groups",
         [["name", "in", allowedGroupNames]],
-        ["id", "name"]
+        ["id", "name", "category_id"]
       );
+      const data = groups
+        .filter((g) => {
+          if (g.name === "Employee Own") {
+            const categoryName = g.category_id?.[1] || null;
 
-      const data = groups.map((g) => ({
-        group_id: g.id,
-        group_name: g.name,
-      }));
+            return categoryName === "User roles";
+          }
+          return true;
+        })
+        .map((g) => ({
+          group_id: g.id,
+          group_name: g.name,
+        }));
 
       return res.status(200).json({
         status: "success",
@@ -5595,7 +5572,6 @@ class ApiController {
       });
     }
   }
-
 
   async getGroupUsers(req, res) {
     try {
