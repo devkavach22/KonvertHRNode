@@ -843,4 +843,9 @@ router.get(
   authenticate,
   productController.getCustomerSubscriptions.bind(productController)
 );
+router.get(
+  "/getClientLeaveDashboardCount",
+  authenticate,
+  apiController.getClientLeaveDashboardCount.bind(apiController)
+);
 module.exports = router;

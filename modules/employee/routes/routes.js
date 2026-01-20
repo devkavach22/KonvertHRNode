@@ -31,7 +31,7 @@ const {
   getSalesTaxes,
   getPurchaseTaxes,
   getProductCategory,
-  getEmployeesBasicInfo
+  getEmployeesBasicInfo,
 
 } = require("../controller/controller.js");
 const authenticate = require("../../../Masters/middleware/auth.middleware.js");
@@ -86,19 +86,19 @@ router.put(
 
 router.get("/employees", authenticate, getEmployees);
 router.delete('/:id', deleteEmployee);
-router.get("/employee-dashboard",authenticate,getEmployeeDashboard);
-router.get("/employees-basic-info",authenticate,getEmployeesBasicInfo);
+router.get("/employee-dashboard", authenticate, getEmployeeDashboard);
+router.get("/employees-basic-info", authenticate, getEmployeesBasicInfo);
 router.get("/singleEmployee/:id", authenticate, getEmployeeById);
-router.post("/create/expense",authenticate, upload.single("attachment"),createExpense);
-router.get("/expense",authenticate,getExpense);
-router.put("/update-expense/:id",authenticate,updateExpense);
-router.post("/create/calendar",authenticate,createCalendarEvent);
-router.get("/calendar",authenticate,getCalendarEvent);
-router.post("/create/expense-categroy",authenticate,createExpenseCategory);
-router.get("/expense-category",authenticate,getExpenseCategories);
-router.get("/expense-account",authenticate,getExpenseAccounts);
-router.get("/sales-tax",authenticate,getSalesTaxes);
-router.get("/purchase-tax",authenticate,getPurchaseTaxes);
-router.get("/product-category",authenticate,getProductCategory);
+router.post("/create/expense", authenticate, upload.single("attachment"), createExpense);
+router.get("/expense", authenticate, getExpense);
+router.put("/update-expense/:id", authenticate, updateExpense);
+router.post("/create/calendar", authenticate, createCalendarEvent);
+router.get("/calendar", authenticate, getCalendarEvent);
+router.post("/create/expense-categroy", authenticate, createExpenseCategory);
+router.get("/expense-category", authenticate, getExpenseCategories);
+router.get("/expense-account", authenticate, getExpenseAccounts);
+router.get("/sales-tax", authenticate, getSalesTaxes);
+router.get("/purchase-tax", authenticate, getPurchaseTaxes);
+router.get("/product-category", authenticate, getProductCategory);
 
 module.exports = router;

@@ -5537,13 +5537,43 @@ class ApiController {
       });
     }
   }
+  // async getGroupList(req, res) {
+  //   try {
+  //     const allowedGroupIds = [130, 164, 16];
+
+  //     const groups = await odooService.searchRead(
+  //       "res.groups",
+  //       [["id", "in", allowedGroupIds]],
+  //       ["id", "name"]
+  //     );
+
+  //     const data = groups.map((g) => ({
+  //       group_id: g.id,
+  //       group_name: g.name,
+  //     }));
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Group list fetched",
+  //       data,
+  //     });
+  //   } catch (error) {
+  //     console.error("❌ Get Group List Error:", error);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: error.message,
+  //     });
+  //   }
+  // }
   async getGroupList(req, res) {
     try {
-      const allowedGroupIds = [130, 164, 16];
+      // Group names you want to fetch
+      const allowedGroupNames = ["Client Admin", "Employee Own"];
 
+      // Search using names instead of IDs
       const groups = await odooService.searchRead(
         "res.groups",
-        [["id", "in", allowedGroupIds]], // ✅ filter applied
+        [["name", "in", allowedGroupNames]],
         ["id", "name"]
       );
 
@@ -7005,6 +7035,109 @@ class ApiController {
       return res.status(500).json({
         status: "error",
         message: error.message
+      });
+    }
+  }
+
+  async getClientLeaveDashboardCount(req, res) {
+    try {
+      const { user_id } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          success: false,
+          errorMessage: "user_id is required",
+        });
+      }
+
+      // 1️⃣ User → Partner
+      const user = await odooService.searchRead(
+        "res.users",
+        [["id", "=", Number(user_id)]],
+        ["partner_id"]
+      );
+
+      if (!user.length) {
+        return res.status(404).json({
+          success: false,
+          errorMessage: "User not found",
+        });
+      }
+
+      const partnerId = user[0].partner_id?.[0];
+
+      // 2️⃣ Admin employee → Client ID
+      const adminEmployee = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", partnerId]],
+        ["address_id"]
+      );
+
+      if (!adminEmployee.length) {
+        return res.status(404).json({
+          success: false,
+          errorMessage: "Admin employee not found",
+        });
+      }
+
+      const client_id = adminEmployee[0].address_id?.[0];
+
+      // 3️⃣ All employees under same client
+      const employees = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", client_id]],
+        ["id"]
+      );
+
+      const employeeIds = employees.map(e => e.id);
+
+      if (!employeeIds.length) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            pending_approvals: 0,
+            leave_requests: 0,
+          },
+        });
+      }
+
+      // 4️⃣ Pending Approvals → confirm
+      const pendingApprovals = await odooService.searchCount(
+        "hr.leave",
+        [
+          ["employee_id", "in", employeeIds],
+          ["state", "=", "confirm"],
+        ]
+      );
+
+      // 5️⃣ Leave Requests → confirm + validate1
+      const leaveRequests = await odooService.searchCount(
+        "hr.leave",
+        [
+          ["employee_id", "in", employeeIds],
+          ["state", "in", ["confirm", "validate1"]],
+        ]
+      );
+
+      return res.status(200).json({
+        success: true,
+        status: "success",
+        data: {
+          pending_approvals: pendingApprovals,
+          leave_requests: leaveRequests,
+        },
+        meta: {
+          client_id,
+          total_employees: employeeIds.length,
+        },
+      });
+
+    } catch (error) {
+      console.error("🔥 Leave Dashboard Count Error:", error);
+
+      return res.status(500).json({
+        success: false,
+        errorMessage: "Failed to fetch leave dashboard counts",
       });
     }
   }
