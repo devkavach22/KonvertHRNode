@@ -2071,6 +2071,69 @@ class ApiController {
         .json({ status: "error", message: "Something went wrong" });
     }
   }
+  // async resetPassword(req, res) {
+  //   try {
+  //     const { email, temp_password, new_password, confirm_password } = req.body;
+
+  //     if (!email || !temp_password || !new_password || !confirm_password) {
+  //       return res
+  //         .status(200)
+  //         .json({ status: "error", message: "All fields are required" });
+  //     }
+
+  //     if (new_password !== confirm_password) {
+  //       return res
+  //         .status(200)
+  //         .json({ status: "error", message: "Passwords do not match" });
+  //     }
+
+  //     const user = await odooService.searchRead(
+  //       "res.users",
+  //       [["login", "=", email]],
+  //       ["id"]
+  //     );
+
+  //     if (!user || user.length === 0) {
+  //       return res
+  //         .status(200)
+  //         .json({ status: "error", message: "Email not found" });
+  //     }
+
+  //     const userId = user[0].id;
+
+  //     const savedTempPass = await redisClient.get(`tempPass:${email}`);
+
+  //     if (!savedTempPass) {
+  //       return res
+
+  //         .status(200)
+  //         .json({ status: "error", message: "Temporary password expired" });
+  //     }
+
+  //     if (savedTempPass !== temp_password) {
+  //       return res.status(200).json({
+  //         status: "error",
+  //         message: "Temporary password is incorrect",
+  //       });
+  //     }
+
+  //     await odooService.write("res.users", [userId], {
+  //       password: new_password,
+  //     });
+
+  //     await redisClient.del(`tempPass:${email}`);
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Password updated successfully",
+  //     });
+  //   } catch (error) {
+  //     console.error("Reset password error:", error);
+  //     return res
+  //       .status(500)
+  //       .json({ status: "error", message: "Something went wrong" });
+  //   }
+  // }
   async resetPassword(req, res) {
     try {
       const { email, temp_password, new_password, confirm_password } = req.body;
@@ -2104,10 +2167,10 @@ class ApiController {
       const savedTempPass = await redisClient.get(`tempPass:${email}`);
 
       if (!savedTempPass) {
-        return res
-
-          .status(200)
-          .json({ status: "error", message: "Temporary password expired" });
+        return res.status(200).json({
+          status: "error",
+          message: "Temporary password expired",
+        });
       }
 
       if (savedTempPass !== temp_password) {
@@ -2117,10 +2180,27 @@ class ApiController {
         });
       }
 
+      // Update password in res.users
       await odooService.write("res.users", [userId], {
         password: new_password,
       });
 
+      // 🔥 NEW: Update employee_password in hr.employee
+      const employee = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", userId]],
+        ["id"]
+      );
+
+      if (employee && employee.length > 0) {
+        const employeeId = employee[0].id;
+
+        await odooService.write("hr.employee", [employeeId], {
+          employee_password: new_password,
+        });
+      }
+
+      // Delete temp password from Redis
       await redisClient.del(`tempPass:${email}`);
 
       return res.status(200).json({
@@ -2134,6 +2214,7 @@ class ApiController {
         .json({ status: "error", message: "Something went wrong" });
     }
   }
+
   async kavachUserCreation(req, res) {
     console.log("Kavach Signup API called");
     try {
