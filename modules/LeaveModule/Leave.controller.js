@@ -1457,7 +1457,6 @@ class LeaveController {
 
         return res.status(409).json({
           status: "error",
-          // Combine user's requested dates with Odoo's conflict info
           message: `Your requested leave (${req.body.date_from} to ${req.body.date_to}) conflicts with an existing entry.`,
           conflict_details: cleanConflictInfo,
           error_type: "LEAVE_OVERLAP",
@@ -1465,6 +1464,20 @@ class LeaveController {
             from: req.body.date_from,
             to: req.body.date_to
           }
+        });
+      }
+
+      // Check if it's a "no valid allocation" error
+      if (rawError.includes("no valid allocation") || rawError.includes("allocation to cover")) {
+        console.error("❌ No valid leave allocation");
+
+        const cleanErrorMsg = rawError.replace("XML-RPC fault: ", "").trim();
+
+        return res.status(400).json({
+          status: "error",
+          message: "No valid leave allocation available for this leave type. Please contact HR.",
+          error_type: "NO_ALLOCATION",
+          details: cleanErrorMsg
         });
       }
 
