@@ -401,11 +401,24 @@ router.get(
   apiController.getWorkingSchedules.bind(apiController)
 );
 
+router.put(
+  '/update/workingSchedules/:calendar_id',
+  authenticate,
+  apiController.updateWorkingSchedule.bind(apiController)
+);
+
+router.delete(
+  '/delete/workingSchedules/:calendar_id',
+  authenticate,
+  apiController.deleteWorkingSchedule.bind(apiController)
+);
 router.post(
   "/create/skills",
   authenticate,
   apiController.createSkill.bind(apiController)
 );
+
+
 router.delete(
   "/delete/skills/:skill_type_id",
   authenticate,

@@ -3674,6 +3674,81 @@ class ApiController {
       });
     }
   }
+  // async createWorkingSchedule(req, res) {
+  //   try {
+  //     const {
+  //       name,
+  //       flexible_hours,
+  //       is_night_shift,
+  //       full_time_required_hours,
+  //       hours_per_day,
+  //       tz,
+  //       total_overtime_hours_allowed,
+  //     } = req.body;
+
+  //     if (!name) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Working Schedule name is required",
+  //       });
+  //     }
+
+  //     const { client_id } = await getClientFromRequest(req);
+
+  //     const existing = await odooService.searchRead(
+  //       "resource.calendar",
+  //       [
+  //         ["name", "=", name],
+  //         ["client_id", "=", client_id],
+  //       ],
+  //       ["id"],
+  //       1
+  //     );
+
+  //     if (existing && existing.length > 0) {
+  //       return res.status(409).json({
+  //         status: "error",
+  //         message: `A working schedule named "${name}" already exists for this client.`,
+  //       });
+  //     }
+
+  //     if (!flexible_hours && hours_per_day !== undefined) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Average Hour per Day is allowed only when Flexible Hours is true",
+  //       });
+  //     }
+
+  //     const vals = {
+  //       name,
+  //       client_id,
+  //       flexible_hours: !!flexible_hours,
+  //       is_night_shift: !!is_night_shift,
+  //       tz: tz || false,
+  //       full_time_required_hours: full_time_required_hours !== undefined ? full_time_required_hours : 0,
+  //       total_overtime_hours_allowed: total_overtime_hours_allowed !== undefined ? parseFloat(total_overtime_hours_allowed) : 0.0,
+  //     };
+
+  //     if (flexible_hours) {
+  //       vals.hours_per_day = hours_per_day || 0;
+  //     }
+
+  //     const calendarId = await odooService.create("resource.calendar", vals);
+
+  //     return res.status(201).json({
+  //       status: "success",
+  //       message: "Working schedule created successfully",
+  //       calendar_id: calendarId,
+  //     });
+  //   } catch (error) {
+  //     console.error("❌ Create Working Schedule Error:", error);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to create working schedule",
+  //     });
+  //   }
+  // }
+
   async createWorkingSchedule(req, res) {
     try {
       const {
@@ -3693,7 +3768,16 @@ class ApiController {
         });
       }
 
-      const { client_id } = await getClientFromRequest(req);
+      let client_id;
+      try {
+        const clientData = await getClientFromRequest(req);
+        client_id = clientData.client_id;
+      } catch (error) {
+        return res.status(400).json({
+          status: "error",
+          message: error.message || "Either user_id or unique_user_id is required",
+        });
+      }
 
       const existing = await odooService.searchRead(
         "resource.calendar",
@@ -3708,7 +3792,7 @@ class ApiController {
       if (existing && existing.length > 0) {
         return res.status(409).json({
           status: "error",
-          message: `A working schedule named "${name}" already exists for this client.`,
+          message: `A working schedule named ${name} already exists for this client.`,
         });
       }
 
@@ -3801,6 +3885,166 @@ class ApiController {
       return res.status(error.status || 500).json({
         status: "error",
         message: error.message || "Failed to fetch working schedules",
+      });
+    }
+  }
+  // UPDATE Working Schedule
+  async updateWorkingSchedule(req, res) {
+    try {
+      const { calendar_id } = req.params;
+      const {
+        name,
+        flexible_hours,
+        is_night_shift,
+        full_time_required_hours,
+        hours_per_day,
+        tz,
+        total_overtime_hours_allowed,
+      } = req.body;
+
+      if (!calendar_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "calendar_id is required",
+        });
+      }
+
+      let client_id;
+      try {
+        const clientData = await getClientFromRequest(req);
+        client_id = clientData.client_id;
+      } catch (error) {
+        return res.status(400).json({
+          status: "error",
+          message: error.message || "Either user_id or unique_user_id is required",
+        });
+      }
+
+      const existingSchedule = await odooService.searchRead(
+        "resource.calendar",
+        [
+          ["id", "=", parseInt(calendar_id)],
+          ["client_id", "=", client_id],
+        ],
+        ["id", "name"],
+        1
+      );
+
+      if (!existingSchedule || existingSchedule.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "Working schedule not found or does not belong to this client",
+        });
+      }
+
+      if (name && name !== existingSchedule[0].name) {
+        const duplicate = await odooService.searchRead(
+          "resource.calendar",
+          [
+            ["name", "=", name],
+            ["client_id", "=", client_id],
+            ["id", "!=", parseInt(calendar_id)],
+          ],
+          ["id"],
+          1
+        );
+
+        if (duplicate && duplicate.length > 0) {
+          return res.status(409).json({
+            status: "error",
+            message: `A working schedule named ${name} already exists for this client.`,
+          });
+        }
+      }
+
+      if (!flexible_hours && hours_per_day !== undefined) {
+        return res.status(400).json({
+          status: "error",
+          message: "Average Hour per Day is allowed only when Flexible Hours is true",
+        });
+      }
+
+      const vals = {};
+
+      if (name !== undefined) vals.name = name;
+      if (flexible_hours !== undefined) vals.flexible_hours = !!flexible_hours;
+      if (is_night_shift !== undefined) vals.is_night_shift = !!is_night_shift;
+      if (tz !== undefined) vals.tz = tz || false;
+      if (full_time_required_hours !== undefined) vals.full_time_required_hours = full_time_required_hours;
+      if (total_overtime_hours_allowed !== undefined) vals.total_overtime_hours_allowed = parseFloat(total_overtime_hours_allowed);
+
+      if (flexible_hours) {
+        vals.hours_per_day = hours_per_day || 0;
+      } else {
+        vals.hours_per_day = false;
+      }
+
+      await odooService.write("resource.calendar", [parseInt(calendar_id)], vals);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Working schedule updated successfully",
+        calendar_id: parseInt(calendar_id),
+      });
+    } catch (error) {
+      console.error("❌ Update Working Schedule Error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error.message || "Failed to update working schedule",
+      });
+    }
+  }
+
+  async deleteWorkingSchedule(req, res) {
+    try {
+      const { calendar_id } = req.params;
+
+      if (!calendar_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "calendar_id is required",
+        });
+      }
+
+      // Get client_id
+      let client_id;
+      try {
+        const clientData = await getClientFromRequest(req);
+        client_id = clientData.client_id;
+      } catch (error) {
+        return res.status(400).json({
+          status: "error",
+          message: error.message || "Either user_id or unique_user_id is required",
+        });
+      }
+
+      const existingSchedule = await odooService.searchRead(
+        "resource.calendar",
+        [
+          ["id", "=", parseInt(calendar_id)],
+          ["client_id", "=", client_id],
+        ],
+        ["id", "name"],
+        1
+      );
+
+      if (!existingSchedule || existingSchedule.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "Working schedule not found or does not belong to this client",
+        });
+      }
+      await odooService.unlink("resource.calendar", [parseInt(calendar_id)]);
+
+      return res.status(200).json({
+        status: "success",
+        message: "Working schedule deleted successfully",
+      });
+    } catch (error) {
+      console.error("❌ Delete Working Schedule Error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error.message || "Failed to delete working schedule",
       });
     }
   }
