@@ -560,7 +560,7 @@ router.post(
 
 router.get(
   "/admin/requests",
-  authenticate,
+  authenticate ,
   apiController.getAllApprovalRequests.bind(apiController)
 );
 
