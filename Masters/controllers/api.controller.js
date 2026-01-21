@@ -5185,14 +5185,10 @@ class ApiController {
   }
   async getAttendanceRegularization(req, res) {
     try {
-      console.log("API Called: getAttendanceRegularization");
-
-      // Extract client_id safely
       let client_id;
       try {
         const clientData = await getClientFromRequest(req);
         client_id = clientData.client_id;
-        console.log("✅ Extracted client_id from helper:", client_id);
       } catch (clientError) {
         console.error("❌ Client extraction failed:", clientError);
         return res.status(clientError.status || 400).json({
@@ -5201,10 +5197,9 @@ class ApiController {
         });
       }
 
-      // Fetch attendance regularization records for this client
       const records = await odooService.searchRead(
         "attendance.regular",
-        [["client_id", "=", client_id]], // Fixed field here
+        [["client_id", "=", client_id]],
         [
           "id",
           "employee_id",
@@ -5212,13 +5207,41 @@ class ApiController {
           "from_date",
           "to_date",
           "reg_category",
-          "state_select",
+          "state_select"
         ]
+      );
+
+      const enrichedRecords = await Promise.all(
+        records.map(async (record) => {
+          if (record.state_select === "reject") {
+            let RejectedReason = null;
+
+            try {
+              const approvalRecords = await odooService.searchRead(
+                "approval.request",
+                [["attendance_regulzie_id", "=", record.id]],
+                ["reason"]
+              );
+
+              if (approvalRecords && approvalRecords.length > 0) {
+                RejectedReason = approvalRecords[0].reason || null;
+              }
+            } catch (err) {
+              console.error(`Error fetching rejection reason for record ${record.id}:`, err);
+            }
+
+            return {
+              ...record,
+              RejectedReason
+            };
+          }
+          return record;
+        })
       );
 
       return res.status(200).json({
         status: "success",
-        data: records,
+        data: enrichedRecords,
       });
     } catch (error) {
       console.error("❌ Error fetching attendance regularization:", error);
@@ -5228,7 +5251,6 @@ class ApiController {
       });
     }
   }
-
   async updateAttendanceRegularization(req, res) {
     try {
       console.log("API Called: updateAttendanceRegularization");
