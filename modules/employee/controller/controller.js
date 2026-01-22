@@ -4446,7 +4446,71 @@ const updateExpenseCategory = async (req, res) => {
     });
   }
 };
+const deleteExpenseCategory = async (req, res) => {
+  try {
+    console.log("------------------------------------------------");
+    console.log("🗑️ API Called: deleteExpenseCategory");
 
+    const id = req.params.id;
+    const user_id = (req.query && req.query.user_id) || (req.body && req.body.user_id);
+
+    if (!user_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "User ID not found in query or body",
+      });
+    }
+
+    if (!id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Expense Category ID is required",
+      });
+    }
+    const context = await getClientFromRequest(req);
+    const client_id = context ? context.client_id : null;
+
+    if (!client_id) {
+      return res.status(404).json({
+        status: "error",
+        message: "Client context not found for this user",
+      });
+    }
+    const existingRecord = await odooService.searchRead(
+      "product.product",
+      [["id", "=", parseInt(id)], ["client_id", "=", client_id]],
+      ["id"],
+      1
+    );
+
+    if (existingRecord.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Expense category not found or access denied for this client",
+      });
+    }
+    await odooService.unlink("product.product", [parseInt(id)], null);
+
+    return res.status(200).json({
+      status: "success",
+      message: "Expense category deleted successfully",
+      deleted_id: id
+    });
+
+  } catch (error) {
+    console.error("❌ EXCEPTION in deleteExpenseCategory:", error.message);
+    if (error.message.includes("account_move_line_product_id_fkey") || error.message.includes("Journal Item")) {
+      return res.status(400).json({
+        status: "error",
+        message: "Sorry, you cannot delete this because it is linked with Journal Items.",
+      });
+    }
+    return res.status(500).json({
+      status: "error",
+      message: "Internal Server Error",
+    });
+  }
+};
 module.exports = {
   updateExpenseCategory,
   createEmployee,
@@ -4484,5 +4548,6 @@ module.exports = {
   getSalesTaxes,
   getEmployeesBasicInfo,
   createExpenseReport,
-  submitExpenseSheetToManager
+  submitExpenseSheetToManager,
+  deleteExpenseCategory
 };

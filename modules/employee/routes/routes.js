@@ -32,7 +32,8 @@ const {
   getPurchaseTaxes,
   getProductCategory,
   getEmployeesBasicInfo,
-  updateExpenseCategory
+  updateExpenseCategory,
+  deleteExpenseCategory
 
 } = require("../controller/controller.js");
 const authenticate = require("../../../Masters/middleware/auth.middleware.js");
@@ -103,5 +104,10 @@ router.get("/purchase-tax", authenticate, getPurchaseTaxes);
 router.get("/product-category", authenticate, getProductCategory);
 
 router.put("/update-expense-category/:id", authenticate, updateExpenseCategory);
+router.delete(
+  "/delete-expense-category/:id", 
+  authenticate, 
+  deleteExpenseCategory
+);
 
 module.exports = router;
