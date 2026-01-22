@@ -864,7 +864,7 @@ const createEmployee = async (req, res) => {
       driving_license,
       upload_passbook,
       image_1920,
-      approvals, // NEW: Accept approvals array
+      approvals,
       longitude,
       device_id,
       device_unique_id,
@@ -905,7 +905,6 @@ const createEmployee = async (req, res) => {
       }
     }
 
-    // NEW: Age validation - minimum 18 years
     if (birthday) {
       const birthDate = new Date(birthday);
       const today = new Date();
@@ -947,7 +946,6 @@ const createEmployee = async (req, res) => {
     const trimmedName = name.trim();
     const trimmedEmail = private_email.trim();
 
-    // UPDATED: Check for duplicate email only (removed name check)
     const existing = await odooHelpers.searchRead(
       "hr.employee",
       [["private_email", "=", trimmedEmail]],
@@ -955,11 +953,9 @@ const createEmployee = async (req, res) => {
     );
 
     if (existing.length > 0) {
-      console.log("==========================================");
       console.log("DUPLICATE EMAIL FOUND");
       console.log("Attempting to create with email:", trimmedEmail);
       console.log("Existing employee:", existing[0]);
-      console.log("==========================================");
 
       return res.status(409).json({
         status: "error",
@@ -1027,11 +1023,9 @@ const createEmployee = async (req, res) => {
       );
 
       if (duplicate.length > 0) {
-        console.log("==========================================");
         console.log(`DUPLICATE ${check.label.toUpperCase()} FOUND`);
         console.log(`${check.label}:`, check.value);
         console.log("Existing employee:", duplicate[0]);
-        console.log("==========================================");
 
         return res.status(409).json({
           status: "error",
@@ -1071,11 +1065,9 @@ const createEmployee = async (req, res) => {
         // Update bank account partner_id if bank_account_id is provided
         if (bank_account_id && partnerId) {
           try {
-            console.log("==========================================");
             console.log("BANK ACCOUNT UPDATE PROCESS STARTED");
             console.log("Bank account ID received:", bank_account_id);
             console.log("User's partner_id:", partnerId);
-            console.log("==========================================");
 
             const bankAccounts = await odooHelpers.searchRead(
               "res.partner.bank",
@@ -1105,30 +1097,24 @@ const createEmployee = async (req, res) => {
               console.log(
                 `✓ Bank account ${bankAccountId} partner_id updated from ${oldPartnerId} to ${userPartnerId}`
               );
-              console.log("==========================================");
             } else {
               console.log(
                 "✗ ERROR: Bank account with ID",
                 bank_account_id,
                 "NOT FOUND"
               );
-              console.log("==========================================");
             }
           } catch (bankError) {
-            console.error("==========================================");
             console.error(
               "✗ ERROR updating bank account partner_id:",
               bankError
             );
             console.error("Error details:", bankError.message);
-            console.error("==========================================");
           }
         } else {
-          console.log("==========================================");
           console.log("BANK ACCOUNT UPDATE SKIPPED");
           console.log("bank_account_id provided:", !!bank_account_id);
           console.log("partnerId available:", !!partnerId);
-          console.log("==========================================");
         }
 
         const data = {
