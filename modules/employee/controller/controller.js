@@ -2979,7 +2979,7 @@ const getExpense = async (req, res) => {
       [
         "id", "name", "product_id", "account_id", "payment_mode",
         "total_amount", "state", "date", "currency_id", "employee_id",
-        "sheet_id" 
+        "sheet_id"
       ],
       0,
       80
@@ -3003,7 +3003,7 @@ const getExpense = async (req, res) => {
 
     // 6. ENRICH DATA: Add RejectedReason only when state is 'refused'
     const finalData = await Promise.all(expenses.map(async (exp) => {
-      
+
       const expAttachments = attachments
         .filter(att => att.res_id === exp.id)
         .map(att => ({
@@ -3029,18 +3029,18 @@ const getExpense = async (req, res) => {
       if (exp.state === "refused") {
         try {
           const sheetId = exp.sheet_id ? exp.sheet_id[0] : null;
-          
+
           if (sheetId) {
             const approvalRecords = await odooService.searchRead(
               "approval.request",
-              [["hr_expense_id", "=", sheetId]], 
+              [["hr_expense_id", "=", sheetId]],
               ["reason"]
             );
 
             if (approvalRecords && approvalRecords.length > 0) {
               record.RejectedReason = approvalRecords[0].reason || "No reason specified";
             } else {
-              record.RejectedReason = ""; 
+              record.RejectedReason = "";
             }
           }
         } catch (err) {
@@ -4375,9 +4375,80 @@ const submitExpenseSheetToManager = async (req, res) => {
   }
 };
 
+const updateExpenseCategory = async (req, res) => {
+  try {
+    const id = req.params.id || req.body.id;
+    const user_id = req.query.user_id || req.body.user_id;
+    const {
+      name,
+      cost,
+      reference,
+      category_name,
+      description,
+      expense_account_name,
+      sales_tax_names,
+      purchase_tax_names,
+      re_invoice_policy,
+    } = req.body;
 
+    if (!id || !user_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Expense Category ID and User ID are required",
+      });
+    }
+
+    // ───────── 1️⃣ FETCH CLIENT CONTEXT ─────────
+    const context = await getClientFromRequest(req);
+    const client_id = context.client_id;
+
+
+    // ───────── 2️⃣ VERIFY RECORD EXISTENCE ─────────
+    const debugRecord = await odooService.searchRead(
+      "product.product",
+      [["id", "=", parseInt(id)], ["client_id", "=", client_id]],
+      ["id", "name", "client_id"],
+      1
+    );
+
+    if (debugRecord.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Record not found for this client.",
+      });
+    }
+
+    const updateVals = {};
+    if (name) updateVals.name = name;
+    if (cost !== undefined) updateVals.standard_price = parseFloat(cost);
+    if (reference !== undefined) updateVals.default_code = reference;
+    if (description !== undefined) updateVals.description = description;
+    if (re_invoice_policy) updateVals.expense_policy = re_invoice_policy;
+
+
+    await odooService.write(
+      "product.product",
+      [parseInt(id)],
+      updateVals,
+      null
+    );
+    return res.status(200).json({
+      status: "success",
+      message: "Expense category updated successfully",
+      updated_id: id
+    });
+
+  } catch (error) {
+    console.error("❌ EXCEPTION in updateExpenseCategory:", error.message);
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
 
 module.exports = {
+  updateExpenseCategory,
   createEmployee,
   updateEmployee,
   getEmployees,
