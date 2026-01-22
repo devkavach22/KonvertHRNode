@@ -1730,7 +1730,203 @@ class LeaveController {
       });
     }
   }
-  // New Admin Leave Dashboard 
+  // async getAdminLeave(req, res) {
+  //   try {
+  //     const { user_id, limit = 20, offset = 0 } = req.query;
+
+  //     if (!user_id) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "user_id is required"
+  //       });
+  //     }
+
+  //     /* =====================
+  //        RESOLVE CLIENT
+  //     ===================== */
+  //     const user = await odooService.searchRead(
+  //       "res.users",
+  //       [["id", "=", Number(user_id)]],
+  //       ["partner_id"],
+  //       1
+  //     );
+
+  //     if (!user.length) throw new Error("User not found");
+
+  //     const partnerId = user[0].partner_id[0];
+
+  //     const adminEmployee = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["address_id", "=", partnerId]],
+  //       ["address_id"],
+  //       1
+  //     );
+
+  //     if (!adminEmployee.length)
+  //       throw new Error("Admin employee not found");
+
+  //     const client_id = adminEmployee[0].address_id[0];
+  //     const today = new Date().toISOString().split("T")[0];
+
+  //     /* =====================
+  //        DASHBOARD METRICS
+  //     ===================== */
+  //     const [
+  //       presentTodayCount,
+  //       plannedLeavesCount,
+  //       absentUnplannedCount,
+  //       pendingApprovalsCount
+  //     ] = await Promise.all([
+
+  //       odooService.callCustomMethod(
+  //         "simple.action",
+  //         "get_total_present_employee",
+  //         [[], false, false, client_id]
+  //       ),
+
+  //       odooService.searchCount("hr.leave", [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["state", "=", "validate"],
+  //         ["request_date_from", ">", today]
+  //       ]),
+
+  //       odooService.callCustomMethod(
+  //         "simple.action",
+  //         "get_total_no_of_uninformed_employee",
+  //         [client_id]
+  //       ),
+
+  //       odooService.searchCount("hr.leave", [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["state", "=", "confirm"]
+  //       ])
+  //     ]);
+
+  //     /* =====================
+  //        LEAVE TABLE DATA
+  //     ===================== */
+
+  //     // Present Today - Get attendance records for today
+  //     const presentTodayTable = await odooService.searchRead(
+  //       "hr.attendance",
+  //       [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["check_in", ">=", `${today} 00:00:00`],
+  //         ["check_in", "<=", `${today} 23:59:59`]
+  //       ],
+  //       ["employee_id", "check_in", "check_out"],
+  //       Number(offset),
+  //       Number(limit),
+  //       "check_in desc"
+  //     );
+
+  //     // Planned Leaves
+  //     const plannedLeavesTable = await odooService.searchRead(
+  //       "hr.leave",
+  //       [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["state", "=", "validate"],
+  //         ["request_date_from", ">", today]
+  //       ],
+  //       [
+  //         "employee_id",
+  //         "holiday_status_id",
+  //         "request_date_from",
+  //         "request_date_to",
+  //         "number_of_days",
+  //         "state"
+  //       ],
+  //       Number(offset),
+  //       Number(limit),
+  //       "request_date_from asc"
+  //     );
+
+  //     // Pending Approvals
+  //     const pendingApprovalsTable = await odooService.searchRead(
+  //       "hr.leave",
+  //       [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["state", "=", "confirm"]
+  //       ],
+  //       [
+  //         "employee_id",
+  //         "holiday_status_id",
+  //         "request_date_from",
+  //         "request_date_to",
+  //         "number_of_days",
+  //         "state"
+  //       ],
+  //       Number(offset),
+  //       Number(limit),
+  //       "request_date_from asc"
+  //     );
+
+  //     // Absent / Unplanned (SAFE NORMALIZATION)
+  //     let absentUnplannedRaw = await odooService.callCustomMethod(
+  //       "simple.action",
+  //       "get_total_no_of_uninformed_employee",
+  //       [client_id]
+  //     );
+
+  //     // 🔑 FORCE ARRAY SHAPE
+  //     if (!Array.isArray(absentUnplannedRaw)) {
+  //       absentUnplannedRaw = absentUnplannedRaw ? [absentUnplannedRaw] : [];
+  //     }
+
+  //     /* =====================
+  //        NORMALIZERS
+  //     ===================== */
+  //     const normalizeLeave = (l) => ({
+  //       employee_id: l.employee_id?.[0] || l.employee_id || null,
+  //       employee_name: l.employee_id?.[1] || l.employee_name || null,
+  //       leave_type: l.holiday_status_id?.[1] || l.leave_type || "Unplanned Absence",
+  //       from: l.request_date_from || l.from || today,
+  //       to: l.request_date_to || l.to || today,
+  //       number_of_days: l.number_of_days || 1,
+  //       status: l.state || "absent"
+  //     });
+
+  //     const normalizePresent = (p) => ({
+  //       employee_id: p.employee_id?.[0] || p.employee_id || null,
+  //       employee_name: p.employee_id?.[1] || p.employee_name || null,
+  //       check_in: p.check_in || null,
+  //       check_out: p.check_out || null,
+  //       status: "present"
+  //     });
+
+  //     /* =====================
+  //        RESPONSE
+  //     ===================== */
+  //     return res.status(200).json({
+  //       success: true,
+  //       dashboard: {
+  //         present_today: presentTodayCount,
+  //         planned_leaves: plannedLeavesCount,
+  //         absent_unplanned: absentUnplannedCount,
+  //         pending_approvals: pendingApprovalsCount
+  //       },
+  //       tables: {
+  //         present_today: presentTodayTable.map(normalizePresent),
+  //         planned_leaves: plannedLeavesTable.map(normalizeLeave),
+  //         pending_approvals: pendingApprovalsTable.map(normalizeLeave),
+  //         absent_unplanned: absentUnplannedRaw.map(normalizeLeave)
+  //       },
+  //       meta: {
+  //         client_id,
+  //         limit: Number(limit),
+  //         offset: Number(offset)
+  //       }
+  //     });
+
+  //   } catch (error) {
+  //     console.error("❌ Admin Leave Dashboard Error:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: error.message
+  //     });
+  //   }
+  // }
+
   async getAdminLeave(req, res) {
     try {
       const { user_id, limit = 20, offset = 0 } = req.query;
@@ -1769,11 +1965,17 @@ class LeaveController {
       const client_id = adminEmployee[0].address_id[0];
       const today = new Date().toISOString().split("T")[0];
 
+      console.log("==========================================");
+      console.log("📅 DATE & CLIENT INFO");
+      console.log("Today's Date:", today);
+      console.log("Client ID:", client_id);
+      console.log("==========================================");
+
       /* =====================
          DASHBOARD METRICS
       ===================== */
       const [
-        presentToday,
+        presentTodayCount,
         plannedLeavesCount,
         absentUnplannedCount,
         pendingApprovalsCount
@@ -1803,9 +2005,37 @@ class LeaveController {
         ])
       ]);
 
+      console.log("==========================================");
+      console.log("📊 DASHBOARD COUNTS");
+      console.log("Present Today Count:", presentTodayCount);
+      console.log("Planned Leaves Count:", plannedLeavesCount);
+      console.log("Absent Unplanned Count:", absentUnplannedCount);
+      console.log("Pending Approvals Count:", pendingApprovalsCount);
+      console.log("==========================================");
+
       /* =====================
          LEAVE TABLE DATA
       ===================== */
+
+      // Present Today - Get attendance records for today
+      const presentTodayTable = await odooService.searchRead(
+        "hr.attendance",
+        [
+          ["employee_id.address_id", "=", client_id],
+          ["check_in", ">=", `${today} 00:00:00`],
+          ["check_in", "<=", `${today} 23:59:59`]
+        ],
+        ["employee_id", "check_in", "check_out"],
+        Number(offset),
+        Number(limit),
+        "check_in desc"
+      );
+
+      console.log("==========================================");
+      console.log("✅ PRESENT TODAY TABLE");
+      console.log("Records Found:", presentTodayTable.length);
+      console.log("Data:", JSON.stringify(presentTodayTable, null, 2));
+      console.log("==========================================");
 
       // Planned Leaves
       const plannedLeavesTable = await odooService.searchRead(
@@ -1828,6 +2058,12 @@ class LeaveController {
         "request_date_from asc"
       );
 
+      console.log("==========================================");
+      console.log("📋 PLANNED LEAVES TABLE");
+      console.log("Records Found:", plannedLeavesTable.length);
+      console.log("Data:", JSON.stringify(plannedLeavesTable, null, 2));
+      console.log("==========================================");
+
       // Pending Approvals
       const pendingApprovalsTable = await odooService.searchRead(
         "hr.leave",
@@ -1848,20 +2084,87 @@ class LeaveController {
         "request_date_from asc"
       );
 
-      // Absent / Unplanned (SAFE NORMALIZATION)
-      let absentUnplannedRaw = await odooService.callCustomMethod(
-        "simple.action",
-        "get_total_no_of_uninformed_employee",
-        [client_id]
-      );
-
-      // 🔑 FORCE ARRAY SHAPE
-      if (!Array.isArray(absentUnplannedRaw)) {
-        absentUnplannedRaw = absentUnplannedRaw ? [absentUnplannedRaw] : [];
-      }
+      console.log("==========================================");
+      console.log("⏳ PENDING APPROVALS TABLE");
+      console.log("Records Found:", pendingApprovalsTable.length);
+      console.log("Data:", JSON.stringify(pendingApprovalsTable, null, 2));
+      console.log("==========================================");
 
       /* =====================
-         NORMALIZER
+         ABSENT/UNPLANNED - MANUAL CALCULATION
+      ===================== */
+      console.log("==========================================");
+      console.log("🔍 CALCULATING ABSENT/UNPLANNED EMPLOYEES");
+      console.log("==========================================");
+
+      // Get all employees for this client
+      const allEmployees = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", client_id]],
+        ["id", "name"]
+      );
+
+      console.log("Total employees in company:", allEmployees.length);
+
+      // Get employees who have attendance today (present)
+      const presentEmployeeIds = presentTodayTable.map(p => p.employee_id[0]);
+      console.log("Present employee IDs:", presentEmployeeIds);
+
+      // Get employees on approved leave today
+      const onLeaveToday = await odooService.searchRead(
+        "hr.leave",
+        [
+          ["employee_id.address_id", "=", client_id],
+          ["state", "=", "validate"],
+          ["request_date_from", "<=", today],
+          ["request_date_to", ">=", today]
+        ],
+        ["employee_id"]
+      );
+
+      const onLeaveEmployeeIds = onLeaveToday.map(l => l.employee_id[0]);
+      console.log("On leave employee IDs:", onLeaveEmployeeIds);
+
+      // Get employees with pending leave requests for today
+      const pendingLeaveToday = await odooService.searchRead(
+        "hr.leave",
+        [
+          ["employee_id.address_id", "=", client_id],
+          ["state", "=", "confirm"],
+          ["request_date_from", "<=", today],
+          ["request_date_to", ">=", today]
+        ],
+        ["employee_id"]
+      );
+
+      const pendingLeaveEmployeeIds = pendingLeaveToday.map(l => l.employee_id[0]);
+      console.log("Pending leave employee IDs:", pendingLeaveEmployeeIds);
+
+      // Filter out present, on-leave, and pending-leave employees to get absent ones
+      const absentUnplannedRaw = allEmployees
+        .filter(emp =>
+          !presentEmployeeIds.includes(emp.id) &&
+          !onLeaveEmployeeIds.includes(emp.id) &&
+          !pendingLeaveEmployeeIds.includes(emp.id)
+        )
+        .map(emp => ({
+          employee_id: emp.id,
+          employee_name: emp.name,
+          from: today,
+          to: today,
+          number_of_days: 1,
+          leave_type: "Unplanned Absence",
+          state: "absent"
+        }));
+
+      console.log("==========================================");
+      console.log("❌ ABSENT/UNPLANNED EMPLOYEES");
+      console.log("Count:", absentUnplannedRaw.length);
+      console.log("Data:", JSON.stringify(absentUnplannedRaw, null, 2));
+      console.log("==========================================");
+
+      /* =====================
+         NORMALIZERS
       ===================== */
       const normalizeLeave = (l) => ({
         employee_id: l.employee_id?.[0] || l.employee_id || null,
@@ -1873,21 +2176,40 @@ class LeaveController {
         status: l.state || "absent"
       });
 
+      const normalizePresent = (p) => ({
+        employee_id: p.employee_id?.[0] || p.employee_id || null,
+        employee_name: p.employee_id?.[1] || p.employee_name || null,
+        check_in: p.check_in || null,
+        check_out: p.check_out || null,
+        status: "present"
+      });
+
+      const normalizeAbsent = (a) => ({
+        employee_id: a.employee_id || null,
+        employee_name: a.employee_name || null,
+        leave_type: a.leave_type || "Unplanned Absence",
+        from: a.from || today,
+        to: a.to || today,
+        number_of_days: a.number_of_days || 1,
+        status: a.state || "absent"
+      });
+
       /* =====================
          RESPONSE
       ===================== */
       return res.status(200).json({
         success: true,
         dashboard: {
-          present_today: presentToday,
+          present_today: presentTodayCount,
           planned_leaves: plannedLeavesCount,
           absent_unplanned: absentUnplannedCount,
           pending_approvals: pendingApprovalsCount
         },
         tables: {
+          present_today: presentTodayTable.map(normalizePresent),
           planned_leaves: plannedLeavesTable.map(normalizeLeave),
           pending_approvals: pendingApprovalsTable.map(normalizeLeave),
-          absent_unplanned: absentUnplannedRaw.map(normalizeLeave)
+          absent_unplanned: absentUnplannedRaw.map(normalizeAbsent)
         },
         meta: {
           client_id,
@@ -1904,271 +2226,6 @@ class LeaveController {
       });
     }
   }
-
-  // Old Admin Leave Dashboard
-  // async getAdminLeave(req, res) {
-  //   try {
-  //     const {
-  //       user_id,
-  //       date_from,
-  //       date_to,
-  //       limit = 100,
-  //       offset = 0,
-  //       leave_type_id,
-  //       leave_state
-  //     } = req.query;
-  //     console.log(req.query);
-
-  //     if (!user_id) {
-  //       return res.status(400).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: "user_id is required",
-  //       });
-  //     }
-
-  //     console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
-
-  //     const partner = await odooService.searchRead(
-  //       "res.users",
-  //       [["id", "=", parseInt(user_id)]],
-  //       ["id", "partner_id"]
-  //     );
-
-  //     if (!partner.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: `Partner not found for user_id: ${user_id}`,
-  //       });
-  //     }
-
-  //     const partnerId = partner[0].partner_id?.[0];
-
-  //     const adminEmployee = await odooService.searchRead(
-  //       "hr.employee",
-  //       [["address_id", "=", partnerId]],
-  //       ["id", "address_id"]
-  //     );
-
-  //     if (!adminEmployee.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: `Employee not found for partner ${partnerId}`,
-  //       });
-  //     }
-
-  //     const client_id = adminEmployee[0].address_id?.[0];
-  //     console.log(client_id, "✔ client_id");
-
-  //     const totalEmployees = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_number_of_employee",
-  //       [[], client_id]
-  //     );
-
-  //     const Presentemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_present_employee",
-  //       [client_id]
-  //     );
-
-  //     const TotalLateemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_late_employee",
-  //       [client_id]
-  //     );
-
-  //     const Ununiformendemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_uninformed_employee",
-  //       [client_id]
-  //     );
-
-  //     const pendingRequests = await odooService.searchCount("hr.leave", [
-  //       ["employee_id.address_id", "=", client_id],
-  //       ["state", "=", "confirm"]
-  //     ]);
-
-  //     const plannedLeaves = await odooService.searchCount("hr.leave", [
-  //       ["employee_id.address_id", "=", client_id],
-  //       ["state", "=", "validate"]
-  //     ]);
-
-  //     const TodayAbsetEmployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_employees_no_attendance_today",
-  //       [client_id]
-  //     );
-
-  //     const ApprovedLeaveOfEmployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_permited_employee",
-  //       [client_id]
-  //     );
-  //     console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee)
-
-  //     const allEmployees = await odooService.searchRead(
-  //       "hr.employee",
-  //       [["address_id", "=", client_id]],
-  //       ["id", "name", "job_id"]
-  //     );
-
-  //     if (!allEmployees.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: "No employees found for this client_id",
-  //       });
-  //     }
-  //     const employeeMap = {};
-  //     allEmployees.forEach(emp => {
-  //       employeeMap[emp.id] = {
-  //         job_id: emp.job_id || null,
-  //         job_name: emp.job_id ? emp.job_id[1] : null,
-  //       };
-  //     });
-
-  //     const employeeIds = allEmployees.map(e => e.id);
-  //     let domain = [["employee_id", "in", employeeIds]];
-  //     if (date_from) domain.push(["check_in", ">=", date_from]);
-  //     if (date_to) domain.push(["check_in", "<=", date_to]);
-
-  //     const FIELDS = [
-  //       "employee_id",
-  //       "check_in",
-  //       "checkin_lat",
-  //       "checkin_lon",
-  //       "check_out",
-  //       "checkout_lat",
-  //       "checkout_lon",
-  //       "worked_hours",
-  //       "early_out_minutes",
-  //       "overtime_hours",
-  //       "is_early_out",
-  //       "validated_overtime_hours",
-  //       "is_late_in",
-  //       "late_time_display",
-  //       "status_code",
-  //     ];
-  //     const attendances = await odooService.searchRead(
-  //       "hr.attendance",
-  //       domain,
-  //       FIELDS,
-  //       parseInt(offset),
-  //       parseInt(limit),
-  //       "check_in desc"
-  //     );
-
-  //     const attendanceMap = {};
-  //     attendances.forEach(a => {
-  //       const empId = a.employee_id?.[0];
-  //       attendanceMap[empId] = a;
-  //     });
-
-  //     const finalData = allEmployees.map(emp => {
-  //       const att = attendanceMap[emp.id];
-
-  //       return {
-  //         id: att?.id || null,
-  //         employee_id: [emp.id, emp.name],
-
-  //         check_in: att?.check_in || null,
-  //         checkin_lat: att?.checkin_lat || null,
-  //         checkin_lon: att?.checkin_lon || null,
-
-  //         check_out: att?.check_out || null,
-  //         checkout_lat: att?.checkout_lat || null,
-  //         checkout_lon: att?.checkout_lon || null,
-
-  //         worked_hours: att?.worked_hours || null,
-  //         early_out_minutes: att?.early_out_minutes || null,
-  //         overtime_hours: att?.overtime_hours || null,
-  //         validated_overtime_hours: att?.validated_overtime_hours || null,
-
-  //         is_late_in: att?.is_late_in || null,
-  //         late_time_display: att?.late_time_display || null,
-  //         is_early_out: att?.is_early_out || null,
-  //         status_code: att?.status_code || null,
-
-  //         job_id: emp.job_id || null,
-  //         job_name: emp.job_id ? emp.job_id[1] : null,
-  //       };
-  //     });
-  //     let leaveDomain = [["employee_id.address_id", "=", client_id]];
-
-  //     if (leave_state)
-  //       leaveDomain.push(["state", "=", leave_state]);
-
-  //     if (leave_type_id)
-  //       leaveDomain.push(["holiday_status_id", "=", parseInt(leave_type_id)]);
-
-  //     if (date_from)
-  //       leaveDomain.push(["request_date_from", ">=", date_from]);
-
-  //     if (date_to)
-  //       leaveDomain.push(["request_date_to", "<=", date_to]);
-
-  //     const leaveTableRaw = await odooService.searchRead(
-  //       "hr.leave",
-  //       leaveDomain,
-  //       [
-  //         "employee_id",
-  //         "holiday_status_id",
-  //         "request_date_from",
-  //         "request_date_to",
-  //         "number_of_days",
-  //         "state",
-  //       ],
-  //       parseInt(offset),
-  //       parseInt(limit),
-  //       "request_date_from desc"
-  //     );
-
-  //     const leaveTable = leaveTableRaw.map(l => ({
-  //       employee_id: l.employee_id?.[0],
-  //       employee_name: l.employee_id?.[1],
-  //       leave_type_id: l.holiday_status_id?.[0],
-  //       leave_type: l.holiday_status_id?.[1],
-  //       from: l.request_date_from,
-  //       to: l.request_date_to,
-  //       no_of_days: l.number_of_days,
-  //       status: l.state,
-  //     }));
-  //     return res.status(200).json({
-  //       success: true,
-  //       status: "success",
-  //       successMessage: "Admin attendance records fetched",
-  //       data: finalData,
-  //       leaveTable,
-  //       meta: {
-  //         total: finalData.length,
-  //         leave_total: leaveTable.length,
-  //         limit: parseInt(limit),
-  //         offset: parseInt(offset),
-  //         admin_partner_id: partnerId,
-  //         admin_address_id: client_id,
-  //         TotalEmployee: totalEmployees,
-  //         Presentemployee: Presentemployee,
-  //         TotalLateemployee: TotalLateemployee,
-  //         Ununiformendemployee: Ununiformendemployee,
-  //         TodayAbsetEmployee: TodayAbsetEmployee,
-  //         ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee,
-  //         pendingRequests: pendingRequests,
-  //         plannedLeaves: plannedLeaves
-  //       },
-  //     });
-
-  //   } catch (error) {
-  //     console.error("🔥 Admin Attendance Error:", error);
-  //     return res.status(500).json({
-  //       success: false,
-  //       status: "error",
-  //       errorMessage: error.message || "Failed to fetch admin attendance",
-  //     });
-  //   }
-  // }
 
   async createPublicHoliday(req, res) {
     try {
