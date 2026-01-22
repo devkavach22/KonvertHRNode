@@ -2916,8 +2916,6 @@ const getExpense = async (req, res) => {
       });
     }
 
-    console.log(`👤 User: ${user_id} | 🏢 Client: ${client_id}`);
-
     const userData = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
@@ -2934,13 +2932,9 @@ const getExpense = async (req, res) => {
     const isAdmin = userData[0].is_client_employee_admin || false;
     let partnerId = (userData[0].partner_id) ? userData[0].partner_id[0] : null;
 
-    console.log(`🔐 Is Admin: ${isAdmin}`);
-
     let employeeIds = [];
 
     if (isAdmin) {
-      console.log("👨‍💼 Admin detected! Fetching all employees for client:", client_id);
-
       const allEmployees = await odooService.searchRead(
         "hr.employee",
         [["address_id", "=", Number(client_id)]],
@@ -2953,96 +2947,63 @@ const getExpense = async (req, res) => {
           message: "No employees found for this client"
         });
       }
-
       employeeIds = allEmployees.map(emp => emp.id);
-      console.log(`👥 Found ${employeeIds.length} employees for client ${client_id}`);
-      console.log("📋 Employee IDs:", employeeIds);
-
     } else {
-      // ✅ REGULAR EMPLOYEE: Fetch only their own employee record
-      console.log("👤 Regular employee. Fetching single employee record...");
-
       let employeeData = await odooService.searchRead(
         "hr.employee",
-        [
-          ["user_id", "=", Number(user_id)],
-          ["address_id", "=", Number(client_id)]
-        ],
+        [["user_id", "=", Number(user_id)], ["address_id", "=", Number(client_id)]],
         ["id", "name"]
       );
 
-      // Alternative lookup agar user_id link na ho
       if (!employeeData.length && partnerId) {
-        console.log("⚠️ No employee via user_id. Trying partner_id/address lookup...");
         employeeData = await odooService.searchRead(
           "hr.employee",
-          [
-            ["address_id", "=", Number(client_id)],
-            "|",
-            ["work_contact_id", "=", partnerId],
-            ["name", "=", userData[0]?.name]
-          ],
+          [["address_id", "=", Number(client_id)], "|", ["work_contact_id", "=", partnerId], ["name", "=", userData[0]?.name]],
           ["id", "name"]
         );
       }
 
       if (!employeeData.length) {
-        console.error(`❌ Employee not found for user ${user_id} in client ${client_id}`);
         return res.status(404).json({
           status: "error",
-          message: "Employee not found for this user in this company context"
+          message: "Employee not found"
         });
       }
-
       employeeIds = [employeeData[0].id];
-      console.log("👨‍💼 Found Employee ID:", employeeIds[0]);
     }
 
-    // 4. Fetch Expenses for employee(s)
-    console.log("💰 Fetching expenses for employee IDs:", employeeIds);
-
+    // 4. Fetch Expenses
     const expenses = await odooService.searchRead(
       "hr.expense",
       [["employee_id", "in", employeeIds]],
       [
         "id", "name", "product_id", "account_id", "payment_mode",
-        "total_amount", "state", "date", "currency_id", "employee_id"
+        "total_amount", "state", "date", "currency_id", "employee_id",
+        "sheet_id" 
       ],
-      0, // offset
-      80 // limit
+      0,
+      80
     );
 
     if (!expenses || expenses.length === 0) {
       return res.status(200).json({
         status: "success",
-        message: "No expenses found",
         data: [],
-        meta: {
-          is_admin: isAdmin,
-          total_employees: employeeIds.length,
-          client_id: client_id
-        }
+        meta: { is_admin: isAdmin, total_employees: employeeIds.length, client_id: client_id }
       });
     }
-
-    console.log(`💵 Found ${expenses.length} expense records`);
 
     // 5. Fetch Attachments
     const expenseIds = expenses.map(exp => exp.id);
     const attachments = await odooService.searchRead(
       "ir.attachment",
-      [
-        ["res_model", "=", "hr.expense"],
-        ["res_id", "in", expenseIds]
-      ],
+      [["res_model", "=", "hr.expense"], ["res_id", "in", expenseIds]],
       ["id", "name", "datas", "mimetype", "res_id"]
     );
 
-    console.log(`📎 Found ${attachments.length} attachments`);
-
-    // 6. Merge & Cleanup
-    const finalData = expenses.map(exp => {
-      // Attachment mapping
+    // 6. ENRICH DATA: Add RejectedReason only when state is 'refused'
+    const finalData = await Promise.all(expenses.map(async (exp) => {
+      
       const expAttachments = attachments
         .filter(att => att.res_id === exp.id)
         .map(att => ({
@@ -3052,37 +3013,55 @@ const getExpense = async (req, res) => {
           base64: att.datas || ""
         }));
 
-      // Cleanup Odoo 'false' booleans to ""
+      // Cleanup Odoo 'false' values
       Object.keys(exp).forEach(key => {
         if (exp[key] === false) exp[key] = "";
       });
 
-      return {
+      // Prepare basic record
+      let record = {
         ...exp,
         employee_name: exp.employee_id ? exp.employee_id[1] : "",
         attachment_ids: expAttachments
       };
-    });
 
-    console.log(`✅ Successfully fetched ${finalData.length} expenses`);
+      // ✅ LOGIC: Add RejectedReason only if state is 'refused'
+      if (exp.state === "refused") {
+        try {
+          const sheetId = exp.sheet_id ? exp.sheet_id[0] : null;
+          
+          if (sheetId) {
+            const approvalRecords = await odooService.searchRead(
+              "approval.request",
+              [["hr_expense_id", "=", sheetId]], 
+              ["reason"]
+            );
+
+            if (approvalRecords && approvalRecords.length > 0) {
+              record.RejectedReason = approvalRecords[0].reason || "No reason specified";
+            } else {
+              record.RejectedReason = ""; 
+            }
+          }
+        } catch (err) {
+          console.error(`Error fetching reason for expense ${exp.id}:`, err);
+          record.RejectedReason = "Reason could not be retrieved";
+        }
+      }
+
+      return record;
+    }));
+
     return res.status(200).json({
       status: "success",
       count: finalData.length,
       data: finalData,
-      meta: {
-        is_admin: isAdmin,
-        total_employees: employeeIds.length,
-        client_id: client_id
-      }
+      meta: { is_admin: isAdmin, total_employees: employeeIds.length, client_id: client_id }
     });
 
   } catch (error) {
     console.error("❌ GET EXPENSE ERROR:", error);
-    console.error("🔥 Error Stack:", error.stack);
-    return res.status(500).json({
-      status: "error",
-      message: error.message || "Internal Server Error"
-    });
+    return res.status(500).json({ status: "error", message: error.message });
   }
 };
 

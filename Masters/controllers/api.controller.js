@@ -3834,73 +3834,73 @@ class ApiController {
   }
 
   async getWorkingSchedules(req, res) {
-  try {
-    const { client_id } = await getClientFromRequest(req);
+    try {
+      const { client_id } = await getClientFromRequest(req);
 
-    const calendars = await odooService.searchRead(
-      "resource.calendar",
-      [["client_id", "=", client_id]],
-      [
-        "id",
-        "name",
-        "flexible_hours",
-        "is_night_shift",
-        "full_time_required_hours",
-        "hours_per_day",
-        "tz",
-        "total_overtime_hours_allowed",
-        "attendance_ids",
-      ]
-    );
+      const calendars = await odooService.searchRead(
+        "resource.calendar",
+        [["client_id", "=", client_id]],
+        [
+          "id",
+          "name",
+          "flexible_hours",
+          "is_night_shift",
+          "full_time_required_hours",
+          "hours_per_day",
+          "tz",
+          "total_overtime_hours_allowed",
+          "attendance_ids",
+        ]
+      );
 
-    const calendarData = await Promise.all(
-      calendars.map(async (cal) => {
-        let attendances = [];
+      const calendarData = await Promise.all(
+        calendars.map(async (cal) => {
+          let attendances = [];
 
-        if (cal.attendance_ids?.length) {
-          attendances = await odooService.searchRead(
-            "resource.calendar.attendance",
-            [["id", "in", cal.attendance_ids]],
-            [
-              "id", 
-              "name",           // ADDED: Attendance ka name (Monday, Tuesday etc.)
-              "dayofweek", 
-              "day_period", 
-              "hour_from", 
-              "hour_to",
-              "week_type"       // OPTIONAL: Agar bi-weekly shifts hain
-            ]
-          );
-        }
+          if (cal.attendance_ids?.length) {
+            attendances = await odooService.searchRead(
+              "resource.calendar.attendance",
+              [["id", "in", cal.attendance_ids]],
+              [
+                "id",
+                "name",           // ADDED: Attendance ka name (Monday, Tuesday etc.)
+                "dayofweek",
+                "day_period",
+                "hour_from",
+                "hour_to",
+                "week_type"       // OPTIONAL: Agar bi-weekly shifts hain
+              ]
+            );
+          }
 
-        return {
-          id: cal.id,
-          name: cal.name,
-          flexible_hours: cal.flexible_hours,
-          is_night_shift: cal.is_night_shift,
-          full_time_required_hours: cal.full_time_required_hours,
-          hours_per_day: cal.hours_per_day || 0, // Hamesha value return karein (0 agar null ho)
-          tz: cal.tz || "UTC",
-          total_overtime_hours_allowed: cal.total_overtime_hours_allowed || 0.0, // ADDED
-          client_id: cal.client_id, // ADDED
-          attendances: attendances, // Key ka naam simple rakha hai
-        };
-      })
-    );
+          return {
+            id: cal.id,
+            name: cal.name,
+            flexible_hours: cal.flexible_hours,
+            is_night_shift: cal.is_night_shift,
+            full_time_required_hours: cal.full_time_required_hours,
+            hours_per_day: cal.hours_per_day || 0, // Hamesha value return karein (0 agar null ho)
+            tz: cal.tz || "UTC",
+            total_overtime_hours_allowed: cal.total_overtime_hours_allowed || 0.0, // ADDED
+            client_id: cal.client_id, // ADDED
+            attendances: attendances, // Key ka naam simple rakha hai
+          };
+        })
+      );
 
-    return res.status(200).json({
-      status: "success",
-      count: calendarData.length,
-      data: calendarData,
-    });
-  } catch (error) {
-    console.error("❌ Get Working Schedules Error:", error);
-    return res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "Failed to fetch working schedules",
-    });
+      return res.status(200).json({
+        status: "success",
+        count: calendarData.length,
+        data: calendarData,
+      });
+    } catch (error) {
+      console.error("❌ Get Working Schedules Error:", error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to fetch working schedules",
+      });
+    }
   }
-}
   // async getWorkingSchedules(req, res) {
   //   try {
   //     const { client_id } = await getClientFromRequest(req);
@@ -7343,6 +7343,202 @@ class ApiController {
       return res.status(500).json({ status: "error", message: error.message });
     }
   }
+
+  // async rejectAttendanceRegularization(req, res) {
+  //   try {
+  //     const { approval_request_id, remarks, user_id } = req.body;
+  //     const { currentUser } = await getClientFromRequest(req);
+
+  //     const adminName = currentUser?.partner_id ? currentUser.partner_id[1] : "Approver";
+
+  //     if (!approval_request_id || !user_id) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "approval_request_id and user_id are required",
+  //       });
+  //     }
+
+  //     // UPDATE: Field name is 'hr_expense_id' as per your screenshot
+  //     const approvalRecords = await odooService.searchRead(
+  //       "approval.request",
+  //       [["id", "=", parseInt(approval_request_id)]],
+  //       [
+  //         "id",
+  //         "name",
+  //         "state",
+  //         "attendance_regulzie_id",
+  //         "hr_leave_id",
+  //         "hr_expense_id", // Correct field name from screenshot
+  //         "description",
+  //         "approval_log_list"
+  //       ]
+  //     );
+
+  //     if (!approvalRecords?.length) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Approval Record not found"
+  //       });
+  //     }
+
+  //     const approvalRecord = approvalRecords[0];
+
+  //     if (approvalRecord.state === 'refused' || approvalRecord.state === 'reject' || approvalRecord.state === 'cancel') {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "This request has already been rejected.",
+  //       });
+  //     }
+
+  //     const approvalLogIds = approvalRecord.approval_log_list;
+
+  //     if (!approvalLogIds || approvalLogIds.length === 0) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "No approval sequence configured",
+  //       });
+  //     }
+
+  //     let approvalLogs = await odooService.searchRead(
+  //       "approval.log.list",
+  //       [["id", "in", approvalLogIds]],
+  //       ["id", "sequence_no_of_user", "approver_id", "is_approved_by_user"]
+  //     );
+
+  //     if (!approvalLogs || approvalLogs.length === 0) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Could not retrieve approval sequence",
+  //       });
+  //     }
+
+  //     approvalLogs.sort((a, b) => a.sequence_no_of_user - b.sequence_no_of_user);
+
+  //     const currentUserLog = approvalLogs.find(log => {
+  //       const approverId = Array.isArray(log.approver_id) ? log.approver_id[0] : log.approver_id;
+  //       return approverId === parseInt(user_id);
+  //     });
+
+  //     if (!currentUserLog) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "You are not authorized to reject this request (not in approval sequence)",
+  //       });
+  //     }
+
+  //     const currentSequence = currentUserLog.sequence_no_of_user;
+
+  //     const previousApprovers = approvalLogs.filter(log =>
+  //       log.sequence_no_of_user < currentSequence
+  //     );
+
+  //     if (previousApprovers.length > 0) {
+  //       for (const prevLog of previousApprovers) {
+  //         if (prevLog.is_approved_by_user !== true) {
+  //           return res.status(403).json({
+  //             status: "error",
+  //             message: `Cannot reject. The approver at sequence ${prevLog.sequence_no_of_user} must approve first before you can take action.`,
+  //           });
+  //         }
+  //       }
+  //     }
+
+  //     const employeeData = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", parseInt(user_id)]],
+  //       ["employee_password", "name"]
+  //     );
+
+  //     if (!employeeData || employeeData.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Employee record not found for this user"
+  //       });
+  //     }
+
+  //     const fetchedPassword = employeeData[0].employee_password;
+
+  //     if (!fetchedPassword || fetchedPassword === "") {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Password not found in Odoo for this employee."
+  //       });
+  //     }
+
+  //     // Creating the reject wizard
+  //     const wizardId = await odooService.create(
+  //       "request.reject.wizard",
+  //       { remarks: remarks || `Rejected via App by ${adminName}` },
+  //       { uid: parseInt(user_id), userPassword: fetchedPassword }
+  //     );
+
+  //     await odooService.callMethod(
+  //       "request.reject.wizard",
+  //       "action_reject_request",
+  //       [parseInt(wizardId)],
+  //       {
+  //         active_id: approvalRecord.id,
+  //         active_model: "approval.request",
+  //         active_ids: [approvalRecord.id],
+  //       },
+  //       parseInt(user_id),
+  //       fetchedPassword
+  //     );
+
+  //     let updatedRecord = null;
+
+  //     // Logic to update the specific module table
+  //     if (approvalRecord.attendance_regulzie_id) {
+  //       const regId = approvalRecord.attendance_regulzie_id[0];
+  //       await odooService.write(
+  //         "attendance.regular",
+  //         [regId],
+  //         { state_select: "reject" },
+  //         parseInt(user_id),
+  //         fetchedPassword
+  //       );
+  //       updatedRecord = { model: "attendance.regular", id: regId };
+
+  //     } else if (approvalRecord.hr_leave_id) {
+  //       const leaveId = approvalRecord.hr_leave_id[0];
+  //       await odooService.write(
+  //         "hr.leave",
+  //         [leaveId],
+  //         { state: "refuse" },
+  //         parseInt(user_id),
+  //         fetchedPassword
+  //       );
+  //       updatedRecord = { model: "hr.leave", id: leaveId };
+
+  //     } else if (approvalRecord.hr_expense_id) {
+  //       // FIX: Using the correct field 'hr_expense_id' and model 'hr.expense.sheet'
+  //       const sheetId = approvalRecord.hr_expense_id[0];
+  //       await odooService.write(
+  //         "hr.expense.sheet",
+  //         [sheetId],
+  //         { state: "cancel" }, // Odoo expense sheets use 'cancel' for rejection
+  //         parseInt(user_id),
+  //         fetchedPassword
+  //       );
+  //       updatedRecord = { model: "hr.expense.sheet", id: sheetId };
+  //     }
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: `The request has been successfully rejected.`,
+  //       data: {
+  //         approval_id: approvalRecord.id,
+  //         updated_record: updatedRecord,
+  //       },
+  //     });
+
+  //   } catch (error) {
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: error.message
+  //     });
+  //   }
+  // }
   async rejectAttendanceRegularization(req, res) {
     try {
       const { approval_request_id, remarks, user_id } = req.body;
@@ -7360,7 +7556,16 @@ class ApiController {
       const approvalRecords = await odooService.searchRead(
         "approval.request",
         [["id", "=", parseInt(approval_request_id)]],
-        ["id", "name", "state", "attendance_regulzie_id", "hr_leave_id", "description", "approval_log_list"]
+        [
+          "id",
+          "name",
+          "state",
+          "attendance_regulzie_id",
+          "hr_leave_id",
+          "hr_expense_id",
+          "description",
+          "approval_log_list"
+        ]
       );
 
       if (!approvalRecords?.length) {
@@ -7496,6 +7701,17 @@ class ApiController {
           fetchedPassword
         );
         updatedRecord = { model: "hr.leave", id: leaveId };
+
+      } else if (approvalRecord.hr_expense_id) {
+        const sheetId = approvalRecord.hr_expense_id[0];
+        await odooService.write(
+          "hr.expense.sheet",
+          [sheetId],
+          { state: "cancel" },
+          parseInt(user_id),
+          fetchedPassword
+        );
+        updatedRecord = { model: "hr.expense.sheet", id: sheetId };
       }
 
       return res.status(200).json({
@@ -7508,7 +7724,11 @@ class ApiController {
       });
 
     } catch (error) {
-      return res.status(500).json({
+      const isAccessError = error.message.includes("access") ||
+        error.message.includes("top-secret") ||
+        error.message.includes("permissions");
+
+      return res.status(isAccessError ? 400 : 500).json({
         status: "error",
         message: error.message
       });
