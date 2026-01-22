@@ -830,7 +830,7 @@ router.post(
 );
 
 router.put(
-  "/updateUserContact",
+  "/updateUserContact/:contact_id",
   authenticate,
   apiController.updateUserContact.bind(apiController)
 );

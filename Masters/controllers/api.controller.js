@@ -6949,17 +6949,21 @@ class ApiController {
     }
   }
 
-  async updateUserContact(req, res) {
+async updateUserContact(req, res) {
     try {
       console.log("✏️ Update User Contact API called");
 
-      const { user_id, contact_id } = req.query;
-      const { name, email, mobile, phone, function: job_function } = req.body;
+      // ✅ Flexible Extraction: Sabhi jagah se data nikalne ka try karega
+      const contact_id = req.params.contact_id || req.body.contact_id || req.query.contact_id;
+      const user_id = req.body.user_id || req.query.user_id || req.params.user_id;
 
+      const { name, email, mobile, phone, job_position } = req.body;
+
+      // Validate IDs
       if (!user_id || !contact_id) {
         return res.status(400).json({
           status: "error",
-          message: "User ID and Contact ID are required",
+          message: "User ID and Contact ID are required (Body, Params or Query)",
         });
       }
 
@@ -6978,6 +6982,7 @@ class ApiController {
 
       const companyPartnerId = userData[0].partner_id[0];
 
+      // Verify if contact belongs to the company
       const contactData = await odooService.searchRead(
         "res.partner",
         [
@@ -7003,7 +7008,11 @@ class ApiController {
         updateVals.phone = mobile;
       }
       if (phone) updateVals.phone = phone;
-      if (job_function) updateVals.function = job_function;
+
+      // ✅ Job Position mapping to Odoo 'function' field
+      if (job_position !== undefined) {
+        updateVals.function = job_position;
+      }
 
       if (Object.keys(updateVals).length === 0) {
         return res.status(400).json({
@@ -7022,7 +7031,7 @@ class ApiController {
         status: "OK",
         message: "Contact updated successfully",
         contact_id: parseInt(contact_id),
-        updated_fields: updateVals,
+        updated_fields: updateVals 
       });
     } catch (error) {
       console.error("Update contact error:", error);
