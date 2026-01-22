@@ -4454,6 +4454,7 @@ const deleteExpenseCategory = async (req, res) => {
     const id = req.params.id;
     const user_id = (req.query && req.query.user_id) || (req.body && req.body.user_id);
 
+    // ✅ User ID missing check
     if (!user_id) {
       return res.status(400).json({
         status: "error",
@@ -4467,6 +4468,7 @@ const deleteExpenseCategory = async (req, res) => {
         message: "Expense Category ID is required",
       });
     }
+
     const context = await getClientFromRequest(req);
     const client_id = context ? context.client_id : null;
 
@@ -4476,6 +4478,8 @@ const deleteExpenseCategory = async (req, res) => {
         message: "Client context not found for this user",
       });
     }
+
+    // ✅ Ownership verify karein
     const existingRecord = await odooService.searchRead(
       "product.product",
       [["id", "=", parseInt(id)], ["client_id", "=", client_id]],
@@ -4486,9 +4490,11 @@ const deleteExpenseCategory = async (req, res) => {
     if (existingRecord.length === 0) {
       return res.status(404).json({
         status: "error",
-        message: "Expense category not found or access denied for this client",
+        message: "Expense category not found .",
       });
     }
+
+    // ───────── EXECUTE DELETE ─────────
     await odooService.unlink("product.product", [parseInt(id)], null);
 
     return res.status(200).json({
@@ -4498,16 +4504,36 @@ const deleteExpenseCategory = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ EXCEPTION in deleteExpenseCategory:", error.message);
-    if (error.message.includes("account_move_line_product_id_fkey") || error.message.includes("Journal Item")) {
-      return res.status(400).json({
+    console.error("❌ ODOO ERROR:", error.message);
+
+    // ✅ Check for specific Odoo Foreign Key Constraints (fkey)
+    const errMsg = error.message;
+
+    if (errMsg.includes("account_move_line_product_id_fkey") || errMsg.includes("Journal Item")) {
+      return res.status(409).json({ // 409 Conflict best rehta hai Linked records ke liye
         status: "error",
-        message: "Sorry, you cannot delete this because it is linked with Journal Items.",
+        message: "Sorry, you cannot delete this product because it is already linked to Journal Items.",
       });
     }
-    return res.status(500).json({
+
+    if (errMsg.includes("hr_expense_product_id_fkey") || errMsg.includes("hr.expense")) {
+      return res.status(409).json({
+        status: "error",
+        message: "Sorry, you cannot delete this Expense  because it is linked to existing Employee Expenses",
+      });
+    }
+
+    if (errMsg.includes("Access Denied")) {
+      return res.status(403).json({
+        status: "error",
+        message: "Access Denied: You do not have permission to delete this record.",
+      });
+    }
+
+    // Default Error agar kuch naya aaye
+    return res.status(400).json({
       status: "error",
-      message: "Internal Server Error",
+      message: `Odoo Restriction: ${errMsg.split('\n')[0]}`,
     });
   }
 };
