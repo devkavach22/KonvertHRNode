@@ -1937,10 +1937,14 @@ class LeaveController {
           message: "user_id is required"
         });
       }
+      const convertToIST = (utcDatetime) => {
+        if (!utcDatetime) return null;
 
-      /* =====================
-         RESOLVE CLIENT
-      ===================== */
+        const utcDate = new Date(utcDatetime + ' UTC');
+        const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+
+        return istDate.toISOString().replace('T', ' ').substring(0, 19);
+      };
       const user = await odooService.searchRead(
         "res.users",
         [["id", "=", Number(user_id)]],
@@ -1964,16 +1968,6 @@ class LeaveController {
 
       const client_id = adminEmployee[0].address_id[0];
       const today = new Date().toISOString().split("T")[0];
-
-      console.log("==========================================");
-      console.log("📅 DATE & CLIENT INFO");
-      console.log("Today's Date:", today);
-      console.log("Client ID:", client_id);
-      console.log("==========================================");
-
-      /* =====================
-         DASHBOARD METRICS
-      ===================== */
       const [
         presentTodayCount,
         plannedLeavesCount,
@@ -2004,20 +1998,6 @@ class LeaveController {
           ["state", "=", "confirm"]
         ])
       ]);
-
-      console.log("==========================================");
-      console.log("📊 DASHBOARD COUNTS");
-      console.log("Present Today Count:", presentTodayCount);
-      console.log("Planned Leaves Count:", plannedLeavesCount);
-      console.log("Absent Unplanned Count:", absentUnplannedCount);
-      console.log("Pending Approvals Count:", pendingApprovalsCount);
-      console.log("==========================================");
-
-      /* =====================
-         LEAVE TABLE DATA
-      ===================== */
-
-      // Present Today - Get attendance records for today
       const presentTodayTable = await odooService.searchRead(
         "hr.attendance",
         [
@@ -2030,14 +2010,6 @@ class LeaveController {
         Number(limit),
         "check_in desc"
       );
-
-      console.log("==========================================");
-      console.log("✅ PRESENT TODAY TABLE");
-      console.log("Records Found:", presentTodayTable.length);
-      console.log("Data:", JSON.stringify(presentTodayTable, null, 2));
-      console.log("==========================================");
-
-      // Planned Leaves
       const plannedLeavesTable = await odooService.searchRead(
         "hr.leave",
         [
@@ -2057,14 +2029,6 @@ class LeaveController {
         Number(limit),
         "request_date_from asc"
       );
-
-      console.log("==========================================");
-      console.log("📋 PLANNED LEAVES TABLE");
-      console.log("Records Found:", plannedLeavesTable.length);
-      console.log("Data:", JSON.stringify(plannedLeavesTable, null, 2));
-      console.log("==========================================");
-
-      // Pending Approvals
       const pendingApprovalsTable = await odooService.searchRead(
         "hr.leave",
         [
@@ -2083,34 +2047,12 @@ class LeaveController {
         Number(limit),
         "request_date_from asc"
       );
-
-      console.log("==========================================");
-      console.log("⏳ PENDING APPROVALS TABLE");
-      console.log("Records Found:", pendingApprovalsTable.length);
-      console.log("Data:", JSON.stringify(pendingApprovalsTable, null, 2));
-      console.log("==========================================");
-
-      /* =====================
-         ABSENT/UNPLANNED - MANUAL CALCULATION
-      ===================== */
-      console.log("==========================================");
-      console.log("🔍 CALCULATING ABSENT/UNPLANNED EMPLOYEES");
-      console.log("==========================================");
-
-      // Get all employees for this client
       const allEmployees = await odooService.searchRead(
         "hr.employee",
         [["address_id", "=", client_id]],
         ["id", "name"]
       );
-
-      console.log("Total employees in company:", allEmployees.length);
-
-      // Get employees who have attendance today (present)
       const presentEmployeeIds = presentTodayTable.map(p => p.employee_id[0]);
-      console.log("Present employee IDs:", presentEmployeeIds);
-
-      // Get employees on approved leave today
       const onLeaveToday = await odooService.searchRead(
         "hr.leave",
         [
@@ -2121,11 +2063,7 @@ class LeaveController {
         ],
         ["employee_id"]
       );
-
       const onLeaveEmployeeIds = onLeaveToday.map(l => l.employee_id[0]);
-      console.log("On leave employee IDs:", onLeaveEmployeeIds);
-
-      // Get employees with pending leave requests for today
       const pendingLeaveToday = await odooService.searchRead(
         "hr.leave",
         [
@@ -2138,9 +2076,6 @@ class LeaveController {
       );
 
       const pendingLeaveEmployeeIds = pendingLeaveToday.map(l => l.employee_id[0]);
-      console.log("Pending leave employee IDs:", pendingLeaveEmployeeIds);
-
-      // Filter out present, on-leave, and pending-leave employees to get absent ones
       const absentUnplannedRaw = allEmployees
         .filter(emp =>
           !presentEmployeeIds.includes(emp.id) &&
@@ -2156,16 +2091,6 @@ class LeaveController {
           leave_type: "Unplanned Absence",
           state: "absent"
         }));
-
-      console.log("==========================================");
-      console.log("❌ ABSENT/UNPLANNED EMPLOYEES");
-      console.log("Count:", absentUnplannedRaw.length);
-      console.log("Data:", JSON.stringify(absentUnplannedRaw, null, 2));
-      console.log("==========================================");
-
-      /* =====================
-         NORMALIZERS
-      ===================== */
       const normalizeLeave = (l) => ({
         employee_id: l.employee_id?.[0] || l.employee_id || null,
         employee_name: l.employee_id?.[1] || l.employee_name || null,
@@ -2179,8 +2104,8 @@ class LeaveController {
       const normalizePresent = (p) => ({
         employee_id: p.employee_id?.[0] || p.employee_id || null,
         employee_name: p.employee_id?.[1] || p.employee_name || null,
-        check_in: p.check_in || null,
-        check_out: p.check_out || null,
+        check_in: convertToIST(p.check_in),
+        check_out: convertToIST(p.check_out),
         status: "present"
       });
 
@@ -2193,10 +2118,6 @@ class LeaveController {
         number_of_days: a.number_of_days || 1,
         status: a.state || "absent"
       });
-
-      /* =====================
-         RESPONSE
-      ===================== */
       return res.status(200).json({
         success: true,
         dashboard: {
@@ -2226,7 +2147,6 @@ class LeaveController {
       });
     }
   }
-
   async createPublicHoliday(req, res) {
     try {
       console.log("API called for Public Holiday creation");
