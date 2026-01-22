@@ -1280,303 +1280,328 @@ class LeaveController {
   // }
 
   // New createLeaveRequest
-async createLeaveRequest(req, res) {
-try {
-console.log("========== CREATE LEAVE REQUEST API START ==========");
-console.log("Incoming Request Body:", JSON.stringify(req.body, null, 2));
-console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
+  async createLeaveRequest(req, res) {
+    try {
+      console.log("========== CREATE LEAVE REQUEST API START ==========");
+      console.log("Incoming Request Body:", JSON.stringify(req.body, null, 2));
+      console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
 
-const { holiday_status_id, date_from, date_to, reason } = req.body;
+      const { holiday_status_id, date_from, date_to, reason } = req.body;
 
-/* ───────── 1. GET USER ID ───────── */
-const rawUserId = req.body.user_id ?? req.query.user_id;
-const user_id = Number(rawUserId);
+      /* ───────── 1. GET USER ID ───────── */
+      const rawUserId = req.body.user_id ?? req.query.user_id;
+      const user_id = Number(rawUserId);
 
-if (!rawUserId || Number.isNaN(user_id) || user_id <= 0) {
-return res.status(400).json({
-status: "error",
-message: "user_id is required"
-});
-}
+      if (!rawUserId || Number.isNaN(user_id) || user_id <= 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "user_id is required"
+        });
+      }
 
-/* ───────── 2. REQUIRED FIELD VALIDATION ───────── */
-if (!holiday_status_id || !date_from || !date_to) {
-return res.status(400).json({
-status: "error",
-message: "Require fields missing: holiday_status_id, date_from, date_to"
-});
-}
+      /* ───────── 2. REQUIRED FIELD VALIDATION ───────── */
+      if (!holiday_status_id || !date_from || !date_to) {
+        return res.status(400).json({
+          status: "error",
+          message: "Require fields missing: holiday_status_id, date_from, date_to"
+        });
+      }
 
-const leaveTypeIdInt = parseInt(holiday_status_id);
+      const leaveTypeIdInt = parseInt(holiday_status_id);
 
-/* ───────── 3. FETCH USER → COMPANY ───────── */
-const userInfo = await odooService.searchRead(
-"res.users",
-[["id", "=", user_id]],
-["company_id"],
-1
-);
+      /* ───────── 3. FETCH USER → COMPANY ───────── */
+      const userInfo = await odooService.searchRead(
+        "res.users",
+        [["id", "=", user_id]],
+        ["company_id"],
+        1
+      );
 
-if (!userInfo.length || !userInfo[0].company_id) {
-return res.status(404).json({
-status: "error",
-message: "User company not found."
-});
-}
+      if (!userInfo.length || !userInfo[0].company_id) {
+        return res.status(404).json({
+          status: "error",
+          message: "User company not found."
+        });
+      }
 
-/* ───────── 4. FETCH EMPLOYEE ───────── */
-const employeeInfo = await odooService.searchRead(
-"hr.employee",
-[["user_id", "=", user_id]],
-["id", "name", "department_id", "company_id"],
-1
-);
+      /* ───────── 4. FETCH EMPLOYEE ───────── */
+      const employeeInfo = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", user_id]],
+        ["id", "name", "department_id", "company_id"],
+        1
+      );
 
-if (!employeeInfo.length) {
-return res.status(404).json({
-status: "error",
-message: "Employee not linked with this user."
-});
-}
+      if (!employeeInfo.length) {
+        return res.status(404).json({
+          status: "error",
+          message: "Employee not linked with this user."
+        });
+      }
 
-const empData = employeeInfo[0];
-const empIdInt = empData.id;
+      const empData = employeeInfo[0];
+      const empIdInt = empData.id;
 
-const department_name = empData.department_id
-? empData.department_id[1]
-: "No Department Found";
+      const department_name = empData.department_id
+        ? empData.department_id[1]
+        : "No Department Found";
 
-const company_name = empData.company_id
-? empData.company_id[1]
-: "No Company Found";
+      const company_name = empData.company_id
+        ? empData.company_id[1]
+        : "No Company Found";
 
-/* ───────── 5. FETCH LEAVE TYPE ───────── */
-const leaveTypeInfo = await odooService.searchRead(
-"hr.leave.type",
-[["id", "=", leaveTypeIdInt]],
-["name"],
-1
-);
+      /* ───────── 5. FETCH LEAVE TYPE ───────── */
+      const leaveTypeInfo = await odooService.searchRead(
+        "hr.leave.type",
+        [["id", "=", leaveTypeIdInt]],
+        ["name"],
+        1
+      );
 
-const leave_type_name =
-leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
+      const leave_type_name =
+        leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
 
-/* ───────── 6. CREATE LEAVE REQUEST ───────── */
-// ✅ CORRECTED: Using request_date_from and request_date_to
-const vals = {
-employee_id: empIdInt,
-holiday_status_id: leaveTypeIdInt,
-request_date_from: date_from, // ✅ Changed from date_from
-request_date_to: date_to, // ✅ Changed from date_to
-name: reason || false, // ✅ Changed from null to false (as per Odoo vals)
-create_uid: user_id
-};
-
-console.log("Leave Creation Payload:", vals);
-
-const leaveId = await odooService.create("hr.leave", vals);
-console.log(`✅ Leave created. ID: ${leaveId}`);
-
-/* ───────── 7. AUTO SUBMIT (UI BUTTON LOGIC) ───────── */
-try {
-console.log("Calling make_approval_request...");
-await odooService.callMethod(
-"hr.leave",
-"make_approval_request",
-[[leaveId]]
-);
-console.log("✅ Leave submit executed");
-} catch (submitError) {
-const msg = (submitError?.message || "").toLowerCase();
-
-// ✅ ODOO KNOWN BEHAVIOR (TYPO SAFE)
-if (
-msg.includes("already") &&
-(msg.includes("generated") || msg.includes("genrated"))
-) {
-console.log("ℹ️ Approval request already generated by Odoo (safe to ignore)");
-} else {
-console.error("❌ Unexpected submit error:", submitError.message);
-return res.status(500).json({
-status: "error",
-message: "Leave created but submit failed",
-details: submitError.message
-});
-}
-}
-
-/* ───────── 8. SUCCESS RESPONSE ───────── */
-return res.status(200).json({
-status: "success",
-message: "Leave request created and submitted successfully.",
-data: {
-request_id: leaveId,
-employee_name: empData.name,
-leave_type_name,
-company_name,
-department_name,
-validity: {
-from: date_from,
-to: date_to
-},
-reason
-}
-});
-
-} catch (error) {
-console.error("========== CREATE LEAVE REQUEST FAILED ==========");
-
-const rawError = error?.message || "";
-
-if (rawError.includes("overlaps with this period")) {
-return res.status(409).json({
-status: "error",
-message: `Your requested leave (${req.body.date_from} to ${req.body.date_to}) conflicts with an existing entry.`,
-error_type: "LEAVE_OVERLAP"
-});
-}
-
-return res.status(error.status || 500).json({
-status: "error",
-message: error.message || "Failed to create leave request."
-});
-}
-}
-
-
-
- async getLeaveRequest(req, res) {
-  try {
-    console.log("API called for getLeaveRequest");
-
-    // -----------------------------
-    // 1. Get client_id from auth
-    // -----------------------------
-    const { client_id } = await getClientFromRequest(req);
-    console.log("Resolved client_id:", client_id);
-
-    if (!client_id) {
-      return res.status(400).json({
-        status: "error",
-        message: "client_id is required"
-      });
-    }
-
-    // -----------------------------
-    // 2. Optional query filters
-    // -----------------------------
-    const {
-      employee_id,
-      leave_type_id,
-      status,
-      date_from,
-      date_to
-    } = req.query;
-
-    console.log("Query parameters received:", req.query);
-
-    // -----------------------------
-    // 3. Domain (CLIENT SCOPED)
-    // -----------------------------
-    const domain = [["client_id", "=", client_id]];
-
-    if (employee_id) {
-      domain.push(["employee_id", "=", Number(employee_id)]);
-    }
-
-    if (leave_type_id) {
-      domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
-    }
-
-    if (status) {
-      domain.push(["state", "=", status]);
-    }
-
-    if (date_from && date_to) {
-      domain.push(["request_date_from", ">=", date_from]);
-      domain.push(["request_date_to", "<=", date_to]);
-    }
-
-    console.log("Final Odoo Domain:", JSON.stringify(domain));
-
-    // -----------------------------
-    // 4. Fields
-    // -----------------------------
-    const fields = [
-      "employee_id",
-      "holiday_status_id",
-      "department_id",
-      "date_from",
-      "date_to",
-      "number_of_days",
-      "name",
-      "state",
-      "create_date"
-    ];
-
-    const records = await odooService.searchRead(
-      "hr.leave",
-      domain,
-      fields
-    );
-
-    // -----------------------------
-    // 5. Response formatting with RejectedReason Logic
-    // -----------------------------
-    const data = await Promise.all(records.map(async (rec) => {
-      // Basic response object
-      let leaveObject = {
-        id: rec.id,
-        employee_name: rec.employee_id?.[1] || "Unknown Employee",
-        leave_type_name: rec.holiday_status_id?.[1] || "Unknown Type",
-        department_name: rec.department_id?.[1] || "No Department Found",
-        validity: {
-          from: rec.date_from,
-          to: rec.date_to
-        },
-        duration_days: rec.number_of_days,
-        reason: rec.name || null,
-        status: rec.state,
-        requested_on: rec.create_date
+      /* ───────── 6. CREATE LEAVE REQUEST ───────── */
+      // ✅ CORRECTED: Using request_date_from and request_date_to
+      const vals = {
+        employee_id: empIdInt,
+        holiday_status_id: leaveTypeIdInt,
+        request_date_from: date_from, // ✅ Changed from date_from
+        request_date_to: date_to, // ✅ Changed from date_to
+        name: reason || false, // ✅ Changed from null to false (as per Odoo vals)
+        create_uid: user_id
       };
 
-      // ✅ LOGIC: "RejectedReason" sirf tabhi show hoga jb status "refuse" ho
-      if (rec.state === "refuse") {
-        try {
-          const approvalRecords = await odooService.searchRead(
-            "approval.request",
-            [["hr_leave_id", "=", rec.id]], // Odoo standard link field
-            ["reason"]
-          );
+      console.log("Leave Creation Payload:", vals);
 
-          if (approvalRecords && approvalRecords.length > 0) {
-            leaveObject.RejectedReason = approvalRecords[0].reason || "No reason specified";
-          } else {
-            leaveObject.RejectedReason = ""; 
-          }
-        } catch (err) {
-          console.error(`Error fetching rejection reason for leave ${rec.id}:`, err);
-          leaveObject.RejectedReason = "Error fetching reason";
+      const leaveId = await odooService.create("hr.leave", vals);
+      console.log(`✅ Leave created. ID: ${leaveId}`);
+
+      /* ───────── 7. AUTO SUBMIT (UI BUTTON LOGIC) ───────── */
+      try {
+        console.log("Calling make_approval_request...");
+        await odooService.callMethod(
+          "hr.leave",
+          "make_approval_request",
+          [[leaveId]]
+        );
+        console.log("✅ Leave submit executed");
+      } catch (submitError) {
+        const msg = (submitError?.message || "").toLowerCase();
+
+        // ✅ ODOO KNOWN BEHAVIOR (TYPO SAFE)
+        if (
+          msg.includes("already") &&
+          (msg.includes("generated") || msg.includes("genrated"))
+        ) {
+          console.log("ℹ️ Approval request already generated by Odoo (safe to ignore)");
+        } else {
+          console.error("❌ Unexpected submit error:", submitError.message);
+          return res.status(500).json({
+            status: "error",
+            message: "Leave created but submit failed",
+            details: submitError.message
+          });
         }
       }
 
-      return leaveObject;
-    }));
+      /* ───────── 8. SUCCESS RESPONSE ───────── */
+      return res.status(200).json({
+        status: "success",
+        message: "Leave request created and submitted successfully.",
+        data: {
+          request_id: leaveId,
+          employee_name: empData.name,
+          leave_type_name,
+          company_name,
+          department_name,
+          validity: {
+            from: date_from,
+            to: date_to
+          },
+          reason
+        }
+      });
 
-    return res.status(200).json({
-      status: "success",
-      total: data.length,
-      data
-    });
+    } catch (error) {
+      console.error("========== CREATE LEAVE REQUEST FAILED ==========");
 
-  } catch (error) {
-    console.error("Fatal error in getLeaveRequest:", error);
-    return res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "Failed to fetch leave requests"
-    });
+      const rawError = error?.message || "";
+
+      if (rawError.includes("overlaps with this period")) {
+        return res.status(409).json({
+          status: "error",
+          message: `Your requested leave (${req.body.date_from} to ${req.body.date_to}) conflicts with an existing entry.`,
+          error_type: "LEAVE_OVERLAP"
+        });
+      }
+
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to create leave request."
+      });
+    }
   }
-}
+
+
+
+  async getLeaveRequest(req, res) {
+    try {
+      console.log("========== GET LEAVE REQUEST API START ==========");
+      console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
+
+      /* ───────── 1. GET CONTEXT ───────── */
+      const context = await getClientFromRequest(req);
+      const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
+
+      console.log(`Resolved user_id: ${user_id}`);
+
+      /* ───────── 2. CHECK USER FLAGS ───────── */
+      console.log("Checking user permissions...");
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", user_id]],
+        ["is_client_employee_admin", "is_client_employee_user"]
+      );
+
+      if (!userData || userData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found"
+        });
+      }
+
+      const user = userData[0];
+      let domain = [];
+      let employeeInfo = null;
+
+      /* ───────── 3. BUILD DOMAIN BASED ON USER TYPE ───────── */
+      if (user.is_client_employee_user) {
+        console.log("User is regular employee. Fetching own leave requests.");
+
+        // Fetch employee linked to this user
+        employeeInfo = await odooService.searchRead(
+          "hr.employee",
+          [["user_id", "=", user_id]],
+          ["id", "name", "department_id", "company_id"]
+        );
+
+        if (!employeeInfo.length) {
+          console.error(`❌ Employee not found for user_id ${user_id}`);
+          return res.status(404).json({
+            status: "error",
+            message: "Employee not linked with this user."
+          });
+        }
+
+        // Filter by employee_id
+        domain.push(["employee_id", "=", employeeInfo[0].id]);
+
+      } else if (user.is_client_employee_admin) {
+        console.log("User is Admin. Fetching based on filters.");
+
+        // Admin can filter by specific employee or see all
+        if (req.query.employee_id) {
+          const empId = parseInt(req.query.employee_id);
+          domain.push(["employee_id", "=", empId]);
+
+          // Fetch that specific employee's info for response
+          employeeInfo = await odooService.searchRead(
+            "hr.employee",
+            [["id", "=", empId]],
+            ["id", "name", "department_id", "company_id"]
+          );
+        }
+        // If no employee_id filter, admin sees all (we won't fetch specific employee info)
+      }
+
+      /* ───────── 4. ADD CLIENT_ID & OPTIONAL FILTERS ───────── */
+      domain.push(["client_id", "=", context.client_id]);
+
+      // Optional date filters
+      if (req.query.date_from && req.query.date_to) {
+        domain.push(["date_from", ">=", req.query.date_from]);
+        domain.push(["date_to", "<=", req.query.date_to]);
+      }
+
+      // Optional leave type filter
+      if (req.query.holiday_status_id) {
+        domain.push(["holiday_status_id", "=", parseInt(req.query.holiday_status_id)]);
+      }
+
+      // Optional status filter
+      if (req.query.state) {
+        domain.push(["state", "=", req.query.state]);
+      }
+
+      console.log("Final Search Domain:", JSON.stringify(domain));
+
+      /* ───────── 5. FETCH LEAVE REQUESTS ───────── */
+      console.log("Fetching leave requests from Odoo...");
+      const leaveRequests = await odooService.searchRead(
+        "hr.leave",
+        domain,
+        [
+          "id",
+          "name",
+          "employee_id",
+          "holiday_status_id",
+          "date_from",
+          "date_to",
+          "number_of_days",
+          "state",
+          "create_date"
+        ]
+      );
+
+      console.log(`Fetched ${leaveRequests.length} leave records`);
+
+      /* ───────── 6. FORMAT RESPONSE ───────── */
+      const responseData = leaveRequests.map(lr => ({
+        request_id: lr.id,
+        employee_id: lr.employee_id?.[0] || null,
+        employee_name: lr.employee_id?.[1] || null,
+        leave_type_id: lr.holiday_status_id?.[0] || null,
+        leave_type_name: lr.holiday_status_id?.[1] || "Unknown",
+        from: lr.date_from,
+        to: lr.date_to,
+        days: lr.number_of_days,
+        status: lr.state,
+        reason: lr.name || null,
+        created_on: lr.create_date
+      }));
+
+      /* ───────── 7. BUILD RESPONSE ───────── */
+      const response = {
+        status: "success",
+        message: "Leave requests fetched successfully.",
+        total_records: responseData.length,
+        data: responseData
+      };
+
+      // Include employee info only if we have it (regular user or admin filtering by specific employee)
+      if (employeeInfo && employeeInfo.length > 0) {
+        const empData = employeeInfo[0];
+        response.employee = {
+          id: empData.id,
+          name: empData.name,
+          department: empData.department_id?.[1] || null,
+          company: empData.company_id?.[1] || null
+        };
+      }
+
+      console.log("========== GET LEAVE REQUEST SUCCESS ==========");
+      return res.status(200).json(response);
+
+    } catch (error) {
+      console.error("========== GET LEAVE REQUEST FAILED ==========");
+      console.error(error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to fetch leave requests."
+      });
+    }
+  }
 
   async updateLeaveRequest(req, res) {
     try {
