@@ -116,14 +116,30 @@ class BankController {
   async updateBank(req, res) {
     try {
       const { id } = req.params;
-      const { name, bic, swift_code, micr_code, phone, street } = req.body;
+      const {
+        name,
+        bic,
+        swift_code,
+        micr_code,
+        phone,
+        street,
+        street2,      // Added
+        city,         // Added
+        state,        // Added
+        zip,          // Added
+        country,      // Added
+        email         // Added
+      } = req.body;
+
       const { client_id } = await getClientFromRequest(req);
+
       if (!name || name.trim() === "") {
         return res.status(400).json({
           status: "error",
           message: "Bank name is required",
         });
       }
+
       const existingBank = await odooService.searchRead(
         "res.bank",
         [
@@ -139,6 +155,7 @@ class BankController {
           message: "Bank not found or does not belong to your client",
         });
       }
+
       const duplicate = await odooService.searchRead(
         "res.bank",
         [
@@ -156,6 +173,7 @@ class BankController {
           message: `Bank with name '${name}' already exists for this client`,
         });
       }
+
       const data = {
         name: name.trim(),
         bic: bic || "",
@@ -163,6 +181,12 @@ class BankController {
         micr_code: micr_code || "",
         phone: phone || "",
         street: street || "",
+        street2: street2 || "",        // Added
+        city: city || "",              // Added
+        state: state || null,          // Added
+        zip: zip || "",                // Added
+        country: country || null,      // Added
+        email: email || "",            // Added
       };
 
       await odooService.write("res.bank", [parseInt(id)], data);
