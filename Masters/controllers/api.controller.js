@@ -3832,62 +3832,131 @@ class ApiController {
       });
     }
   }
+
   async getWorkingSchedules(req, res) {
-    try {
-      const { client_id } = await getClientFromRequest(req);
+  try {
+    const { client_id } = await getClientFromRequest(req);
 
-      const calendars = await odooService.searchRead(
-        "resource.calendar",
-        [["client_id", "=", client_id]],
-        [
-          "id",
-          "name",
-          "flexible_hours",
-          "is_night_shift",
-          "full_time_required_hours",
-          "hours_per_day",
-          "tz",
-          "attendance_ids",
-        ]
-      );
+    const calendars = await odooService.searchRead(
+      "resource.calendar",
+      [["client_id", "=", client_id]],
+      [
+        "id",
+        "name",
+        "flexible_hours",
+        "is_night_shift",
+        "full_time_required_hours",
+        "hours_per_day",
+        "tz",
+        "total_overtime_hours_allowed",
+        "attendance_ids",
+      ]
+    );
 
-      const calendarData = await Promise.all(
-        calendars.map(async (cal) => {
-          let attendances = [];
+    const calendarData = await Promise.all(
+      calendars.map(async (cal) => {
+        let attendances = [];
 
-          if (cal.attendance_ids?.length) {
-            attendances = await odooService.searchRead(
-              "resource.calendar.attendance",
-              [["id", "in", cal.attendance_ids]],
-              ["id", "dayofweek", "day_period", "hour_from", "hour_to"]
-            );
-          }
+        if (cal.attendance_ids?.length) {
+          attendances = await odooService.searchRead(
+            "resource.calendar.attendance",
+            [["id", "in", cal.attendance_ids]],
+            [
+              "id", 
+              "name",           // ADDED: Attendance ka name (Monday, Tuesday etc.)
+              "dayofweek", 
+              "day_period", 
+              "hour_from", 
+              "hour_to",
+              "week_type"       // OPTIONAL: Agar bi-weekly shifts hain
+            ]
+          );
+        }
 
-          return {
-            id: cal.id,
-            name: cal.name,
-            flexible_hours: cal.flexible_hours,
-            is_night_shift: cal.is_night_shift,
-            full_time_required_hours: cal.full_time_required_hours,
-            hours_per_day: cal.flexible_hours ? cal.hours_per_day : null,
-            tz: cal.tz,
-            attendance_ids: attendances,
-          };
-        })
-      );
+        return {
+          id: cal.id,
+          name: cal.name,
+          flexible_hours: cal.flexible_hours,
+          is_night_shift: cal.is_night_shift,
+          full_time_required_hours: cal.full_time_required_hours,
+          hours_per_day: cal.hours_per_day || 0, // Hamesha value return karein (0 agar null ho)
+          tz: cal.tz || "UTC",
+          total_overtime_hours_allowed: cal.total_overtime_hours_allowed || 0.0, // ADDED
+          client_id: cal.client_id, // ADDED
+          attendances: attendances, // Key ka naam simple rakha hai
+        };
+      })
+    );
 
-      return res.status(200).json({
-        status: "success",
-        data: calendarData,
-      });
-    } catch (error) {
-      console.error("❌ Get Working Schedules Error:", error);
-      return res.status(error.status || 500).json({
-        status: "error",
-        message: error.message || "Failed to fetch working schedules",
-      });
-    }
+    return res.status(200).json({
+      status: "success",
+      count: calendarData.length,
+      data: calendarData,
+    });
+  } catch (error) {
+    console.error("❌ Get Working Schedules Error:", error);
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to fetch working schedules",
+    });
   }
+}
+  // async getWorkingSchedules(req, res) {
+  //   try {
+  //     const { client_id } = await getClientFromRequest(req);
+
+  //     const calendars = await odooService.searchRead(
+  //       "resource.calendar",
+  //       [["client_id", "=", client_id]],
+  //       [
+  //         "id",
+  //         "name",
+  //         "flexible_hours",
+  //         "is_night_shift",
+  //         "full_time_required_hours",
+  //         "hours_per_day",
+  //         "tz",
+  //         "attendance_ids",
+  //       ]
+  //     );
+
+  //     const calendarData = await Promise.all(
+  //       calendars.map(async (cal) => {
+  //         let attendances = [];
+
+  //         if (cal.attendance_ids?.length) {
+  //           attendances = await odooService.searchRead(
+  //             "resource.calendar.attendance",
+  //             [["id", "in", cal.attendance_ids]],
+  //             ["id", "dayofweek", "day_period", "hour_from", "hour_to"]
+  //           );
+  //         }
+
+  //         return {
+  //           id: cal.id,
+  //           name: cal.name,
+  //           flexible_hours: cal.flexible_hours,
+  //           is_night_shift: cal.is_night_shift,
+  //           full_time_required_hours: cal.full_time_required_hours,
+  //           hours_per_day: cal.flexible_hours ? cal.hours_per_day : null,
+  //           tz: cal.tz,
+  //           attendance_ids: attendances,
+  //         };
+  //       })
+  //     );
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       data: calendarData,
+  //     });
+  //   } catch (error) {
+  //     console.error("❌ Get Working Schedules Error:", error);
+  //     return res.status(error.status || 500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to fetch working schedules",
+  //     });
+  //   }
+  // }
   // UPDATE Working Schedule
   async updateWorkingSchedule(req, res) {
     try {
@@ -7303,7 +7372,7 @@ class ApiController {
 
       const approvalRecord = approvalRecords[0];
 
-      if (approvalRecord.state === 'refused' || approvalRecord.state === 'rejected' || approvalRecord.state === 'cancel') {
+      if (approvalRecord.state === 'refused' || approvalRecord.state === 'reject' || approvalRecord.state === 'cancel') {
         return res.status(400).json({
           status: "error",
           message: "This request has already been rejected.",
@@ -7445,7 +7514,6 @@ class ApiController {
       });
     }
   }
-
   async getClientLeaveDashboardCount(req, res) {
     try {
       const { user_id } = req.query;
