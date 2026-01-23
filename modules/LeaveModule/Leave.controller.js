@@ -933,6 +933,7 @@ class LeaveController {
 
       // -----------------------------
       // 2. Check if user is employee (not admin)
+      
       // -----------------------------
       console.log("Checking user permissions...");
       const userData = await odooService.searchRead(
