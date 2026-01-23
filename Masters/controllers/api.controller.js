@@ -6214,7 +6214,7 @@ class ApiController {
   }
   async getGroupList(req, res) {
     try {
-      const allowedGroupNames = ["Client  Admin", "Client Employee Own","Reporting Manager (Client)"];
+      const allowedGroupNames = ["Client  Admin", "Client Employee Own", "Reporting Manager (Client)"];
       const groups = await odooService.searchRead(
         "res.groups",
         [["name", "in", allowedGroupNames]],
@@ -7611,7 +7611,6 @@ class ApiController {
       return res.status(500).json({ status: "error", message: error.message });
     }
   }
-
   // async rejectAttendanceRegularization(req, res) {
   //   try {
   //     const { approval_request_id, remarks, user_id } = req.body;
@@ -7626,7 +7625,6 @@ class ApiController {
   //       });
   //     }
 
-  //     // UPDATE: Field name is 'hr_expense_id' as per your screenshot
   //     const approvalRecords = await odooService.searchRead(
   //       "approval.request",
   //       [["id", "=", parseInt(approval_request_id)]],
@@ -7636,7 +7634,7 @@ class ApiController {
   //         "state",
   //         "attendance_regulzie_id",
   //         "hr_leave_id",
-  //         "hr_expense_id", // Correct field name from screenshot
+  //         "hr_expense_id",
   //         "description",
   //         "approval_log_list"
   //       ]
@@ -7733,7 +7731,6 @@ class ApiController {
   //       });
   //     }
 
-  //     // Creating the reject wizard
   //     const wizardId = await odooService.create(
   //       "request.reject.wizard",
   //       { remarks: remarks || `Rejected via App by ${adminName}` },
@@ -7755,7 +7752,6 @@ class ApiController {
 
   //     let updatedRecord = null;
 
-  //     // Logic to update the specific module table
   //     if (approvalRecord.attendance_regulzie_id) {
   //       const regId = approvalRecord.attendance_regulzie_id[0];
   //       await odooService.write(
@@ -7779,12 +7775,11 @@ class ApiController {
   //       updatedRecord = { model: "hr.leave", id: leaveId };
 
   //     } else if (approvalRecord.hr_expense_id) {
-  //       // FIX: Using the correct field 'hr_expense_id' and model 'hr.expense.sheet'
   //       const sheetId = approvalRecord.hr_expense_id[0];
   //       await odooService.write(
   //         "hr.expense.sheet",
   //         [sheetId],
-  //         { state: "cancel" }, // Odoo expense sheets use 'cancel' for rejection
+  //         { state: "cancel" },
   //         parseInt(user_id),
   //         fetchedPassword
   //       );
@@ -7801,12 +7796,17 @@ class ApiController {
   //     });
 
   //   } catch (error) {
-  //     return res.status(500).json({
+  //     const isAccessError = error.message.includes("access") ||
+  //       error.message.includes("top-secret") ||
+  //       error.message.includes("permissions");
+
+  //     return res.status(isAccessError ? 400 : 500).json({
   //       status: "error",
   //       message: error.message
   //     });
   //   }
   // }
+
   async rejectAttendanceRegularization(req, res) {
     try {
       const { approval_request_id, remarks, user_id } = req.body;
@@ -7927,12 +7927,15 @@ class ApiController {
         });
       }
 
+      // Create the wizard
       const wizardId = await odooService.create(
         "request.reject.wizard",
         { remarks: remarks || `Rejected via App by ${adminName}` },
         { uid: parseInt(user_id), userPassword: fetchedPassword }
       );
 
+      // Call the reject action - this is the critical step
+      // If this fails, we should not proceed
       await odooService.callMethod(
         "request.reject.wizard",
         "action_reject_request",
@@ -7946,40 +7949,49 @@ class ApiController {
         fetchedPassword
       );
 
+      // Try to update the related records, but don't fail if there are permission issues
+      // The rejection has already happened in Odoo via the wizard
       let updatedRecord = null;
 
-      if (approvalRecord.attendance_regulzie_id) {
-        const regId = approvalRecord.attendance_regulzie_id[0];
-        await odooService.write(
-          "attendance.regular",
-          [regId],
-          { state_select: "reject" },
-          parseInt(user_id),
-          fetchedPassword
-        );
-        updatedRecord = { model: "attendance.regular", id: regId };
+      try {
+        if (approvalRecord.attendance_regulzie_id) {
+          const regId = approvalRecord.attendance_regulzie_id[0];
+          await odooService.write(
+            "attendance.regular",
+            [regId],
+            { state_select: "reject" },
+            parseInt(user_id),
+            fetchedPassword
+          );
+          updatedRecord = { model: "attendance.regular", id: regId };
 
-      } else if (approvalRecord.hr_leave_id) {
-        const leaveId = approvalRecord.hr_leave_id[0];
-        await odooService.write(
-          "hr.leave",
-          [leaveId],
-          { state: "refuse" },
-          parseInt(user_id),
-          fetchedPassword
-        );
-        updatedRecord = { model: "hr.leave", id: leaveId };
+        } else if (approvalRecord.hr_leave_id) {
+          const leaveId = approvalRecord.hr_leave_id[0];
+          await odooService.write(
+            "hr.leave",
+            [leaveId],
+            { state: "refuse" },
+            parseInt(user_id),
+            fetchedPassword
+          );
+          updatedRecord = { model: "hr.leave", id: leaveId };
 
-      } else if (approvalRecord.hr_expense_id) {
-        const sheetId = approvalRecord.hr_expense_id[0];
-        await odooService.write(
-          "hr.expense.sheet",
-          [sheetId],
-          { state: "cancel" },
-          parseInt(user_id),
-          fetchedPassword
-        );
-        updatedRecord = { model: "hr.expense.sheet", id: sheetId };
+        } else if (approvalRecord.hr_expense_id) {
+          const sheetId = approvalRecord.hr_expense_id[0];
+          await odooService.write(
+            "hr.expense.sheet",
+            [sheetId],
+            { state: "cancel" },
+            parseInt(user_id),
+            fetchedPassword
+          );
+          updatedRecord = { model: "hr.expense.sheet", id: sheetId };
+        }
+      } catch (updateError) {
+        // Log the error but don't fail the request
+        // The wizard has already handled the rejection in Odoo
+        console.error("Warning: Could not update related record state:", updateError.message);
+        // Continue to return success because the rejection itself succeeded
       }
 
       return res.status(200).json({
@@ -7992,6 +8004,8 @@ class ApiController {
       });
 
     } catch (error) {
+      // Only catch errors that happen BEFORE the wizard action is called
+      // If we reach here, the rejection hasn't happened yet, so it's safe to return an error
       const isAccessError = error.message.includes("access") ||
         error.message.includes("top-secret") ||
         error.message.includes("permissions");
