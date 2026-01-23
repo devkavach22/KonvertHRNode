@@ -2301,7 +2301,7 @@ const getEmployees = async (req, res) => {
             "employment_type", "user_id", "driving_license", "upload_passbook",
             "image_1920", "name_of_site", "longitude", "device_id",
             "device_unique_id", "latitude", "device_name", "system_version",
-            "ip_address", "device_platform",
+            "ip_address", "device_platform", "random_code_for_reg", // ADDED THIS FIELD
           ]
         );
 
@@ -2389,7 +2389,7 @@ const getEmployeeById = async (req, res) => {
         "employment_type", "user_id", "driving_license", "upload_passbook",
         "image_1920", "name_of_site", "longitude", "device_id",
         "device_unique_id", "latitude", "device_name", "system_version",
-        "ip_address", "device_platform",
+        "ip_address", "device_platform", "random_code_for_reg", // ADDED THIS FIELD
       ]
     );
 
