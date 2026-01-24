@@ -1508,7 +1508,361 @@ class PayrollController {
             });
         }
     }
+    async createPayslip(req, res) {
+        try {
+            const {
+                employee_id,
+                contract_id,
+                payslip_run_id,
+                struct_id,
+                date_from,
+                date_to,
+                employee_code,
+                name, // Add name field
+            } = req.body;
 
-    
+            // Validate required fields
+            if (!employee_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Employee ID is required",
+                });
+            }
+
+            if (!struct_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Structure ID is required",
+                });
+            }
+
+            if (!date_from) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Date From is required",
+                });
+            }
+
+            if (!name) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payslip Name is required",
+                });
+            }
+
+            // Validate date format and validity
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+            if (!dateRegex.test(date_from)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid date_from format. Use YYYY-MM-DD format",
+                });
+            }
+
+            if (date_to && !dateRegex.test(date_to)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid date_to format. Use YYYY-MM-DD format",
+                });
+            }
+
+            // Validate date_from is a valid date
+            const dateFromObj = new Date(date_from);
+            if (isNaN(dateFromObj.getTime())) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid date_from. Please provide a valid date",
+                });
+            }
+
+            // Validate date_to is a valid date (if provided)
+            if (date_to) {
+                const dateToObj = new Date(date_to);
+                if (isNaN(dateToObj.getTime())) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Invalid date_to. Please provide a valid date",
+                    });
+                }
+
+                // Check if date_to is after date_from
+                if (dateToObj < dateFromObj) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "date_to must be greater than or equal to date_from",
+                    });
+                }
+
+                // Validate that the date actually exists (e.g., no April 31)
+                const [year, month, day] = date_to.split('-').map(Number);
+                const reconstructedDate = new Date(year, month - 1, day);
+
+                if (
+                    reconstructedDate.getFullYear() !== year ||
+                    reconstructedDate.getMonth() !== month - 1 ||
+                    reconstructedDate.getDate() !== day
+                ) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: `Invalid date_to: ${date_to}. This date does not exist in the calendar`,
+                    });
+                }
+            }
+
+            // Validate date_from exists in calendar
+            const [yearFrom, monthFrom, dayFrom] = date_from.split('-').map(Number);
+            const reconstructedDateFrom = new Date(yearFrom, monthFrom - 1, dayFrom);
+
+            if (
+                reconstructedDateFrom.getFullYear() !== yearFrom ||
+                reconstructedDateFrom.getMonth() !== monthFrom - 1 ||
+                reconstructedDateFrom.getDate() !== dayFrom
+            ) {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Invalid date_from: ${date_from}. This date does not exist in the calendar`,
+                });
+            }
+
+            // Get client_id from request
+            let client_id;
+            try {
+                const clientData = await getClientFromRequest(req);
+                client_id = clientData.client_id;
+            } catch (error) {
+                return res.status(400).json({
+                    status: "error",
+                    message: error.message || "Either user_id or unique_user_id is required",
+                });
+            }
+
+            // Verify employee belongs to this client using address_id
+            const employeeExists = await odooService.searchRead(
+                "hr.employee",
+                [
+                    ["id", "=", employee_id],
+                    ["address_id", "=", client_id],
+                ],
+                ["id"],
+                1
+            );
+
+            if (!employeeExists || employeeExists.length === 0) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Employee not found or does not belong to this client",
+                });
+            }
+
+            // Verify contract if provided
+            if (contract_id) {
+                const contractExists = await odooService.searchRead(
+                    "hr.contract",
+                    [
+                        ["id", "=", contract_id],
+                        ["employee_id", "=", employee_id],
+                    ],
+                    ["id"],
+                    1
+                );
+
+                if (!contractExists || contractExists.length === 0) {
+                    return res.status(404).json({
+                        status: "error",
+                        message: "Contract not found or does not belong to this employee",
+                    });
+                }
+            }
+
+            // Verify payslip run if provided
+            if (payslip_run_id) {
+                const payslipRunExists = await odooService.searchRead(
+                    "hr.payslip.run",
+                    [
+                        ["id", "=", payslip_run_id],
+                        ["company_id", "=", client_id],
+                    ],
+                    ["id"],
+                    1
+                );
+
+                if (!payslipRunExists || payslipRunExists.length === 0) {
+                    return res.status(404).json({
+                        status: "error",
+                        message: "Payslip run not found or does not belong to this company",
+                    });
+                }
+            }
+
+            // Prepare payslip values
+            const vals = {
+                name, // Required field
+                employee_id,
+                struct_id,
+                date_from,
+                client_id,
+            };
+
+            // Add optional fields
+            if (contract_id) vals.contract_id = contract_id;
+            if (payslip_run_id) vals.payslip_run_id = payslip_run_id;
+            if (date_to) vals.date_to = date_to;
+            if (employee_code) vals.employee_code = employee_code;
+
+            // Create payslip
+            const payslipId = await odooService.create("hr.payslip", vals);
+
+            return res.status(201).json({
+                status: "success",
+                message: "Payslip created successfully",
+                payslip_id: payslipId,
+            });
+        } catch (error) {
+            console.error("❌ Create Payslip Error:", error);
+
+            // Handle specific Odoo errors and return 400 for validation errors
+            const errorMessage = error.message || error.faultString || "";
+
+            if (errorMessage.includes("mandatory field is not set")) {
+                // Extract field name from error message
+                const fieldMatch = errorMessage.match(/Field: ([^\n]+)/);
+                const fieldName = fieldMatch ? fieldMatch[1] : "A required field";
+
+                return res.status(400).json({
+                    status: "error",
+                    message: `${fieldName} is required`,
+                });
+            }
+
+            if (errorMessage.includes("DatetimeFieldOverflow")) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid date provided. Please check date_from and date_to values",
+                });
+            }
+
+            if (errorMessage.includes("Invalid field")) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid field in request",
+                });
+            }
+
+            if (errorMessage.includes("does not exist")) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Referenced record does not exist",
+                });
+            }
+
+            return res.status(500).json({
+                status: "error",
+                message: error.message || "Failed to create payslip",
+            });
+        }
+    }
+
+    async computePayslip(req, res) {
+        try {
+            const payslip_id = req.params.id; 
+
+            if (!payslip_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payslip ID is required",
+                });
+            }
+
+            let client_id;
+            try {
+                const clientData = await getClientFromRequest(req);
+                client_id = clientData.client_id;
+            } catch (error) {
+                return res.status(400).json({
+                    status: "error",
+                    message: error.message || "Either user_id or unique_user_id is required",
+                });
+            }
+
+            const payslipExists = await odooService.searchRead(
+                "hr.payslip",
+                [
+                    ["id", "=", Number(payslip_id)],
+                    ["client_id", "=", client_id],
+                ],
+                ["id", "state"],
+                1
+            );
+
+            if (!payslipExists || payslipExists.length === 0) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Payslip not found or does not belong to this client",
+                });
+            }
+
+            const currentState = payslipExists[0].state;
+            if (currentState !== "draft") {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Cannot compute payslip. Payslip must be in 'draft' state, current state is '${currentState}'`,
+                });
+            }
+
+            console.log("🔄 Computing payslip...");
+
+            const computeResult = await odooService.callCustomMethod(
+                "hr.payslip",
+                "compute_sheet",
+                [[Number(payslip_id)]]
+            );
+
+            console.log("✅ Payslip computed:", JSON.stringify(computeResult, null, 2));
+
+            const updatedPayslip = await odooService.searchRead(
+                "hr.payslip",
+                [["id", "=", Number(payslip_id)]],
+                ["id", "name", "state", "line_ids"],
+                1
+            );
+
+            return res.status(200).json({
+                status: "success",
+                message: "Payslip computed successfully",
+                data: {
+                    payslip_id: Number(payslip_id),
+                    state: updatedPayslip[0]?.state || "draft",
+                    line_ids: updatedPayslip[0]?.line_ids || [],
+                    name: updatedPayslip[0]?.name || "",
+                },
+            });
+
+        } catch (error) {
+            console.error("❌ Compute Payslip Error:", error);
+
+            const errorMessage = error.message || error.faultString || "";
+
+            // Handle specific Odoo errors
+            if (errorMessage.includes("state != 'draft'")) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payslip must be in draft state to compute",
+                });
+            }
+
+            if (errorMessage.includes("does not exist")) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Payslip not found",
+                });
+            }
+
+            return res.status(500).json({
+                status: "error",
+                message: errorMessage || "Failed to compute payslip",
+            });
+        }
+    }
 }
 module.exports = new PayrollController();

@@ -861,4 +861,19 @@ router.get(
   authenticate,
   apiController.getClientLeaveDashboardCount.bind(apiController)
 );
+
+
+
+router.post(
+  "/create/paySlip",
+  authenticate,
+  PayrollController.createPayslip.bind(PayrollController)
+);
+
+router.post(
+  "/compute/payslip/:id",
+  authenticate,
+  PayrollController.computePayslip.bind(PayrollController)
+);
+
 module.exports = router;
