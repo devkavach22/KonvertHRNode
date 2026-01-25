@@ -1765,7 +1765,7 @@ class PayrollController {
 
     async computePayslip(req, res) {
         try {
-            const payslip_id = req.params.id; 
+            const payslip_id = req.params.id;
 
             if (!payslip_id) {
                 return res.status(400).json({
@@ -1861,6 +1861,230 @@ class PayrollController {
             return res.status(500).json({
                 status: "error",
                 message: errorMessage || "Failed to compute payslip",
+            });
+        }
+    }
+    async confirmPayslip(req, res) {
+        try {
+            const payslip_id = req.params.id;
+
+            if (!payslip_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payslip ID is required",
+                });
+            }
+
+            let client_id;
+            try {
+                const clientData = await getClientFromRequest(req);
+                client_id = clientData.client_id;
+            } catch (error) {
+                return res.status(400).json({
+                    status: "error",
+                    message: error.message || "Either user_id or unique_user_id is required",
+                });
+            }
+
+            // Verify payslip exists and belongs to client
+            const payslipExists = await odooService.searchRead(
+                "hr.payslip",
+                [
+                    ["id", "=", Number(payslip_id)],
+                    ["client_id", "=", client_id],
+                ],
+                ["id", "state"],
+                1
+            );
+
+            if (!payslipExists || payslipExists.length === 0) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Payslip not found or does not belong to this client",
+                });
+            }
+
+            // Check if payslip is in verify state
+            const currentState = payslipExists[0].state;
+            if (currentState !== "verify") {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Cannot confirm payslip. Payslip must be in 'verify' state, current state is '${currentState}'`,
+                });
+            }
+
+            console.log("🔄 Confirming payslip...");
+
+            // Call action_payslip_done method
+            const confirmResult = await odooService.callCustomMethod(
+                "hr.payslip",
+                "action_payslip_done",
+                [[Number(payslip_id)]]
+            );
+
+            console.log("✅ Payslip confirmed:", JSON.stringify(confirmResult, null, 2));
+
+            // Fetch updated payslip data
+            const updatedPayslip = await odooService.searchRead(
+                "hr.payslip",
+                [["id", "=", Number(payslip_id)]],
+                ["id", "name", "state", "line_ids"],
+                1
+            );
+
+            return res.status(200).json({
+                status: "success",
+                message: "Payslip confirmed successfully",
+                data: {
+                    payslip_id: Number(payslip_id),
+                    state: updatedPayslip[0]?.state || "done",
+                    line_ids: updatedPayslip[0]?.line_ids || [],
+                    name: updatedPayslip[0]?.name || "",
+                },
+            });
+
+        } catch (error) {
+            console.error("❌ Confirm Payslip Error:", error);
+
+            const errorMessage = error.message || error.faultString || "";
+
+            // Handle specific Odoo errors
+            if (errorMessage.includes("state != 'verify'")) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payslip must be in verify state to confirm",
+                });
+            }
+
+            if (errorMessage.includes("does not exist")) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Payslip not found",
+                });
+            }
+
+            if (errorMessage.includes("payslip_generate_pdf")) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Cannot confirm payslip. Please ensure all required fields are filled",
+                });
+            }
+
+            return res.status(500).json({
+                status: "error",
+                message: errorMessage || "Failed to confirm payslip",
+            });
+        }
+    }
+    async markPayslipAsPaid(req, res) {
+        try {
+            const payslip_id = req.params.id;
+
+            if (!payslip_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payslip ID is required",
+                });
+            }
+
+            let client_id;
+            try {
+                const clientData = await getClientFromRequest(req);
+                client_id = clientData.client_id;
+            } catch (error) {
+                return res.status(400).json({
+                    status: "error",
+                    message: error.message || "Either user_id or unique_user_id is required",
+                });
+            }
+
+            // Verify payslip exists and belongs to client
+            const payslipExists = await odooService.searchRead(
+                "hr.payslip",
+                [
+                    ["id", "=", Number(payslip_id)],
+                    ["client_id", "=", client_id],
+                ],
+                ["id", "state"],
+                1
+            );
+
+            if (!payslipExists || payslipExists.length === 0) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Payslip not found or does not belong to this client",
+                });
+            }
+
+            // Check if payslip is in done state
+            const currentState = payslipExists[0].state;
+            if (currentState !== "done") {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Cannot mark as paid. Payslip must be in 'done' state, current state is '${currentState}'`,
+                });
+            }
+
+            console.log("🔄 Marking payslip as paid...");
+
+            // Call action_payslip_paid method
+            const paidResult = await odooService.callCustomMethod(
+                "hr.payslip",
+                "action_payslip_paid",
+                [[Number(payslip_id)]]
+            );
+
+            console.log("✅ Payslip marked as paid:", JSON.stringify(paidResult, null, 2));
+
+            // Fetch updated payslip data
+            const updatedPayslip = await odooService.searchRead(
+                "hr.payslip",
+                [["id", "=", Number(payslip_id)]],
+                ["id", "name", "state", "paid"],
+                1
+            );
+
+            return res.status(200).json({
+                status: "success",
+                message: "Payslip marked as paid successfully",
+                data: {
+                    payslip_id: Number(payslip_id),
+                    state: updatedPayslip[0]?.state || "done",
+                    paid: updatedPayslip[0]?.paid || true,
+                    name: updatedPayslip[0]?.name || "",
+                },
+            });
+
+        } catch (error) {
+            console.error("❌ Mark as Paid Error:", error);
+
+            const errorMessage = error.message || error.faultString || "";
+
+            // Handle specific Odoo errors
+            if (errorMessage.includes("state != 'done'")) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payslip must be in done state to mark as paid",
+                });
+            }
+
+            if (errorMessage.includes("does not exist")) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Payslip not found",
+                });
+            }
+
+            if (errorMessage.includes("already paid")) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payslip is already marked as paid",
+                });
+            }
+
+            return res.status(500).json({
+                status: "error",
+                message: errorMessage || "Failed to mark payslip as paid",
             });
         }
     }

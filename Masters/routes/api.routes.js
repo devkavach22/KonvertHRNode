@@ -876,4 +876,15 @@ router.post(
   PayrollController.computePayslip.bind(PayrollController)
 );
 
+router.post(
+  "/confirm/payslip/:id",
+  authenticate,
+  PayrollController.confirmPayslip.bind(PayrollController)
+);
+
+router.post(
+  "/mark-paid/payslip/:id",
+  authenticate,
+  PayrollController.markPayslipAsPaid.bind(PayrollController)
+);
 module.exports = router;
