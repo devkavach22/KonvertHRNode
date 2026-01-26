@@ -606,10 +606,111 @@ class PayrollController {
             });
         }
     }
+    // async createSalaryStructure(req, res) {
+    //     try {
+    //         // const client = await getClientFromRequest(req);
+
+    //         const {
+    //             name,
+    //             typeId,
+    //             countryId,
+    //             hideBasicOnPdf,
+    //             schedulePay,
+    //             reportId,
+    //             useWorkedDayLines,
+    //             ytdComputation,
+    //             payslipName,
+    //         } = req.body;
+
+    //         // 🔒 Required field validation
+    //         if (!name || !typeId) {
+    //             return res.status(400).json({
+    //                 success: false,
+    //                 message: "Name and Type are required fields",
+    //             });
+    //         }
+
+    //         /* ------------------------------------------------------------------
+    //         ✅ SAFELY RESOLVE MANY2ONE RECORDS (NO MISSING ID ERRORS)
+    //         ------------------------------------------------------------------ */
+
+    //         // 1️⃣ Validate Payroll Structure Type (REQUIRED)
+    //         const typeExists = await odooService.searchCount(
+    //             "hr.payroll.structure.type",
+    //             [["id", "=", typeId]],
+    //             //   client
+    //         );
+
+    //         if (!typeExists) {
+    //             return res.status(400).json({
+    //                 success: false,
+    //                 message: "Invalid Payroll Structure Type",
+    //             });
+    //         }
+
+    //         // 2️⃣ Validate Country (OPTIONAL)
+    //         let safeCountryId = false;
+    //         if (countryId) {
+    //             const countryExists = await odooService.searchCount(
+    //                 "res.country",
+    //                 [["id", "=", countryId]],
+    //                 // client
+    //             );
+    //             if (countryExists) safeCountryId = countryId;
+    //         }
+
+    //         // 3️⃣ Validate Report Template (OPTIONAL)
+    //         let safeReportId = false;
+    //         if (reportId) {
+    //             const reportExists = await odooService.searchCount(
+    //                 "ir.actions.report",
+    //                 [["id", "=", reportId]],
+    //                 // client
+    //             );
+    //             if (reportExists) safeReportId = reportId;
+    //         }
+
+    //         /* ------------------------------------------------------------------
+    //         🧱 PAYLOAD (EXACTLY MATCHES hr.payroll.structure)
+    //         ------------------------------------------------------------------ */
+    //         const payload = {
+    //             name: name,
+    //             type_id: typeId,                     // ✅ guaranteed valid
+    //             country_id: safeCountryId,            // ✅ safe
+    //             hide_basic_on_pdf: !!hideBasicOnPdf,
+    //             schedule_pay: schedulePay || false,   // readonly but creatable
+    //             report_id: safeReportId,              // ✅ safe
+    //             use_worked_day_lines: useWorkedDayLines ?? true,
+    //             ytd_computation: !!ytdComputation,
+    //             payslip_name: payslipName || false,
+    //         };
+
+    //         const structureId = await odooService.create(
+    //             "hr.payroll.structure",
+    //             payload,
+    //             //   client
+    //         );
+
+    //         return res.status(201).json({
+    //             success: true,
+    //             message: "Salary Structure created successfully",
+    //             data: {
+    //                 id: structureId,
+    //             },
+    //         });
+
+    //     } catch (error) {
+    //         console.error("Create Salary Structure Error:", error);
+    //         return res.status(500).json({
+    //             success: false,
+    //             message: "Failed to create Salary Structure",
+    //             error: error.message,
+    //         });
+    //     }
+    // }
+
     async createSalaryStructure(req, res) {
         try {
-            // const client = await getClientFromRequest(req);
-
             const {
                 name,
                 typeId,
@@ -622,60 +723,114 @@ class PayrollController {
                 payslipName,
             } = req.body;
 
+            console.log("📥 Create Salary Structure Request Body:", JSON.stringify(req.body, null, 2));
+
             // 🔒 Required field validation
-            if (!name || !typeId) {
+            if (!name) {
                 return res.status(400).json({
-                    success: false,
-                    message: "Name and Type are required fields",
+                    status: "error",
+                    message: "Salary Structure name is required",
+                });
+            }
+            if (!typeId) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Payroll Structure Type (typeId) is required",
+                });
+            }
+
+            // 🏢 Get client_id from request
+            const { client_id } = await getClientFromRequest(req);
+            console.log("🏢 Client ID:", client_id);
+
+            if (!client_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Client ID not found",
                 });
             }
 
             /* ------------------------------------------------------------------
-            ✅ SAFELY RESOLVE MANY2ONE RECORDS (NO MISSING ID ERRORS)
+                ✅ SAFELY RESOLVE MANY2ONE RECORDS (NO MISSING ID ERRORS)
             ------------------------------------------------------------------ */
 
-            // 1️⃣ Validate Payroll Structure Type (REQUIRED)
-            const typeExists = await odooService.searchCount(
+            // 1️⃣ Validate Payroll Structure Type (REQUIRED) - must belong to same client
+            const typeExists = await odooService.searchRead(
                 "hr.payroll.structure.type",
-                [["id", "=", typeId]],
-                //   client
+                [
+                    ["id", "=", typeId],
+                    ["client_id", "=", client_id]
+                ],
+                ["id", "name"]
             );
 
-            if (!typeExists) {
+            console.log("🔍 Payroll Structure Type Validation:", typeExists);
+
+            if (!typeExists.length) {
                 return res.status(400).json({
-                    success: false,
-                    message: "Invalid Payroll Structure Type",
+                    status: "error",
+                    message: `Invalid or unauthorized Payroll Structure Type ID: ${typeId}`,
                 });
             }
 
             // 2️⃣ Validate Country (OPTIONAL)
             let safeCountryId = false;
             if (countryId) {
-                const countryExists = await odooService.searchCount(
+                const countryExists = await odooService.searchRead(
                     "res.country",
                     [["id", "=", countryId]],
-                    // client
+                    ["id", "name"]
                 );
-                if (countryExists) safeCountryId = countryId;
+                console.log("🌍 Country Validation:", countryExists);
+                if (countryExists.length) {
+                    safeCountryId = countryId;
+                } else {
+                    console.log("⚠️ Warning: Invalid country_id, setting to false");
+                }
             }
 
             // 3️⃣ Validate Report Template (OPTIONAL)
             let safeReportId = false;
             if (reportId) {
-                const reportExists = await odooService.searchCount(
+                const reportExists = await odooService.searchRead(
                     "ir.actions.report",
                     [["id", "=", reportId]],
-                    // client
+                    ["id", "name"]
                 );
-                if (reportExists) safeReportId = reportId;
+                console.log("📄 Report Template Validation:", reportExists);
+                if (reportExists.length) {
+                    safeReportId = reportId;
+                } else {
+                    console.log("⚠️ Warning: Invalid report_id, setting to false");
+                }
+            }
+
+            // 4️⃣ Check if Salary Structure already exists for this client
+            const existing = await odooService.searchRead(
+                "hr.payroll.structure",
+                [
+                    ["name", "=", name],
+                    ["client_id", "=", client_id],
+                ],
+                ["id", "name"]
+            );
+
+            console.log("🔍 Existing Salary Structure Check:", existing);
+
+            if (existing.length) {
+                return res.status(409).json({
+                    status: "error",
+                    message: `Salary Structure '${name}' already exists for this organization`,
+                    existing_id: existing[0].id,
+                });
             }
 
             /* ------------------------------------------------------------------
-            🧱 PAYLOAD (EXACTLY MATCHES hr.payroll.structure)
+                🧱 PAYLOAD (EXACTLY MATCHES hr.payroll.structure)
             ------------------------------------------------------------------ */
             const payload = {
                 name: name,
-                type_id: typeId,                     // ✅ guaranteed valid
+                type_id: typeId,                      // ✅ guaranteed valid
                 country_id: safeCountryId,            // ✅ safe
                 hide_basic_on_pdf: !!hideBasicOnPdf,
                 schedule_pay: schedulePay || false,   // readonly but creatable
@@ -683,40 +838,84 @@ class PayrollController {
                 use_worked_day_lines: useWorkedDayLines ?? true,
                 ytd_computation: !!ytdComputation,
                 payslip_name: payslipName || false,
+                client_id: client_id,                 // ✅ Add client_id
             };
+
+            console.log("📦 Final Payload:", JSON.stringify(payload, null, 2));
 
             const structureId = await odooService.create(
                 "hr.payroll.structure",
-                payload,
-                //   client
+                payload
             );
 
+            console.log("✅ Salary Structure Created - ID:", structureId);
+
+            // 5️⃣ Fetch created record details
+            const createdStructure = await odooService.searchRead(
+                "hr.payroll.structure",
+                [["id", "=", structureId]],
+                [
+                    "name",
+                    "type_id",
+                    "country_id",
+                    "hide_basic_on_pdf",
+                    "schedule_pay",
+                    "report_id",
+                    "use_worked_day_lines",
+                    "ytd_computation",
+                    "payslip_name",
+                ]
+            );
+
+            console.log("📋 Created Salary Structure Details:", JSON.stringify(createdStructure, null, 2));
+
             return res.status(201).json({
-                success: true,
+                status: "success",
                 message: "Salary Structure created successfully",
-                data: {
-                    id: structureId,
-                },
+                data: createdStructure[0] || { id: structureId },
             });
 
         } catch (error) {
-            console.error("Create Salary Structure Error:", error);
-            return res.status(500).json({
-                success: false,
-                message: "Failed to create Salary Structure",
-                error: error.message,
+            console.error("❌ Create Salary Structure Error:", error);
+            console.error("🔥 Error Stack:", error.stack);
+            console.error("🔥 Error Details:", JSON.stringify(error, null, 2));
+
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to create Salary Structure",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }
     async getSalaryStructure(req, res) {
         try {
-            // const client = await getClientFromRequest(req);
             const { id } = req.params; // optional
+            const { user_id, unique_user_id } = req.body || req.query;
 
-            const domain = [];
+            if (!user_id && !unique_user_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Either user_id or unique_user_id is required"
+                });
+            }
+
+            // 🏢 Ab safely client_id get karo
+            const { client_id } = await getClientFromRequest(req);
+
+            if (!client_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Client ID not found",
+                });
+            }
+
+            // 🔍 Build domain with client_id filter
+            const domain = [["client_id", "=", client_id]];
+
             if (id) {
                 domain.push(["id", "=", Number(id)]);
             }
+
 
             const records = await odooService.searchRead(
                 "hr.payroll.structure",
@@ -732,15 +931,16 @@ class PayrollController {
                     "use_worked_day_lines",
                     "ytd_computation",
                     "payslip_name",
-                    "create_date"
-                ],
-                // client
+                    "create_date",
+                    "client_id"
+                ]
             );
+
 
             if (id && (!records || records.length === 0)) {
                 return res.status(404).json({
-                    success: false,
-                    message: "Salary structure not found"
+                    status: "error",
+                    message: "Salary structure not found or does not belong to your organization"
                 });
             }
 
@@ -759,21 +959,25 @@ class PayrollController {
                 ytdComputation: rec.ytd_computation,
                 payslipName: rec.payslip_name,
                 createdAt: rec.create_date,
+                clientId: rec.client_id ? rec.client_id[0] : null,
             }));
 
+
             return res.status(200).json({
-                success: true,
-                message: id ? "Salary Structure fetched successfully"
+                status: "success",
+                message: id
+                    ? "Salary Structure fetched successfully"
                     : "Salary Structures fetched successfully",
+                total: formattedData.length,
                 data: id ? formattedData[0] : formattedData,
             });
-        }
-        catch (error) {
-            console.error("Get Salary Structure Error:", error);
+
+        } catch (error) {
             return res.status(500).json({
-                success: false,
+                status: "error",
                 message: "Failed to fetch Salary Structure",
-                error: error.message
+                error: error.message,
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }

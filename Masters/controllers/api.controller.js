@@ -7427,6 +7427,17 @@ class ApiController {
 
   async getAllApprovalRequests(req, res) {
     try {
+      // Validate required parameters first
+      const { user_id, unique_user_id } = req.body || req.query;
+
+      if (!user_id && !unique_user_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "Either user_id or unique_user_id is required"
+        });
+      }
+
+      // Get client and current user from request
       const { client_id, currentUser } = await getClientFromRequest(req);
 
       if (!client_id) {
@@ -7436,12 +7447,14 @@ class ApiController {
         });
       }
 
+      // Build domain filter
       let domain = [["req_employee_id.address_id", "=", client_id]];
 
       if (!currentUser.is_client_employee_admin) {
         domain.push(["approval_log_list.approver_id", "=", currentUser.id]);
       }
 
+      // Define fields to fetch
       const fields = [
         "name",
         "req_employee_id",
@@ -7454,6 +7467,7 @@ class ApiController {
         "approval_log_list"
       ];
 
+      // Fetch approval requests from Odoo
       const requests = await odooService.searchRead(
         "approval.request",
         domain,
@@ -7464,6 +7478,7 @@ class ApiController {
         currentUser.id
       );
 
+      // Handle empty results
       if (requests.length === 0) {
         return res.status(200).json({
           status: "success",
@@ -7473,9 +7488,11 @@ class ApiController {
         });
       }
 
+      // Process and enrich request data
       const processedRequests = requests.map((item) => {
         const newItem = { ...item };
 
+        // Determine approval type
         let approvalType = "Unknown";
 
         if (newItem.hr_leave_id && newItem.hr_leave_id !== false) {
@@ -7488,6 +7505,7 @@ class ApiController {
 
         newItem.approvalType = approvalType;
 
+        // Remove reason field if request is not refused/rejected
         if (newItem.state !== "refused" && newItem.state !== "reject") {
           delete newItem.reason;
         }
@@ -7495,6 +7513,7 @@ class ApiController {
         return newItem;
       });
 
+      // Return success response
       return res.status(200).json({
         status: "success",
         total: processedRequests.length,
@@ -7502,9 +7521,13 @@ class ApiController {
       });
 
     } catch (error) {
+      // Log error for debugging
+      console.error("Error in getAllApprovalRequests:", error);
+
+      // Return server error response
       return res.status(500).json({
         status: "error",
-        message: error.message
+        message: error.message || "An unexpected error occurred"
       });
     }
   }
