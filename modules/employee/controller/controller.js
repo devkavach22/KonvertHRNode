@@ -554,30 +554,30 @@ const createAttendancePolicy = async (req, res) => {
   try {
     console.log("--------------------------------------------------");
     console.log("🚀 API Called: createAttendancePolicy");
-    
+
     const { client_id } = await getClientFromRequest(req);
     const data = req.body;
-        const userIdFromParams = req.query.user_id
+    const userIdFromParams = req.query.user_id
       ? parseInt(req.query.user_id)
       : null;
 
     console.log("user_id from params:", userIdFromParams);
     console.log("client_id:", client_id);
-    
+
     if (!data.name) {
-      return res.status(400).json({ 
-        status: "error", 
-        message: "Attendance Policy name is required" 
+      return res.status(400).json({
+        status: "error",
+        message: "Attendance Policy name is required"
       });
     }
-    
+
     const existing = await odooService.searchRead(
       "attendance.policy",
       [["name", "=", data.name.trim()]],
       ["id"],
       1
     );
-    
+
     if (existing.length > 0) {
       console.log(`⚠️ Conflict: Policy '${data.name}' already exists`);
       return res.status(409).json({
@@ -585,7 +585,7 @@ const createAttendancePolicy = async (req, res) => {
         message: "Attendance Policy with this name already exists",
       });
     }
-    
+
     const vals = {
       name: data.name.trim(),
       type: data.type || "regular",
@@ -600,27 +600,27 @@ const createAttendancePolicy = async (req, res) => {
       absent_if: data.absent_if || false,
       client_id: client_id,
     };
-    
+
     const create_uid_value =
       userIdFromParams || (client_id ? parseInt(client_id) : undefined);
-    
+
     console.log("create_uid will be set to:", create_uid_value);
     console.log("🆕 Creating new policy record...");
-    
+
     const policyId = await odooHelpers.createWithCustomUid(
       "attendance.policy",
       vals,
       create_uid_value
     );
-    
+
     console.log(`✅ Success: Policy Created (ID: ${policyId})`);
-    
+
     return res.status(201).json({
       status: "success",
       message: "Attendance Policy created successfully",
       id: policyId,
-      created_by: create_uid_value, 
-      created_date: new Date().toISOString(),  
+      created_by: create_uid_value,
+      created_date: new Date().toISOString(),
     });
   } catch (error) {
     console.error("❌ Error in Attendance Policy creation:", error.message);
@@ -864,9 +864,7 @@ const createEmployee = async (req, res) => {
       driving_license,
       upload_passbook,
       image_1920,
-      group_id,
-      approval_user_id,
-      approval_sequance,
+      approvals,
       longitude,
       device_id,
       device_unique_id,
@@ -907,6 +905,24 @@ const createEmployee = async (req, res) => {
       }
     }
 
+    if (birthday) {
+      const birthDate = new Date(birthday);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+
+      if (age < 18) {
+        return res.status(400).json({
+          status: "error",
+          message: "Employee must be at least 18 years old",
+        });
+      }
+    }
+
     if (is_uan_number_applicable) {
       if (!uan_number)
         return res
@@ -932,15 +948,90 @@ const createEmployee = async (req, res) => {
 
     const existing = await odooHelpers.searchRead(
       "hr.employee",
-      ["|", ["name", "=", trimmedName], ["private_email", "=", trimmedEmail]],
-      ["id"]
+      [["private_email", "=", trimmedEmail]],
+      ["id", "name", "private_email"]
     );
 
     if (existing.length > 0) {
+      console.log("DUPLICATE EMAIL FOUND");
+      console.log("Attempting to create with email:", trimmedEmail);
+      console.log("Existing employee:", existing[0]);
+
       return res.status(409).json({
         status: "error",
-        message: "Employee already exists",
+        message: `Employee already exists with this email: ${trimmedEmail}`,
       });
+    }
+
+    // NEW: Unique identification number validation
+    const uniqueChecks = [];
+
+    if (aadhaar_number && aadhaar_number.trim() !== "") {
+      uniqueChecks.push({
+        field: "aadhaar_number",
+        value: aadhaar_number.trim(),
+        label: "Aadhaar Card"
+      });
+    }
+
+    if (pan_number && pan_number.trim() !== "") {
+      uniqueChecks.push({
+        field: "pan_number",
+        value: pan_number.trim(),
+        label: "PAN Number"
+      });
+    }
+
+    if (voter_id && voter_id.trim() !== "") {
+      uniqueChecks.push({
+        field: "voter_id",
+        value: voter_id.trim(),
+        label: "Voter ID"
+      });
+    }
+
+    if (passport_id && passport_id.trim() !== "") {
+      uniqueChecks.push({
+        field: "passport_id",
+        value: passport_id.trim(),
+        label: "Passport Number"
+      });
+    }
+
+    if (esi_number && esi_number.trim() !== "") {
+      uniqueChecks.push({
+        field: "esi_number",
+        value: esi_number.trim(),
+        label: "ESI Number"
+      });
+    }
+
+    if (uan_number && uan_number.trim() !== "") {
+      uniqueChecks.push({
+        field: "uan_number",
+        value: uan_number.trim(),
+        label: "UAN Number"
+      });
+    }
+
+    // Check for duplicates
+    for (const check of uniqueChecks) {
+      const duplicate = await odooHelpers.searchRead(
+        "hr.employee",
+        [[check.field, "=", check.value]],
+        ["id", "name"]
+      );
+
+      if (duplicate.length > 0) {
+        console.log(`DUPLICATE ${check.label.toUpperCase()} FOUND`);
+        console.log(`${check.label}:`, check.value);
+        console.log("Existing employee:", duplicate[0]);
+
+        return res.status(409).json({
+          status: "error",
+          message: `${check.label} already exists for another employee`,
+        });
+      }
     }
 
     const { client_id } = await getClientFromRequest(req);
@@ -974,11 +1065,9 @@ const createEmployee = async (req, res) => {
         // Update bank account partner_id if bank_account_id is provided
         if (bank_account_id && partnerId) {
           try {
-            console.log("==========================================");
             console.log("BANK ACCOUNT UPDATE PROCESS STARTED");
             console.log("Bank account ID received:", bank_account_id);
             console.log("User's partner_id:", partnerId);
-            console.log("==========================================");
 
             const bankAccounts = await odooHelpers.searchRead(
               "res.partner.bank",
@@ -1008,30 +1097,24 @@ const createEmployee = async (req, res) => {
               console.log(
                 `✓ Bank account ${bankAccountId} partner_id updated from ${oldPartnerId} to ${userPartnerId}`
               );
-              console.log("==========================================");
             } else {
               console.log(
                 "✗ ERROR: Bank account with ID",
                 bank_account_id,
                 "NOT FOUND"
               );
-              console.log("==========================================");
             }
           } catch (bankError) {
-            console.error("==========================================");
             console.error(
               "✗ ERROR updating bank account partner_id:",
               bankError
             );
             console.error("Error details:", bankError.message);
-            console.error("==========================================");
           }
         } else {
-          console.log("==========================================");
           console.log("BANK ACCOUNT UPDATE SKIPPED");
           console.log("bank_account_id provided:", !!bank_account_id);
           console.log("partnerId available:", !!partnerId);
-          console.log("==========================================");
         }
 
         const data = {
@@ -1353,29 +1436,40 @@ const createEmployee = async (req, res) => {
         }
       }
 
-      if (group_id && approval_user_id && approval_sequance !== undefined) {
+      // UPDATED: Handle approvals array of objects
+      if (approvals && Array.isArray(approvals) && approvals.length > 0) {
         try {
           console.log("Creating employee approval user details...");
-          const approvalData = {
-            group_id: parseInt(group_id),
-            user_id: parseInt(approval_user_id),
-            approval_sequance: parseInt(approval_sequance),
-            employee_id: employeeId,
-          };
 
-          const approvalId = await odooHelpers.create(
-            "employee.approval.user.details",
-            approvalData
-          );
+          // Create approval records from the approvals array
+          for (let i = 0; i < approvals.length; i++) {
+            const approval = approvals[i];
 
-          console.log(
-            "Employee approval user details created with ID:",
-            approvalId
-          );
+            const approvalData = {
+              group_id: parseInt(approval.group_id),
+              user_id: parseInt(approval.approval_user_id),
+              approval_sequance: parseInt(approval.approval_sequance),
+              employee_id: employeeId,
+            };
+
+            if (approval.model) {
+              approvalData.model = approval.model;
+            }
+
+            const approvalId = await odooHelpers.create(
+              "employee.approval.user.details",
+              approvalData
+            );
+
+            console.log(
+              `Employee approval user details created with ID: ${approvalId} (Index: ${i})`
+            );
+          }
         } catch (approvalError) {
           console.error("Error creating approval details:", approvalError);
         }
       }
+
       try {
         console.log("==========================================");
         console.log("SENDING REGISTRATION CODE EMAIL");
@@ -1425,7 +1519,6 @@ const createEmployee = async (req, res) => {
     });
   }
 };
-
 const getEmployees = async (req, res) => {
   try {
     const { client_id, currentUser } = await getClientFromRequest(req);
@@ -1458,116 +1551,59 @@ const getEmployees = async (req, res) => {
           "hr.employee",
           [["id", "=", emp.id]],
           [
-            "id",
-            "name",
-            "father_name",
-            "gender",
-            "birthday",
-            "blood_group",
-            "private_email",
-            "present_address",
-            "permanent_address",
-            "emergency_contact_name",
-            "emergency_contact_relation",
-            "emergency_contact_mobile",
-            "emergency_contact_address",
-            "mobile_phone",
-            "pin_code",
-            "work_phone",
-            "marital",
-            "spouse_name",
-            "attendance_policy_id",
-            "employee_category",
-            "shift_roster_id",
-            "resource_calendar_id",
-            "district_id",
-            "state_id",
-            "bussiness_type_id",
-            "business_location_id",
-            "job_id",
-            "department_id",
-            "work_location_id",
-            "country_id",
-            "is_geo_tracking",
-            "aadhaar_number",
-            "pan_number",
-            "voter_id",
-            "passport_id",
-            "esi_number",
-            "category",
-            "is_uan_number_applicable",
-            "uan_number",
-            "cd_employee_num",
-            "name_of_post_graduation",
-            "name_of_any_other_education",
-            "total_experiance",
-            "religion",
-            "date_of_marriage",
-            "probation_period",
-            "confirmation_date",
-            "hold_remarks",
-            "is_lapse_allocation",
-            "group_company_joining_date",
-            "week_off",
-            "grade_band",
-            "status",
-            "employee_password",
-            "hold_status",
-            "bank_account_id",
-            "attendance_capture_mode",
-            "reporting_manager_id",
-            "head_of_department_id",
-            "barcode",
-            "pin",
-            "type_of_sepration",
-            "resignation_date",
-            "notice_period_days",
-            "joining_date",
-            "employment_type",
-            "user_id",
-            "driving_license",
-            "upload_passbook",
-            "image_1920",
-            "name_of_site",
-            "longitude",
-            "device_id",
-            "device_unique_id",
-            "latitude",
-            "device_name",
-            "system_version",
-            "ip_address",
-            "device_platform",
+            "id", "name", "father_name", "gender", "birthday", "blood_group",
+            "private_email", "present_address", "permanent_address",
+            "emergency_contact_name", "emergency_contact_relation",
+            "emergency_contact_mobile", "emergency_contact_address",
+            "mobile_phone", "pin_code", "work_phone", "marital", "spouse_name",
+            "attendance_policy_id", "employee_category", "shift_roster_id",
+            "resource_calendar_id", "district_id", "state_id", "bussiness_type_id",
+            "business_location_id", "job_id", "department_id", "work_location_id",
+            "country_id", "is_geo_tracking", "aadhaar_number", "pan_number",
+            "voter_id", "passport_id", "esi_number", "category",
+            "is_uan_number_applicable", "uan_number", "cd_employee_num",
+            "name_of_post_graduation", "name_of_any_other_education",
+            "total_experiance", "religion", "date_of_marriage", "probation_period",
+            "confirmation_date", "hold_remarks", "is_lapse_allocation",
+            "group_company_joining_date", "week_off", "grade_band", "status",
+            "employee_password", "hold_status", "bank_account_id",
+            "attendance_capture_mode", "reporting_manager_id",
+            "head_of_department_id", "barcode", "pin", "type_of_sepration",
+            "resignation_date", "notice_period_days", "joining_date",
+            "employment_type", "user_id", "driving_license", "upload_passbook",
+            "image_1920", "name_of_site", "longitude", "device_id",
+            "device_unique_id", "latitude", "device_name", "system_version",
+            "ip_address", "device_platform", "random_code_for_reg", // ADDED THIS FIELD
           ]
         );
 
         if (employeeData.length > 0) {
           const employee = employeeData[0];
 
-          // --- CLEANUP START: false/null ko empty string se replace karein ---
+          // --- CLEANUP: false/null ko empty string se replace karein ---
           Object.keys(employee).forEach((key) => {
             if (employee[key] === false || employee[key] === null) {
               employee[key] = "";
             }
           });
-          // --- CLEANUP END ---
 
+          // Fetch approval details - Added 'model' field
           const approvalDetails = await odooHelpers.searchRead(
             "employee.approval.user.details",
             [["employee_id", "=", employee.id]],
-            ["group_id", "user_id", "approval_sequance"]
+            ["group_id", "user_id", "approval_sequance", "model"]
           );
 
+          // Transform approval details into array of objects
           if (approvalDetails.length > 0) {
-            // Yahan bhi check lagaya hai taaki false na aaye
-            employee.group_id = approvalDetails[0].group_id || "";
-            employee.approval_user_id = approvalDetails[0].user_id || "";
-            employee.approval_sequance =
-              approvalDetails[0].approval_sequance || "";
+            employee.approvals = approvalDetails.map(approval => ({
+              group_id: Array.isArray(approval.group_id) ? approval.group_id[0] : approval.group_id || "",
+              approval_user_id: Array.isArray(approval.user_id) ? approval.user_id[0] : approval.user_id || "",
+              approval_sequance: approval.approval_sequance || "",
+              model: approval.model || ""
+            }));
           } else {
-            // Default empty fields agar approval data nahi hai
-            employee.group_id = "";
-            employee.approval_user_id = "";
-            employee.approval_sequance = "";
+            employee.approvals = [];
           }
 
           employees.push(employee);
@@ -1590,12 +1626,10 @@ const getEmployees = async (req, res) => {
     });
   }
 };
-
 const getEmployeeById = async (req, res) => {
   try {
     const { client_id } = await getClientFromRequest(req);
     const { id } = req.params;
-
     console.log(`API Called: Get Employee ID ${id}`);
 
     const employeeData = await odooHelpers.searchRead(
@@ -1605,85 +1639,29 @@ const getEmployeeById = async (req, res) => {
         ["address_id", "=", client_id],
       ],
       [
-        "id",
-        "name",
-        "father_name",
-        "gender",
-        "birthday",
-        "blood_group",
-        "private_email",
-        "present_address",
-        "permanent_address",
-        "emergency_contact_name",
-        "emergency_contact_relation",
-        "emergency_contact_mobile",
-        "emergency_contact_address",
-        "mobile_phone",
-        "pin_code",
-        "work_phone",
-        "marital",
-        "spouse_name",
-        "attendance_policy_id",
-        "employee_category",
-        "shift_roster_id",
-        "resource_calendar_id",
-        "district_id",
-        "state_id",
-        "bussiness_type_id",
-        "business_location_id",
-        "job_id",
-        "department_id",
-        "work_location_id",
-        "country_id",
-        "is_geo_tracking",
-        "aadhaar_number",
-        "pan_number",
-        "voter_id",
-        "passport_id",
-        "esi_number",
-        "category",
-        "is_uan_number_applicable",
-        "uan_number",
-        "cd_employee_num",
-        "name_of_post_graduation",
-        "name_of_any_other_education",
-        "total_experiance",
-        "religion",
-        "date_of_marriage",
-        "probation_period",
-        "confirmation_date",
-        "hold_remarks",
-        "is_lapse_allocation",
-        "group_company_joining_date",
-        "week_off",
-        "grade_band",
-        "status",
-        "employee_password",
-        "hold_status",
-        "bank_account_id",
-        "attendance_capture_mode",
-        "reporting_manager_id",
-        "head_of_department_id",
-        "barcode",
-        "pin",
-        "type_of_sepration",
-        "resignation_date",
-        "notice_period_days",
-        "joining_date",
-        "employment_type",
-        "user_id",
-        "driving_license",
-        "upload_passbook",
-        "image_1920",
-        "name_of_site",
-        "longitude",
-        "device_id",
-        "device_unique_id",
-        "latitude",
-        "device_name",
-        "system_version",
-        "ip_address",
-        "device_platform",
+        "id", "name", "father_name", "gender", "birthday", "blood_group",
+        "private_email", "present_address", "permanent_address",
+        "emergency_contact_name", "emergency_contact_relation",
+        "emergency_contact_mobile", "emergency_contact_address",
+        "mobile_phone", "pin_code", "work_phone", "marital", "spouse_name",
+        "attendance_policy_id", "employee_category", "shift_roster_id",
+        "resource_calendar_id", "district_id", "state_id", "bussiness_type_id",
+        "business_location_id", "job_id", "department_id", "work_location_id",
+        "country_id", "is_geo_tracking", "aadhaar_number", "pan_number",
+        "voter_id", "passport_id", "esi_number", "category",
+        "is_uan_number_applicable", "uan_number", "cd_employee_num",
+        "name_of_post_graduation", "name_of_any_other_education",
+        "total_experiance", "religion", "date_of_marriage", "probation_period",
+        "confirmation_date", "hold_remarks", "is_lapse_allocation",
+        "group_company_joining_date", "week_off", "grade_band", "status",
+        "employee_password", "hold_status", "bank_account_id",
+        "attendance_capture_mode", "reporting_manager_id",
+        "head_of_department_id", "barcode", "pin", "type_of_sepration",
+        "resignation_date", "notice_period_days", "joining_date",
+        "employment_type", "user_id", "driving_license", "upload_passbook",
+        "image_1920", "name_of_site", "longitude", "device_id",
+        "device_unique_id", "latitude", "device_name", "system_version",
+        "ip_address", "device_platform", "random_code_for_reg", // ADDED THIS FIELD
       ]
     );
 
@@ -1696,30 +1674,30 @@ const getEmployeeById = async (req, res) => {
 
     const employee = employeeData[0];
 
-    // --- CLEANUP LOGIC: false/null ko empty string se replace karein ---
+    // Cleanup logic
     Object.keys(employee).forEach((key) => {
       if (employee[key] === false || employee[key] === null) {
         employee[key] = "";
       }
     });
 
-    // Fetch extra approval details
+    // Fetch approval details
     const approvalDetails = await odooHelpers.searchRead(
       "employee.approval.user.details",
       [["employee_id", "=", employee.id]],
-      ["group_id", "user_id", "approval_sequance"]
+      ["group_id", "user_id", "approval_sequance", "model"]
     );
 
+    // Transform approval details into array of objects
     if (approvalDetails.length > 0) {
-      // Fallback to "" for approval fields
-      employee.group_id = approvalDetails[0].group_id || "";
-      employee.approval_user_id = approvalDetails[0].user_id || "";
-      employee.approval_sequance = approvalDetails[0].approval_sequance || "";
+      employee.approvals = approvalDetails.map(approval => ({
+        group_id: Array.isArray(approval.group_id) ? approval.group_id[0] : approval.group_id || "",
+        approval_user_id: Array.isArray(approval.user_id) ? approval.user_id[0] : approval.user_id || "",
+        approval_sequance: approval.approval_sequance || "",
+        model: approval.model || ""
+      }));
     } else {
-      // Fields exist honi chahiye but empty values ke sath
-      employee.group_id = "";
-      employee.approval_user_id = "";
-      employee.approval_sequance = "";
+      employee.approvals = [];
     }
 
     return res.status(200).json({
@@ -1734,6 +1712,472 @@ const getEmployeeById = async (req, res) => {
     });
   }
 };
+// const updateEmployee = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     if (!id) {
+//       return res.status(400).json({
+//         status: "error",
+//         message: "Employee ID is required",
+//       });
+//     }
+
+//     const {
+//       name,
+//       father_name,
+//       gender,
+//       birthday,
+//       blood_group,
+//       private_email,
+//       present_address,
+//       permanent_address,
+//       emergency_contact_name,
+//       emergency_contact_relation,
+//       emergency_contact_mobile,
+//       emergency_contact_address,
+//       mobile_phone,
+//       pin_code,
+//       attendance_policy_id,
+//       employee_category,
+//       shift_roster_id,
+//       resource_calendar_id,
+//       district_id,
+//       state_id,
+//       bussiness_type_id,
+//       business_location_id,
+//       job_id,
+//       department_id,
+//       work_location_id,
+//       country_id,
+//       is_geo_tracking,
+//       aadhaar_number,
+//       pan_number,
+//       voter_id,
+//       passport_id,
+//       esi_number,
+//       category,
+//       is_uan_number_applicable,
+//       uan_number,
+//       cd_employee_num,
+//       name_of_post_graduation,
+//       name_of_any_other_education,
+//       total_experiance,
+//       religion,
+//       date_of_marriage,
+//       probation_period,
+//       confirmation_date,
+//       hold_remarks,
+//       is_lapse_allocation,
+//       group_company_joining_date,
+//       week_off,
+//       grade_band,
+//       status,
+//       employee_password,
+//       hold_status,
+//       bank_account_id,
+//       attendance_capture_mode,
+//       reporting_manager_id,
+//       head_of_department_id,
+//       barcode,
+//       pin,
+//       type_of_sepration,
+//       resignation_date,
+//       notice_period_days,
+//       joining_date,
+//       employment_type,
+//       work_phone,
+//       marital,
+//       driving_license,
+//       upload_passbook,
+//       image_1920,
+//       spouse_name,
+//       name_of_site,
+//       approvals,
+//       longitude,
+//       device_id,
+//       device_unique_id,
+//       latitude,
+//       device_name,
+//       system_version,
+//       ip_address,
+//       device_platform,
+//       account_number,
+//     } = req.body;
+
+//     const existingEmployee = await odooHelpers.searchRead(
+//       "hr.employee",
+//       [["id", "=", parseInt(id)]],
+//       ["id", "name", "private_email", "user_id"]
+//     );
+
+//     if (existingEmployee.length === 0) {
+//       return res.status(404).json({
+//         status: "error",
+//         message: "Employee not found",
+//       });
+//     }
+
+//     const currentEmployee = existingEmployee[0];
+
+//     // UPDATED: Only check for duplicates if email is actually being changed
+//     if (private_email !== undefined) {
+//       const trimmedEmail = private_email.trim();
+
+//       // Only check if the new email is different from current email
+//       if (trimmedEmail !== currentEmployee.private_email) {
+//         const duplicate = await odooHelpers.searchRead(
+//           "hr.employee",
+//           [
+//             "&",
+//             ["id", "!=", parseInt(id)],
+//             ["private_email", "=", trimmedEmail]
+//           ],
+//           ["id", "name", "private_email"]
+//         );
+
+//         if (duplicate.length > 0) {
+//           console.log("==========================================");
+//           console.log("DUPLICATE EMAIL FOUND DURING UPDATE");
+//           console.log("Attempting to update with email:", trimmedEmail);
+//           console.log("Existing employee:", duplicate[0]);
+//           console.log("==========================================");
+
+//           return res.status(409).json({
+//             status: "error",
+//             message: `Another employee already exists with this email: ${trimmedEmail}`,
+//           });
+//         }
+//       }
+//     }
+
+//     // UPDATED: Check for unique identification numbers only if they're being changed
+//     const uniqueChecks = [];
+
+//     if (aadhaar_number !== undefined && aadhaar_number.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "aadhaar_number",
+//         value: aadhaar_number.trim(),
+//         label: "Aadhaar Card"
+//       });
+//     }
+
+//     if (pan_number !== undefined && pan_number.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "pan_number",
+//         value: pan_number.trim(),
+//         label: "PAN Number"
+//       });
+//     }
+
+//     if (voter_id !== undefined && voter_id.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "voter_id",
+//         value: voter_id.trim(),
+//         label: "Voter ID"
+//       });
+//     }
+
+//     if (passport_id !== undefined && passport_id.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "passport_id",
+//         value: passport_id.trim(),
+//         label: "Passport Number"
+//       });
+//     }
+
+//     if (esi_number !== undefined && esi_number.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "esi_number",
+//         value: esi_number.trim(),
+//         label: "ESI Number"
+//       });
+//     }
+
+//     if (uan_number !== undefined && uan_number.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "uan_number",
+//         value: uan_number.trim(),
+//         label: "UAN Number"
+//       });
+//     }
+
+//     // Check for duplicates (excluding current employee)
+//     for (const check of uniqueChecks) {
+//       const duplicate = await odooHelpers.searchRead(
+//         "hr.employee",
+//         [
+//           "&",
+//           ["id", "!=", parseInt(id)],
+//           [check.field, "=", check.value]
+//         ],
+//         ["id", "name"]
+//       );
+
+//       if (duplicate.length > 0) {
+//         console.log("==========================================");
+//         console.log(`DUPLICATE ${check.label.toUpperCase()} FOUND`);
+//         console.log(`${check.label}:`, check.value);
+//         console.log("Existing employee:", duplicate[0]);
+//         console.log("==========================================");
+
+//         return res.status(409).json({
+//           status: "error",
+//           message: `${check.label} already exists for another employee`,
+//         });
+//       }
+//     }
+
+//     if (is_uan_number_applicable === true) {
+//       if (!uan_number && !currentEmployee.uan_number) {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "UAN Number is required",
+//         });
+//       }
+//       if (!esi_number && !currentEmployee.esi_number) {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "ESI Number is required",
+//         });
+//       }
+//     }
+
+//     const { client_id } = await getClientFromRequest(req);
+//     const userIdFromParams = req.query.user_id
+//       ? parseInt(req.query.user_id)
+//       : null;
+
+//     console.log("user_id from params (for write_uid):", userIdFromParams);
+//     console.log("client_id:", client_id);
+
+//     const data = {};
+
+//     if (name !== undefined) data.name = name.trim();
+//     if (father_name !== undefined) data.father_name = father_name;
+//     if (gender !== undefined) data.gender = gender;
+//     if (birthday !== undefined) data.birthday = birthday;
+//     if (blood_group !== undefined) data.blood_group = blood_group;
+//     if (private_email !== undefined) data.private_email = private_email.trim();
+//     if (present_address !== undefined) data.present_address = present_address;
+//     if (permanent_address !== undefined)
+//       data.permanent_address = permanent_address;
+//     if (emergency_contact_name !== undefined)
+//       data.emergency_contact_name = emergency_contact_name;
+//     if (emergency_contact_relation !== undefined)
+//       data.emergency_contact_relation = emergency_contact_relation;
+//     if (emergency_contact_address !== undefined)
+//       data.emergency_contact_address = emergency_contact_address;
+//     if (emergency_contact_mobile !== undefined)
+//       data.emergency_contact_mobile = emergency_contact_mobile;
+//     if (mobile_phone !== undefined) data.mobile_phone = mobile_phone;
+//     if (pin_code !== undefined) data.pin_code = pin_code;
+
+//     if (client_id) {
+//       data.address_id = parseInt(client_id);
+//     }
+//     if (work_phone !== undefined) data.work_phone = work_phone;
+//     if (marital !== undefined) data.marital = marital;
+//     if (spouse_name !== undefined) data.spouse_name = spouse_name;
+//     if (attendance_policy_id !== undefined)
+//       data.attendance_policy_id = parseInt(attendance_policy_id);
+//     if (employee_category !== undefined)
+//       data.employee_category = employee_category;
+//     if (shift_roster_id !== undefined)
+//       data.shift_roster_id = parseInt(shift_roster_id);
+//     if (resource_calendar_id !== undefined)
+//       data.resource_calendar_id = parseInt(resource_calendar_id);
+//     if (district_id !== undefined) data.district_id = parseInt(district_id);
+//     if (state_id !== undefined) data.state_id = parseInt(state_id);
+//     if (bussiness_type_id !== undefined)
+//       data.bussiness_type_id = parseInt(bussiness_type_id);
+//     if (business_location_id !== undefined)
+//       data.business_location_id = parseInt(business_location_id);
+//     if (job_id !== undefined) data.job_id = parseInt(job_id);
+//     if (department_id !== undefined)
+//       data.department_id = parseInt(department_id);
+//     if (work_location_id !== undefined)
+//       data.work_location_id = parseInt(work_location_id);
+//     if (country_id !== undefined) data.country_id = parseInt(country_id);
+//     if (is_geo_tracking !== undefined) data.is_geo_tracking = is_geo_tracking;
+//     if (aadhaar_number !== undefined) data.aadhaar_number = aadhaar_number;
+//     if (pan_number !== undefined) data.pan_number = pan_number;
+//     if (voter_id !== undefined) data.voter_id = voter_id;
+//     if (passport_id !== undefined) data.passport_id = passport_id;
+//     if (esi_number !== undefined) data.esi_number = esi_number;
+//     if (category !== undefined) data.category = category;
+//     if (is_uan_number_applicable !== undefined)
+//       data.is_uan_number_applicable = is_uan_number_applicable;
+//     if (uan_number !== undefined) data.uan_number = uan_number;
+//     if (cd_employee_num !== undefined) data.cd_employee_num = cd_employee_num;
+//     if (name_of_post_graduation !== undefined)
+//       data.name_of_post_graduation = name_of_post_graduation;
+//     if (name_of_any_other_education !== undefined)
+//       data.name_of_any_other_education = name_of_any_other_education;
+//     if (total_experiance !== undefined)
+//       data.total_experiance = total_experiance;
+//     if (religion !== undefined) data.religion = religion;
+//     if (date_of_marriage !== undefined)
+//       data.date_of_marriage = date_of_marriage;
+//     if (probation_period !== undefined)
+//       data.probation_period = probation_period;
+//     if (confirmation_date !== undefined)
+//       data.confirmation_date = confirmation_date;
+//     if (hold_remarks !== undefined) data.hold_remarks = hold_remarks;
+//     if (is_lapse_allocation !== undefined)
+//       data.is_lapse_allocation = is_lapse_allocation;
+//     if (group_company_joining_date !== undefined)
+//       data.group_company_joining_date = group_company_joining_date;
+//     if (week_off !== undefined) data.week_off = week_off;
+//     if (grade_band !== undefined) data.grade_band = grade_band;
+//     if (status !== undefined) data.status = status;
+//     if (employee_password !== undefined)
+//       data.employee_password = employee_password;
+//     if (hold_status !== undefined) data.hold_status = hold_status;
+//     if (bank_account_id !== undefined) data.bank_account_id = bank_account_id;
+//     if (attendance_capture_mode !== undefined)
+//       data.attendance_capture_mode = attendance_capture_mode;
+//     if (reporting_manager_id !== undefined)
+//       data.reporting_manager_id = parseInt(reporting_manager_id);
+//     if (head_of_department_id !== undefined)
+//       data.head_of_department_id = parseInt(head_of_department_id);
+//     if (barcode !== undefined) data.barcode = barcode;
+//     if (pin !== undefined) data.pin = pin;
+//     if (type_of_sepration !== undefined)
+//       data.type_of_sepration = type_of_sepration;
+//     if (resignation_date !== undefined)
+//       data.resignation_date = resignation_date;
+//     if (notice_period_days !== undefined)
+//       data.notice_period_days = notice_period_days;
+//     if (joining_date !== undefined) data.joining_date = joining_date;
+//     if (employment_type !== undefined) data.employment_type = employment_type;
+//     if (driving_license !== undefined) data.driving_license = driving_license;
+//     if (upload_passbook !== undefined) data.upload_passbook = upload_passbook;
+//     if (image_1920 !== undefined) data.image_1920 = image_1920;
+//     if (name_of_site !== undefined) data.name_of_site = parseInt(name_of_site);
+//     if (longitude !== undefined) data.longitude = longitude;
+//     if (device_id !== undefined) data.device_id = device_id;
+//     if (device_unique_id !== undefined) data.device_unique_id = device_unique_id;
+//     if (latitude !== undefined) data.latitude = latitude;
+//     if (device_name !== undefined) data.device_name = device_name;
+//     if (system_version !== undefined) data.system_version = system_version;
+//     if (ip_address !== undefined) data.ip_address = ip_address;
+//     if (device_platform !== undefined) data.device_platform = device_platform;
+
+//     await odooHelpers.write("hr.employee", parseInt(id), data);
+//     console.log("Employee updated with ID:", id);
+
+//     const write_uid_value =
+//       userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+//     console.log("write_uid will be set to:", write_uid_value);
+
+//     if (write_uid_value) {
+//       try {
+//         const tableName = "hr_employee";
+
+//         await odooHelpers.updateAuditFields(
+//           tableName,
+//           [parseInt(id)],
+//           null,
+//           write_uid_value
+//         );
+
+//         console.log(
+//           `Successfully updated write_uid to ${write_uid_value} for employee ${id}`
+//         );
+//       } catch (auditError) {
+//         console.error("Failed to update write_uid:", auditError.message);
+//       }
+//     }
+
+//     // UPDATED: Handle approvals array
+//     if (approvals && Array.isArray(approvals) && approvals.length > 0) {
+//       try {
+//         console.log("Updating employee approval user details...");
+
+//         const existingApprovals = await odooHelpers.searchRead(
+//           "employee.approval.user.details",
+//           [["employee_id", "=", parseInt(id)]],
+//           ["id"]
+//         );
+
+//         if (existingApprovals.length > 0) {
+//           const approvalIds = existingApprovals.map(a => a.id);
+//           await odooHelpers.unlink("employee.approval.user.details", approvalIds);
+//           console.log(`Deleted ${approvalIds.length} existing approval records`);
+//         }
+
+//         // Create approval records from the approvals array
+//         for (let i = 0; i < approvals.length; i++) {
+//           const approval = approvals[i];
+
+//           const approvalData = {
+//             group_id: parseInt(approval.group_id),
+//             user_id: parseInt(approval.approval_user_id),
+//             approval_sequance: parseInt(approval.approval_sequance),
+//             employee_id: parseInt(id),
+//           };
+
+//           if (approval.model) {
+//             approvalData.model = approval.model;
+//           }
+
+//           const approvalId = await odooHelpers.create(
+//             "employee.approval.user.details",
+//             approvalData
+//           );
+
+//           console.log(
+//             `Employee approval user details created with ID: ${approvalId} (Index: ${i})`
+//           );
+//         }
+//       } catch (approvalError) {
+//         console.error("Error updating approval details:", approvalError);
+//       }
+//     }
+
+//     let userUpdateStatus = null;
+//     if (private_email && currentEmployee.user_id) {
+//       try {
+//         const trimmedEmail = private_email.trim();
+//         const updateUserData = {
+//           login: trimmedEmail,
+//           email: trimmedEmail,
+//         };
+
+//         if (name) updateUserData.name = name.trim();
+//         if (work_phone) updateUserData.phone = work_phone;
+//         if (mobile_phone) updateUserData.mobile = mobile_phone;
+
+//         await odooHelpers.write(
+//           "res.users",
+//           currentEmployee.user_id,
+//           updateUserData
+//         );
+//         console.log("User updated with ID:", currentEmployee.user_id);
+//         userUpdateStatus = "updated";
+//       } catch (userError) {
+//         console.error("Error updating user:", userError);
+//         userUpdateStatus = "failed";
+//       }
+//     }
+
+//     return res.status(200).json({
+//       status: "success",
+//       message: "Employee updated successfully",
+//       id: parseInt(id),
+//       user_id: currentEmployee.user_id,
+//       updated_by: write_uid_value
+//     });
+//   } catch (error) {
+//     console.error("Error updating employee:", error);
+//     return res.status(error.status || 500).json({
+//       status: "error",
+//       message: error.message || "Failed to update employee",
+//     });
+//   }
+// };
+
 const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1813,12 +2257,26 @@ const updateEmployee = async (req, res) => {
       driving_license,
       upload_passbook,
       image_1920,
+      spouse_name,
+      name_of_site,
+      approvals,
+      longitude,
+      device_id,
+      device_unique_id,
+      latitude,
+      device_name,
+      system_version,
+      ip_address,
+      device_platform,
+      account_number,
     } = req.body;
 
+    // Fetch existing employee with all unique fields
     const existingEmployee = await odooHelpers.searchRead(
       "hr.employee",
       [["id", "=", parseInt(id)]],
-      ["id", "private_email", "user_id"]
+      ["id", "name", "private_email", "user_id", "aadhaar_number", "pan_number", 
+       "voter_id", "passport_id", "esi_number", "uan_number"]
     );
 
     if (existingEmployee.length === 0) {
@@ -1830,47 +2288,118 @@ const updateEmployee = async (req, res) => {
 
     const currentEmployee = existingEmployee[0];
 
-    if (name || private_email) {
-      const trimmedName = name?.trim();
-      const trimmedEmail = private_email?.trim();
+    // Only check for duplicates if email is actually being changed
+    if (private_email !== undefined) {
+      const trimmedEmail = private_email.trim();
 
-      let duplicateCheckDomain = [];
-      if (trimmedName && trimmedEmail) {
-        duplicateCheckDomain = [
-          "&",
-          ["id", "!=", parseInt(id)],
-          "|",
-          ["name", "=", trimmedName],
-          ["private_email", "=", trimmedEmail],
-        ];
-      } else if (trimmedName) {
-        duplicateCheckDomain = [
-          "&",
-          ["id", "!=", parseInt(id)],
-          ["name", "=", trimmedName],
-        ];
-      } else if (trimmedEmail) {
-        duplicateCheckDomain = [
-          "&",
-          ["id", "!=", parseInt(id)],
-          ["private_email", "=", trimmedEmail],
-        ];
-      }
-
-      if (duplicateCheckDomain.length > 0) {
+      // Only check if the new email is different from current email
+      if (trimmedEmail !== currentEmployee.private_email) {
         const duplicate = await odooHelpers.searchRead(
           "hr.employee",
-          duplicateCheckDomain,
-          ["id"]
+          [
+            "&",
+            ["id", "!=", parseInt(id)],
+            ["private_email", "=", trimmedEmail]
+          ],
+          ["id", "name", "private_email"]
         );
 
         if (duplicate.length > 0) {
+          console.log("==========================================");
+          console.log("DUPLICATE EMAIL FOUND DURING UPDATE");
+          console.log("Attempting to update with email:", trimmedEmail);
+          console.log("Existing employee:", duplicate[0]);
+          console.log("==========================================");
+
           return res.status(409).json({
             status: "error",
-            message:
-              "Another employee with the same name or email already exists",
+            message: `Another employee already exists with this email: ${trimmedEmail}`,
           });
         }
+      }
+    }
+
+    // Check for unique identification numbers ONLY if they're being changed
+    const uniqueChecks = [];
+
+    // Only check if aadhaar_number is provided AND different from current value
+    if (aadhaar_number !== undefined && aadhaar_number.trim() !== "" && 
+        aadhaar_number.trim() !== currentEmployee.aadhaar_number) {
+      uniqueChecks.push({
+        field: "aadhaar_number",
+        value: aadhaar_number.trim(),
+        label: "Aadhaar Card"
+      });
+    }
+
+    if (pan_number !== undefined && pan_number.trim() !== "" && 
+        pan_number.trim() !== currentEmployee.pan_number) {
+      uniqueChecks.push({
+        field: "pan_number",
+        value: pan_number.trim(),
+        label: "PAN Number"
+      });
+    }
+
+    if (voter_id !== undefined && voter_id.trim() !== "" && 
+        voter_id.trim() !== currentEmployee.voter_id) {
+      uniqueChecks.push({
+        field: "voter_id",
+        value: voter_id.trim(),
+        label: "Voter ID"
+      });
+    }
+
+    if (passport_id !== undefined && passport_id.trim() !== "" && 
+        passport_id.trim() !== currentEmployee.passport_id) {
+      uniqueChecks.push({
+        field: "passport_id",
+        value: passport_id.trim(),
+        label: "Passport Number"
+      });
+    }
+
+    if (esi_number !== undefined && esi_number.trim() !== "" && 
+        esi_number.trim() !== currentEmployee.esi_number) {
+      uniqueChecks.push({
+        field: "esi_number",
+        value: esi_number.trim(),
+        label: "ESI Number"
+      });
+    }
+
+    if (uan_number !== undefined && uan_number.trim() !== "" && 
+        uan_number.trim() !== currentEmployee.uan_number) {
+      uniqueChecks.push({
+        field: "uan_number",
+        value: uan_number.trim(),
+        label: "UAN Number"
+      });
+    }
+
+    // Check for duplicates (excluding current employee)
+    for (const check of uniqueChecks) {
+      const duplicate = await odooHelpers.searchRead(
+        "hr.employee",
+        [
+          "&",
+          ["id", "!=", parseInt(id)],
+          [check.field, "=", check.value]
+        ],
+        ["id", "name"]
+      );
+
+      if (duplicate.length > 0) {
+        console.log("==========================================");
+        console.log(`DUPLICATE ${check.label.toUpperCase()} FOUND`);
+        console.log(`${check.label}:`, check.value);
+        console.log("Existing employee:", duplicate[0]);
+        console.log("==========================================");
+
+        return res.status(409).json({
+          status: "error",
+          message: `${check.label} already exists for another employee`,
+        });
       }
     }
 
@@ -1924,6 +2453,7 @@ const updateEmployee = async (req, res) => {
     }
     if (work_phone !== undefined) data.work_phone = work_phone;
     if (marital !== undefined) data.marital = marital;
+    if (spouse_name !== undefined) data.spouse_name = spouse_name;
     if (attendance_policy_id !== undefined)
       data.attendance_policy_id = parseInt(attendance_policy_id);
     if (employee_category !== undefined)
@@ -1999,6 +2529,15 @@ const updateEmployee = async (req, res) => {
     if (driving_license !== undefined) data.driving_license = driving_license;
     if (upload_passbook !== undefined) data.upload_passbook = upload_passbook;
     if (image_1920 !== undefined) data.image_1920 = image_1920;
+    if (name_of_site !== undefined) data.name_of_site = parseInt(name_of_site);
+    if (longitude !== undefined) data.longitude = longitude;
+    if (device_id !== undefined) data.device_id = device_id;
+    if (device_unique_id !== undefined) data.device_unique_id = device_unique_id;
+    if (latitude !== undefined) data.latitude = latitude;
+    if (device_name !== undefined) data.device_name = device_name;
+    if (system_version !== undefined) data.system_version = system_version;
+    if (ip_address !== undefined) data.ip_address = ip_address;
+    if (device_platform !== undefined) data.device_platform = device_platform;
 
     await odooHelpers.write("hr.employee", parseInt(id), data);
     console.log("Employee updated with ID:", id);
@@ -2026,6 +2565,52 @@ const updateEmployee = async (req, res) => {
       }
     }
 
+    // Handle approvals array
+    if (approvals && Array.isArray(approvals) && approvals.length > 0) {
+      try {
+        console.log("Updating employee approval user details...");
+
+        const existingApprovals = await odooHelpers.searchRead(
+          "employee.approval.user.details",
+          [["employee_id", "=", parseInt(id)]],
+          ["id"]
+        );
+
+        if (existingApprovals.length > 0) {
+          const approvalIds = existingApprovals.map(a => a.id);
+          await odooHelpers.unlink("employee.approval.user.details", approvalIds);
+          console.log(`Deleted ${approvalIds.length} existing approval records`);
+        }
+
+        // Create approval records from the approvals array
+        for (let i = 0; i < approvals.length; i++) {
+          const approval = approvals[i];
+
+          const approvalData = {
+            group_id: parseInt(approval.group_id),
+            user_id: parseInt(approval.approval_user_id),
+            approval_sequance: parseInt(approval.approval_sequance),
+            employee_id: parseInt(id),
+          };
+
+          if (approval.model) {
+            approvalData.model = approval.model;
+          }
+
+          const approvalId = await odooHelpers.create(
+            "employee.approval.user.details",
+            approvalData
+          );
+
+          console.log(
+            `Employee approval user details created with ID: ${approvalId} (Index: ${i})`
+          );
+        }
+      } catch (approvalError) {
+        console.error("Error updating approval details:", approvalError);
+      }
+    }
+
     let userUpdateStatus = null;
     if (private_email && currentEmployee.user_id) {
       try {
@@ -2039,13 +2624,20 @@ const updateEmployee = async (req, res) => {
         if (work_phone) updateUserData.phone = work_phone;
         if (mobile_phone) updateUserData.mobile = mobile_phone;
 
-        await odooHelpers.write(
-          "res.users",
-          currentEmployee.user_id,
-          updateUserData
-        );
-        console.log("User updated with ID:", currentEmployee.user_id);
-        userUpdateStatus = "updated";
+        // Extract user_id if it's an array [id] or use directly if it's a number
+        const userId = Array.isArray(currentEmployee.user_id) 
+          ? currentEmployee.user_id[0] 
+          : currentEmployee.user_id;
+
+        if (userId) {
+          await odooHelpers.write(
+            "res.users",
+            userId,
+            updateUserData
+          );
+          console.log("User updated with ID:", userId);
+          userUpdateStatus = "updated";
+        }
       } catch (userError) {
         console.error("Error updating user:", userError);
         userUpdateStatus = "failed";
@@ -2067,6 +2659,7 @@ const updateEmployee = async (req, res) => {
     });
   }
 };
+
 const deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2130,8 +2723,8 @@ const deleteEmployee = async (req, res) => {
 };
 const getEmployeeDashboard = async (req, res) => {
   try {
-    console.log("===== EMPLOYEE DASHBOARD START =====");
-    console.log("Request Params:", req.query);
+    console.log("===== [START] EMPLOYEE DASHBOARD (SCOPED) =====");
+    console.log("Trace: Incoming Request Query:", JSON.stringify(req.query, null, 2));
 
     const {
       user_id,
@@ -2141,33 +2734,19 @@ const getEmployeeDashboard = async (req, res) => {
       date_to,
       limit = 10,
       offset = 0,
-      use_mock = false,
     } = req.query;
-
-    /* ───────── MOCK RESPONSE ───────── */
-    if (use_mock === "true") {
-      return res.status(200).json({
-        success: true,
-        cards: [
-          { leave_type: "Annual Leave", total: 12, used: 5, remaining: 7 },
-          { leave_type: "Medical Leave", total: 10, used: 4, remaining: 6 },
-          { leave_type: "Casual Leave", total: 6, used: 1, remaining: 5 },
-          { leave_type: "Other Leave", total: 4, used: 2, remaining: 2 },
-        ],
-        tableData: [],
-        meta: { total: 0, limit: Number(limit), offset: Number(offset) },
-      });
-    }
 
     /* ───────── VALIDATION ───────── */
     if (!user_id) {
+      console.error("Validation Error: user_id is missing from request");
       return res.status(400).json({
         success: false,
         errorMessage: "user_id is required",
       });
     }
 
-    /* ───────── RESOLVE ROOT EMPLOYEE ───────── */
+    /* ───────── STEP 1: RESOLVE ODOO USER ───────── */
+    console.log(`Trace: Searching Odoo User (res.users) for ID: ${user_id}`);
     const user = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
@@ -2175,61 +2754,83 @@ const getEmployeeDashboard = async (req, res) => {
       1
     );
 
-    const partnerId = user?.[0]?.partner_id?.[0];
-    if (!partnerId) throw new Error("Partner not found for user");
+    if (!user || user.length === 0) {
+      console.error(`Error: Odoo user with ID ${user_id} does not exist`);
+      throw new Error("Odoo user record not found");
+    }
 
-    const rootEmployee = await odooService.searchRead(
+    const partnerId = user[0]?.partner_id?.[0];
+    console.log(`Trace: Resolved Partner ID: ${partnerId}`);
+
+    /* ───────── STEP 2: RESOLVE EMPLOYEE LINKED TO USER ───────── */
+    // We prioritize the direct link via 'user_id' field on the employee record
+    console.log(`Trace: Searching hr.employee linked to user_id: ${user_id}`);
+    let employeeRecord = await odooService.searchRead(
       "hr.employee",
-      [["address_id", "=", partnerId]],
+      [["user_id", "=", Number(user_id)]],
       ["id", "name", "address_id"],
       1
     );
 
-    if (!rootEmployee.length) throw new Error("Root employee not found");
+    // Fallback: search by address_id (partner) if user_id link isn't explicitly set
+    if (!employeeRecord || employeeRecord.length === 0) {
+      console.log(`Trace: Direct user_id link not found. Falling back to search by address_id: ${partnerId}`);
+      employeeRecord = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", partnerId]],
+        ["id", "name", "address_id"],
+        1
+      );
+    }
 
-    const rootEmployeeId = rootEmployee[0].id;
-    const clientId = rootEmployee[0].address_id[0];
+    if (!employeeRecord || employeeRecord.length === 0) {
+      console.error(`Error: No employee record found for user_id: ${user_id}`);
+      throw new Error("Root employee not found. Please ensure the user is correctly linked to an Employee profile.");
+    }
 
-    console.log("Root Employee ID:", rootEmployeeId);
-    console.log("Resolved Client ID:", clientId);
+    const targetEmployeeId = employeeRecord[0].id;
+    const employeeName = employeeRecord[0].name;
+    console.log(`Trace: Target Employee Resolved -> Name: ${employeeName}, ID: ${targetEmployeeId}`);
 
-    /* ───────── RESOLVE ALL EMPLOYEES UNDER CLIENT ───────── */
-    const employees = await odooService.searchRead(
-      "hr.employee",
-      [["address_id", "=", clientId]],
-      ["id", "name"]
-    );
-
-    const employeeIds = employees.map((e) => e.id);
-
-    console.log("Resolved Employee IDs:", employeeIds);
-
-    /* ───────── LEAVE TYPES ───────── */
+    /* ───────── STEP 3: LEAVE TYPES CATEGORIZATION ───────── */
+    console.log("Trace: Fetching Leave Types for mapping...");
     const leaveTypes = await odooService.searchRead(
       "hr.leave.type",
       [],
       ["id", "name"]
     );
 
-    /* ───────── CARD DATA ───────── */
+    const leaveTypeCategoryMap = {};
+    leaveTypes.forEach((t) => {
+      const name = t.name ? t.name.toLowerCase() : "";
+      if (name.includes("annual")) leaveTypeCategoryMap[t.id] = "annual";
+      else if (name.includes("medical")) leaveTypeCategoryMap[t.id] = "medical";
+      else if (name.includes("casual")) leaveTypeCategoryMap[t.id] = "casual";
+      else leaveTypeCategoryMap[t.id] = "other";
+    });
+
+    /* ───────── STEP 4: FETCH DATA FOR SPECIFIC EMPLOYEE ───────── */
+    console.log(`Trace: Fetching Allocations for Employee ID: ${targetEmployeeId}`);
     const allocations = await odooService.searchRead(
       "hr.leave.allocation",
       [
-        ["employee_id", "in", employeeIds],
+        ["employee_id", "=", targetEmployeeId],
         ["state", "=", "validate"],
       ],
       ["holiday_status_id", "number_of_days"]
     );
 
+    console.log(`Trace: Fetching Approved Leaves for Employee ID: ${targetEmployeeId}`);
     const approvedLeaves = await odooService.searchRead(
       "hr.leave",
       [
-        ["employee_id", "in", employeeIds],
+        ["employee_id", "=", targetEmployeeId],
         ["state", "=", "validate"],
       ],
       ["holiday_status_id", "number_of_days"]
     );
 
+    /* ───────── STEP 5: CALCULATE CARD TOTALS ───────── */
     const cards = {
       annual: { leave_type: "Annual Leave", total: 0, used: 0, remaining: 0 },
       medical: { leave_type: "Medical Leave", total: 0, used: 0, remaining: 0 },
@@ -2237,42 +2838,33 @@ const getEmployeeDashboard = async (req, res) => {
       other: { leave_type: "Other Leave", total: 0, used: 0, remaining: 0 },
     };
 
-    const leaveTypeCategoryMap = {};
-    leaveTypes.forEach((t) => {
-      const name = t.name.toLowerCase();
-      if (name.includes("annual")) leaveTypeCategoryMap[t.id] = "annual";
-      else if (name.includes("medical")) leaveTypeCategoryMap[t.id] = "medical";
-      else if (name.includes("casual")) leaveTypeCategoryMap[t.id] = "casual";
-      else leaveTypeCategoryMap[t.id] = "other";
-    });
-
     allocations.forEach((a) => {
-      const category =
-        leaveTypeCategoryMap[a.holiday_status_id?.[0]] || "other";
-      cards[category].total += a.number_of_days;
+      const typeId = a.holiday_status_id?.[0];
+      const category = leaveTypeCategoryMap[typeId] || "other";
+      cards[category].total += (a.number_of_days || 0);
     });
 
     approvedLeaves.forEach((l) => {
-      const category =
-        leaveTypeCategoryMap[l.holiday_status_id?.[0]] || "other";
-      cards[category].used += l.number_of_days;
+      const typeId = l.holiday_status_id?.[0];
+      const category = leaveTypeCategoryMap[typeId] || "other";
+      cards[category].used += (l.number_of_days || 0);
     });
 
     Object.values(cards).forEach((c) => {
       c.remaining = c.total - c.used;
     });
 
-    console.log("Cards:", Object.values(cards));
+    console.log("Trace: Card calculations completed.");
 
-    /* ───────── TABLE DOMAIN ───────── */
-    let domain = [["employee_id", "in", employeeIds]];
+    /* ───────── STEP 6: TABLE DATA (LEAVE HISTORY) ───────── */
+    let domain = [["employee_id", "=", targetEmployeeId]];
 
-    if (leave_type_id)
-      domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
+    if (leave_type_id) domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
     if (state) domain.push(["state", "=", state]);
     if (date_from) domain.push(["request_date_from", ">=", date_from]);
     if (date_to) domain.push(["request_date_to", "<=", date_to]);
 
+    console.log(`Trace: Fetching history for employee. Domain: ${JSON.stringify(domain)}`);
     const totalCount = await odooService.searchCount("hr.leave", domain);
 
     const leaves = await odooService.searchRead(
@@ -2294,18 +2886,18 @@ const getEmployeeDashboard = async (req, res) => {
 
     const tableData = leaves.map((l) => ({
       id: l.id,
-      employee_id: l.employee_id?.[0],
-      employee_name: l.employee_id?.[1],
-      leave_type_id: l.holiday_status_id?.[0],
-      leave_type: l.holiday_status_id?.[1],
+      employee_id: l.employee_id?.[0] || null,
+      employee_name: l.employee_id?.[1] || "Unknown",
+      leave_type_id: l.holiday_status_id?.[0] || null,
+      leave_type: l.holiday_status_id?.[1] || "Unknown",
       from: l.request_date_from,
       to: l.request_date_to,
       no_of_days: l.number_of_days,
       status: l.state,
     }));
 
-    console.log("Table rows:", tableData.length);
-    console.log("===== EMPLOYEE DASHBOARD END =====");
+    console.log(`Trace: Dashboard successfully built for ${employeeName}`);
+    console.log("===== [SUCCESS] EMPLOYEE DASHBOARD END =====");
 
     return res.status(200).json({
       success: true,
@@ -2317,23 +2909,18 @@ const getEmployeeDashboard = async (req, res) => {
         offset: Number(offset),
       },
     });
+
   } catch (error) {
-    console.error("❌ Employee Dashboard Error:", error);
+    console.error("❌ Employee Dashboard Controller Error:", error);
     return res.status(500).json({
       success: false,
-      errorMessage: error.message,
+      errorMessage: error.message || "Failed to load dashboard data.",
     });
   }
 };
-
 const createExpense = async (req, res) => {
   try {
-    console.log("══════════════════════════════════════");
-    console.log("🚀 API CALLED → CREATE EXPENSE");
-
-    const user_id = req.body.user_id || req.query.user_id; // This is 3138
-    console.log("👤 Resolved user_id:", user_id);
-
+    const user_id = req.body.user_id || req.query.user_id;
     let {
       name,
       product_id,
@@ -2343,7 +2930,11 @@ const createExpense = async (req, res) => {
       date,
       attachment,
       fileName,
+      other_expense_ids,
     } = req.body;
+
+    const auto_create_report = true;
+    const auto_submit_to_manager = true;
 
     // ───────── 1. RESOLVE CLIENT ─────────
     const { client_id } = await getClientFromRequest(req);
@@ -2356,20 +2947,32 @@ const createExpense = async (req, res) => {
 
     // ───────── 2. NORMALIZE IDS ─────────
     product_id = typeof product_id === "object" ? product_id?.id : product_id;
-    account_id = typeof account_id === "object" ? account_id?.id : account_id;
+
+    // ✨ SET DEFAULT ACCOUNT_ID IF NOT PROVIDED
+    if (!account_id) {
+      account_id = 920; // Default account_id
+      console.log("💡 Using default account_id: 920");
+    } else {
+      account_id = typeof account_id === "object" ? account_id?.id : account_id;
+    }
 
     // ───────── 3. VALIDATIONS ─────────
-    if (
-      !user_id ||
-      !name ||
-      !product_id ||
-      !account_id ||
-      !total_amount_currency ||
-      !payment_mode
-    ) {
+    const missingFields = [];
+
+    if (!user_id) missingFields.push("user_id");
+    if (!name) missingFields.push("name");
+    if (!product_id) missingFields.push("product_id");
+    if (!total_amount_currency) missingFields.push("total_amount_currency");
+    if (!payment_mode) missingFields.push("payment_mode");
+
+    if (missingFields.length > 0) {
       return res
         .status(400)
-        .json({ status: "error", message: "Missing required fields" });
+        .json({
+          status: "error",
+          message: "Missing required fields",
+          missing_fields: missingFields
+        });
     }
 
     // ───────── 4. USER FETCH ─────────
@@ -2414,7 +3017,7 @@ const createExpense = async (req, res) => {
         .json({ status: "error", message: "Employee not found" });
     }
 
-    const employee_id = employee[0].id; // This is 17565
+    const employee_id = employee[0].id;
     const companyId = employee[0].company_id?.[0] || user[0].company_id?.[0];
 
     // ───────── 6. CREATE EXPENSE ─────────
@@ -2430,38 +3033,131 @@ const createExpense = async (req, res) => {
     };
 
     const expenseId = await odooService.create("hr.expense", vals, client_id);
-
-    // ───────── 7. ATTACHMENT (FIXED) ─────────
+    // ───────── 7. ATTACHMENT ─────────
+    let attachmentId = null;
     if (attachment && fileName) {
-      // FIX 1: Ensure we only send the base64 part
       const base64Data = attachment.split(",").pop();
-
-      // FIX 2: Create attachment with explicit mapping
-      const attachmentId = await odooService.create(
+      attachmentId = await odooService.create(
         "ir.attachment",
         {
           name: fileName,
           datas: base64Data,
           type: "binary",
           res_model: "hr.expense",
-          res_id: Number(expenseId), // Ensure this is a number
-          company_id: companyId, // Ensure it belongs to the same company
+          res_id: Number(expenseId),
+          company_id: companyId,
         },
         client_id
       );
+      console.log("📎 Attachment created with ID:", attachmentId);
+    }
 
-      // FIX 3: Removed the 'write' to attachment_ids.
-      // In Odoo, setting res_model/res_id on the attachment is enough to link it.
-      // Writing to hr.expense sometimes triggers a re-check of the user context, causing your error.
+    // ───────── 8. AUTO CREATE REPORT (OPTIONAL) ─────────
+    let sheetId = null;
+    let sheetState = null;
+
+    if (auto_create_report) {
+      console.log("🔄 Auto-creating expense report...");
+
+      // Combine current expense with other_expense_ids if provided
+      const expenseIdsForReport = [expenseId];
+      if (other_expense_ids && Array.isArray(other_expense_ids)) {
+        expenseIdsForReport.push(...other_expense_ids.map(Number));
+      }
+
+      console.log("📋 Expenses to include in report:", expenseIdsForReport);
+
+      try {
+        const reportResult = await odooService.callCustomMethod(
+          "hr.expense",
+          "action_submit_expenses",
+          [expenseIdsForReport]
+        );
+
+        console.log("📊 Report created:", JSON.stringify(reportResult, null, 2));
+
+        // Fetch created sheet ID
+        if (reportResult && reportResult.res_id) {
+          sheetId = reportResult.res_id;
+        } else {
+          const sheets = await odooService.searchRead(
+            "hr.expense.sheet",
+            [["expense_line_ids", "in", expenseIdsForReport]],
+            ["id", "name", "state"],
+            0,
+            1,
+            "id desc"
+          );
+
+          if (sheets.length > 0) {
+            sheetId = sheets[0].id;
+            sheetState = sheets[0].state;
+          }
+        }
+
+        console.log("📄 Sheet created with ID:", sheetId);
+
+      } catch (reportError) {
+        console.error("⚠️ Failed to create report:", reportError.message);
+        // Don't fail the entire request, just log the error
+      }
+    }
+
+    // ───────── 9. AUTO SUBMIT TO MANAGER (OPTIONAL) ─────────
+    let finalSheetState = sheetState;
+
+    if (auto_submit_to_manager && sheetId) {
+      console.log("🔄 Auto-submitting expense sheet to manager...");
+
+      try {
+        const submitResult = await odooService.callCustomMethod(
+          "hr.expense.sheet",
+          "action_submit_sheet",
+          [[Number(sheetId)]]
+        );
+
+        console.log("📤 Sheet submitted:", JSON.stringify(submitResult, null, 2));
+
+        // Fetch updated state
+        const updatedSheets = await odooService.searchRead(
+          "hr.expense.sheet",
+          [["id", "=", Number(sheetId)]],
+          ["id", "name", "state"],
+          0,
+          1
+        );
+
+        if (updatedSheets.length > 0) {
+          finalSheetState = updatedSheets[0].state;
+        }
+
+        console.log("✅ Sheet state updated to:", finalSheetState);
+
+      } catch (submitError) {
+        console.error("⚠️ Failed to submit to manager:", submitError.message);
+      }
+    } else if (auto_submit_to_manager && !sheetId) {
+      console.warn("⚠️ Cannot submit to manager: No sheet created. Set auto_create_report=true first.");
+    }
+
+    // ───────── 10. BUILD RESPONSE ─────────
+    const responseData = {
+      expense_id: expenseId,
+      attachment_id: attachmentId,
+    };
+
+    if (auto_create_report) {
+      responseData.sheet_id = sheetId;
+      responseData.sheet_state = finalSheetState || sheetState || "draft";
     }
 
     return res.status(201).json({
       status: "success",
       message: "Expense created successfully",
-      expense_id: expenseId,
+      data: responseData
     });
+
   } catch (error) {
-    console.error("❌ CREATE EXPENSE ERROR:", error);
     return res.status(500).json({
       status: "error",
       message: error.message || "Failed to create expense",
@@ -2469,12 +3165,294 @@ const createExpense = async (req, res) => {
   }
 };
 
+// const createExpense = async (req, res) => {
+//   try {
+//     console.log("══════════════════════════════════════");
+//     console.log("🚀 API CALLED → CREATE EXPENSE");
+
+//     const user_id = req.body.user_id || req.query.user_id; // This is 3138
+//     console.log("👤 Resolved user_id:", user_id);
+
+//     let {
+//       name,
+//       product_id,
+//       account_id,
+//       total_amount_currency,
+//       payment_mode,
+//       date,
+//       attachment,
+//       fileName,
+//     } = req.body;
+
+//     // ───────── 1. RESOLVE CLIENT ─────────
+//     const { client_id } = await getClientFromRequest(req);
+
+//     if (!client_id) {
+//       return res
+//         .status(400)
+//         .json({ status: "error", message: "client_id not found" });
+//     }
+
+//     // ───────── 2. NORMALIZE IDS ─────────
+//     product_id = typeof product_id === "object" ? product_id?.id : product_id;
+//     account_id = typeof account_id === "object" ? account_id?.id : account_id;
+
+//     // ───────── 3. VALIDATIONS ─────────
+//     if (
+//       !user_id ||
+//       !name ||
+//       !product_id ||
+//       !account_id ||
+//       !total_amount_currency ||
+//       !payment_mode
+//     ) {
+//       return res
+//         .status(400)
+//         .json({ status: "error", message: "Missing required fields" });
+//     }
+
+//     // ───────── 4. USER FETCH ─────────
+//     const user = await odooService.searchRead(
+//       "res.users",
+//       [["id", "=", Number(user_id)]],
+//       ["partner_id", "company_id"],
+//       0,
+//       1
+//     );
+
+//     if (!user.length) {
+//       return res
+//         .status(400)
+//         .json({ status: "error", message: "Invalid user_id" });
+//     }
+
+//     const partnerId = user[0].partner_id?.[0];
+
+//     // ───────── 5. EMPLOYEE FETCH ─────────
+//     let employee = await odooService.searchRead(
+//       "hr.employee",
+//       [["user_id", "=", Number(user_id)]],
+//       ["id", "company_id"],
+//       0,
+//       1
+//     );
+
+//     if (!employee.length && partnerId) {
+//       employee = await odooService.searchRead(
+//         "hr.employee",
+//         [["address_id", "=", partnerId]],
+//         ["id", "company_id"],
+//         0,
+//         1
+//       );
+//     }
+
+//     if (!employee.length) {
+//       return res
+//         .status(400)
+//         .json({ status: "error", message: "Employee not found" });
+//     }
+
+//     const employee_id = employee[0].id; // This is 17565
+//     const companyId = employee[0].company_id?.[0] || user[0].company_id?.[0];
+
+//     // ───────── 6. CREATE EXPENSE ─────────
+//     const vals = {
+//       name,
+//       employee_id: Number(employee_id),
+//       product_id: Number(product_id),
+//       account_id: Number(account_id),
+//       payment_mode,
+//       total_amount_currency: Number(total_amount_currency),
+//       date: date || new Date().toISOString().split("T")[0],
+//       company_id: companyId,
+//     };
+
+//     const expenseId = await odooService.create("hr.expense", vals, client_id);
+
+//     // ───────── 7. ATTACHMENT (FIXED) ─────────
+//     if (attachment && fileName) {
+//       // FIX 1: Ensure we only send the base64 part
+//       const base64Data = attachment.split(",").pop();
+
+//       // FIX 2: Create attachment with explicit mapping
+//       const attachmentId = await odooService.create(
+//         "ir.attachment",
+//         {
+//           name: fileName,
+//           datas: base64Data,
+//           type: "binary",
+//           res_model: "hr.expense",
+//           res_id: Number(expenseId), // Ensure this is a number
+//           company_id: companyId, // Ensure it belongs to the same company
+//         },
+//         client_id
+//       );
+
+//       // FIX 3: Removed the 'write' to attachment_ids.
+//       // In Odoo, setting res_model/res_id on the attachment is enough to link it.
+//       // Writing to hr.expense sometimes triggers a re-check of the user context, causing your error.
+//     }
+
+//     return res.status(201).json({
+//       status: "success",
+//       message: "Expense created successfully",
+//       expense_id: expenseId,
+//     });
+//   } catch (error) {
+//     console.error("❌ CREATE EXPENSE ERROR:", error);
+//     return res.status(500).json({
+//       status: "error",
+//       message: error.message || "Failed to create expense",
+//     });
+//   }
+// };
+
+// const getExpense = async (req, res) => {
+//   try {
+//     console.log("══════════════════════════════════════");
+//     console.log("🚀 API CALLED → FETCH EXPENSES");
+
+//     // 1. Resolve User and Client
+//     const user_id = req.query.user_id || req.body?.user_id;
+//     const { client_id } = await getClientFromRequest(req);
+
+//     if (!client_id || !user_id) {
+//       return res.status(400).json({
+//         status: "error",
+//         message: "client_id or user_id not found"
+//       });
+//     }
+
+//     console.log(`👤 User: ${user_id} | 🏢 Client: ${client_id}`);
+
+//     // 2. Fetch User to get partner_id (Odoo models use partner_id for linking)
+//     const userData = await odooService.searchRead(
+//       "res.users",
+//       [["id", "=", Number(user_id)]],
+//       ["partner_id"]
+//     );
+
+//     let partnerId = (userData.length && userData[0].partner_id) ? userData[0].partner_id[0] : null;
+
+//     // 3. Fetch Employee - Domain adjustment
+//     // Odoo mein search domain array of arrays hota hai. 
+//     // Hum user_id se search kar rahe hain, client_id (address_id) ka filter zaruri hai 
+//     // taaki sirf wahi employee dikhe jo us client ka ho.
+//     let employeeData = await odooService.searchRead(
+//       "hr.employee",
+//       [
+//         ["user_id", "=", Number(user_id)],
+//         ["address_id", "=", Number(client_id)]
+//       ],
+//       ["id", "name"]
+//     );
+
+//     // Alternative lookup agar user_id link na ho (Work Address context)
+//     if (!employeeData.length && partnerId) {
+//       console.log("⚠️ No employee via user_id. Trying partner_id/address lookup...");
+//       employeeData = await odooService.searchRead(
+//         "hr.employee",
+//         [
+//           ["address_id", "=", Number(client_id)],
+//           "|",
+//           ["work_contact_id", "=", partnerId],
+//           ["name", "=", userData[0]?.name]
+//         ],
+//         ["id", "name"]
+//       );
+//     }
+
+//     if (!employeeData.length) {
+//       console.error("❌ Employee not found for user 3145 in client 17565");
+//       return res.status(404).json({
+//         status: "error",
+//         message: "Employee not found for this user in this company context"
+//       });
+//     }
+
+//     const employee_id = employeeData[0].id;
+//     console.log("👨‍💼 Found Employee ID:", employee_id);
+
+//     // 4. Fetch Expenses
+//     const expenses = await odooService.searchRead(
+//       "hr.expense",
+//       [["employee_id", "=", employee_id]],
+//       [
+//         "id", "name", "product_id", "account_id", "payment_mode",
+//         "total_amount", "state", "date", "currency_id"
+//       ],
+//       0, // offset
+//       80 // limit (aap limit set kar sakte hain)
+//     );
+
+//     if (!expenses || expenses.length === 0) {
+//       return res.status(200).json({
+//         status: "success",
+//         message: "No expenses found",
+//         data: []
+//       });
+//     }
+
+//     // 5. Fetch Attachments
+//     const expenseIds = expenses.map(exp => exp.id);
+//     const attachments = await odooService.searchRead(
+//       "ir.attachment",
+//       [
+//         ["res_model", "=", "hr.expense"],
+//         ["res_id", "in", expenseIds]
+//       ],
+//       ["id", "name", "datas", "mimetype", "res_id"]
+//     );
+
+//     // 6. Merge & Cleanup (Removing Odoo 'false' values)
+//     const finalData = expenses.map(exp => {
+//       // Attachment mapping
+//       const expAttachments = attachments
+//         .filter(att => att.res_id === exp.id)
+//         .map(att => ({
+//           id: att.id,
+//           name: att.name,
+//           mimetype: att.mimetype,
+//           base64: att.datas || ""
+//         }));
+
+//       // Cleanup Odoo 'false' booleans to ""
+//       Object.keys(exp).forEach(key => {
+//         if (exp[key] === false) exp[key] = "";
+//         // Handling Many2one arrays (e.g. [id, name] -> name)
+//         if (Array.isArray(exp[key]) && exp[key].length === 2) {
+//           // Agar aapko sirf name chahiye: exp[key] = exp[key][1];
+//         }
+//       });
+
+//       return {
+//         ...exp,
+//         attachment_ids: expAttachments
+//       };
+//     });
+
+//     console.log(`✅ Successfully fetched ${finalData.length} expenses`);
+//     return res.status(200).json({
+//       status: "success",
+//       count: finalData.length,
+//       data: finalData
+//     });
+
+//   } catch (error) {
+//     console.error("❌ GET EXPENSE ERROR:", error);
+//     return res.status(500).json({
+//       status: "error",
+//       message: error.message || "Internal Server Error"
+//     });
+//   }
+// };
+
 const getExpense = async (req, res) => {
   try {
     console.log("══════════════════════════════════════");
     console.log("🚀 API CALLED → FETCH EXPENSES");
 
-    // 1. Resolve User and Client
     const user_id = req.query.user_id || req.body?.user_id;
     const { client_id } = await getClientFromRequest(req);
 
@@ -2485,73 +3463,80 @@ const getExpense = async (req, res) => {
       });
     }
 
-    console.log(`👤 User: ${user_id} | 🏢 Client: ${client_id}`);
-
-    // 2. Fetch User to get partner_id (Odoo models use partner_id for linking)
     const userData = await odooService.searchRead(
       "res.users",
       [["id", "=", Number(user_id)]],
-      ["partner_id"]
+      ["partner_id", "is_client_employee_admin"]
     );
 
-    let partnerId = (userData.length && userData[0].partner_id) ? userData[0].partner_id[0] : null;
-
-    // 3. Fetch Employee - Domain adjustment
-    // Odoo mein search domain array of arrays hota hai. 
-    // Hum user_id se search kar rahe hain, client_id (address_id) ka filter zaruri hai 
-    // taaki sirf wahi employee dikhe jo us client ka ho.
-    let employeeData = await odooService.searchRead(
-      "hr.employee",
-      [
-        ["user_id", "=", Number(user_id)],
-        ["address_id", "=", Number(client_id)]
-      ],
-      ["id", "name"]
-    );
-
-    // Alternative lookup agar user_id link na ho (Work Address context)
-    if (!employeeData.length && partnerId) {
-      console.log("⚠️ No employee via user_id. Trying partner_id/address lookup...");
-      employeeData = await odooService.searchRead(
-        "hr.employee",
-        [
-          ["address_id", "=", Number(client_id)],
-          "|",
-          ["work_contact_id", "=", partnerId],
-          ["name", "=", userData[0]?.name]
-        ],
-        ["id", "name"]
-      );
-    }
-
-    if (!employeeData.length) {
-      console.error("❌ Employee not found for user 3145 in client 17565");
+    if (!userData.length) {
       return res.status(404).json({
         status: "error",
-        message: "Employee not found for this user in this company context"
+        message: "User not found"
       });
     }
 
-    const employee_id = employeeData[0].id;
-    console.log("👨‍💼 Found Employee ID:", employee_id);
+    const isAdmin = userData[0].is_client_employee_admin || false;
+    let partnerId = (userData[0].partner_id) ? userData[0].partner_id[0] : null;
+
+    let employeeIds = [];
+
+    if (isAdmin) {
+      const allEmployees = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", Number(client_id)]],
+        ["id", "name"]
+      );
+
+      if (!allEmployees.length) {
+        return res.status(404).json({
+          status: "error",
+          message: "No employees found for this client"
+        });
+      }
+      employeeIds = allEmployees.map(emp => emp.id);
+    } else {
+      let employeeData = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", Number(user_id)], ["address_id", "=", Number(client_id)]],
+        ["id", "name"]
+      );
+
+      if (!employeeData.length && partnerId) {
+        employeeData = await odooService.searchRead(
+          "hr.employee",
+          [["address_id", "=", Number(client_id)], "|", ["work_contact_id", "=", partnerId], ["name", "=", userData[0]?.name]],
+          ["id", "name"]
+        );
+      }
+
+      if (!employeeData.length) {
+        return res.status(404).json({
+          status: "error",
+          message: "Employee not found"
+        });
+      }
+      employeeIds = [employeeData[0].id];
+    }
 
     // 4. Fetch Expenses
     const expenses = await odooService.searchRead(
       "hr.expense",
-      [["employee_id", "=", employee_id]],
+      [["employee_id", "in", employeeIds]],
       [
         "id", "name", "product_id", "account_id", "payment_mode",
-        "total_amount", "state", "date", "currency_id"
+        "total_amount", "state", "date", "currency_id", "employee_id",
+        "sheet_id"
       ],
-      0, // offset
-      80 // limit (aap limit set kar sakte hain)
+      0,
+      80
     );
 
     if (!expenses || expenses.length === 0) {
       return res.status(200).json({
         status: "success",
-        message: "No expenses found",
-        data: []
+        data: [],
+        meta: { is_admin: isAdmin, total_employees: employeeIds.length, client_id: client_id }
       });
     }
 
@@ -2559,16 +3544,13 @@ const getExpense = async (req, res) => {
     const expenseIds = expenses.map(exp => exp.id);
     const attachments = await odooService.searchRead(
       "ir.attachment",
-      [
-        ["res_model", "=", "hr.expense"],
-        ["res_id", "in", expenseIds]
-      ],
+      [["res_model", "=", "hr.expense"], ["res_id", "in", expenseIds]],
       ["id", "name", "datas", "mimetype", "res_id"]
     );
 
-    // 6. Merge & Cleanup (Removing Odoo 'false' values)
-    const finalData = expenses.map(exp => {
-      // Attachment mapping
+    // 6. ENRICH DATA: Add RejectedReason only when state is 'refused'
+    const finalData = await Promise.all(expenses.map(async (exp) => {
+
       const expAttachments = attachments
         .filter(att => att.res_id === exp.id)
         .map(att => ({
@@ -2578,37 +3560,57 @@ const getExpense = async (req, res) => {
           base64: att.datas || ""
         }));
 
-      // Cleanup Odoo 'false' booleans to ""
+      // Cleanup Odoo 'false' values
       Object.keys(exp).forEach(key => {
         if (exp[key] === false) exp[key] = "";
-        // Handling Many2one arrays (e.g. [id, name] -> name)
-        if (Array.isArray(exp[key]) && exp[key].length === 2) {
-          // Agar aapko sirf name chahiye: exp[key] = exp[key][1];
-        }
       });
 
-      return {
+      // Prepare basic record
+      let record = {
         ...exp,
+        employee_name: exp.employee_id ? exp.employee_id[1] : "",
         attachment_ids: expAttachments
       };
-    });
 
-    console.log(`✅ Successfully fetched ${finalData.length} expenses`);
+      // ✅ LOGIC: Add RejectedReason only if state is 'refused'
+      if (exp.state === "refused") {
+        try {
+          const sheetId = exp.sheet_id ? exp.sheet_id[0] : null;
+
+          if (sheetId) {
+            const approvalRecords = await odooService.searchRead(
+              "approval.request",
+              [["hr_expense_id", "=", sheetId]],
+              ["reason"]
+            );
+
+            if (approvalRecords && approvalRecords.length > 0) {
+              record.RejectedReason = approvalRecords[0].reason || "No reason specified";
+            } else {
+              record.RejectedReason = "";
+            }
+          }
+        } catch (err) {
+          console.error(`Error fetching reason for expense ${exp.id}:`, err);
+          record.RejectedReason = "Reason could not be retrieved";
+        }
+      }
+
+      return record;
+    }));
+
     return res.status(200).json({
       status: "success",
       count: finalData.length,
-      data: finalData
+      data: finalData,
+      meta: { is_admin: isAdmin, total_employees: employeeIds.length, client_id: client_id }
     });
 
   } catch (error) {
     console.error("❌ GET EXPENSE ERROR:", error);
-    return res.status(500).json({
-      status: "error",
-      message: error.message || "Internal Server Error"
-    });
+    return res.status(500).json({ status: "error", message: error.message });
   }
 };
-
 
 const updateExpense = async (req, res) => {
   try {
@@ -3681,7 +4683,409 @@ const getEmployeesBasicInfo = async (req, res) => {
     });
   }
 };
+
+const createExpenseReport = async (req, res) => {
+  try {
+    console.log("══════════════════════════════════════");
+    console.log("🚀 API CALLED → CREATE EXPENSE REPORT");
+
+    const { expense_ids } = req.body;
+    const user_id = req.body.user_id || req.query.user_id;
+
+    if (!expense_ids || !Array.isArray(expense_ids) || expense_ids.length === 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "expense_ids array is required"
+      });
+    }
+
+    if (!user_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "user_id is required"
+      });
+    }
+
+    const { client_id } = await getClientFromRequest(req);
+    if (!client_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "client_id not found"
+      });
+    }
+
+    console.log(`👤 User: ${user_id} | 🏢 Client: ${client_id}`);
+    console.log(`📋 Expense IDs to submit: ${expense_ids.join(", ")}`);
+
+    const expenses = await odooService.searchRead(
+      "hr.expense",
+      [["id", "in", expense_ids.map(Number)]],
+      ["id", "name", "employee_id", "state"],
+      0,
+      expense_ids.length
+    );
+
+    if (expenses.length !== expense_ids.length) {
+      return res.status(404).json({
+        status: "error",
+        message: "One or more expense IDs not found"
+      });
+    }
+
+    const nonDraftExpenses = expenses.filter(exp => exp.state !== "draft");
+    if (nonDraftExpenses.length > 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "All expenses must be in draft state",
+        non_draft_expenses: nonDraftExpenses.map(e => ({ id: e.id, state: e.state }))
+      });
+    }
+
+    // ───────── CHECK ATTACHMENT REQUIREMENT (OPTIONAL) ─────────
+    // Odoo condition: nb_attachment >= 1 or sheet_id
+    // Making attachment check optional as per requirement
+
+    // Uncomment below if you want to enforce mandatory attachment
+    /*
+    for (const expense of expenses) {
+      const attachments = await odooService.searchRead(
+        "ir.attachment",
+        [
+          ["res_model", "=", "hr.expense"],
+          ["res_id", "=", expense.id]
+        ],
+        ["id"]
+      );
+
+      if (attachments.length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: `Expense "${expense.name}" (ID: ${expense.id}) requires at least 1 attachment`,
+          expense_id: expense.id
+        });
+      }
+    }
+    */
+
+    console.log("✅ All validations passed. Calling action_submit_expenses...");
+
+    const result = await odooService.callCustomMethod(
+      "hr.expense",
+      "action_submit_expenses",
+      [expense_ids.map(Number)]
+    );
+
+    console.log("📊 Method Result:", JSON.stringify(result, null, 2));
+
+    // ───────── FETCH CREATED SHEET ID ─────────
+    let sheetId = null;
+    let sheetState = null;
+
+    // The result might contain the sheet ID, or we need to fetch it
+    if (result && result.res_id) {
+      sheetId = result.res_id;
+    } else {
+      // Fetch the sheet created for these expenses
+      const sheets = await odooService.searchRead(
+        "hr.expense.sheet",
+        [["expense_line_ids", "in", expense_ids.map(Number)]],
+        ["id", "name", "state"],
+        0,
+        1,
+        "id desc"
+      );
+
+      if (sheets.length > 0) {
+        sheetId = sheets[0].id;
+        sheetState = sheets[0].state;
+      }
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Expense report created successfully",
+      data: {
+        sheet_id: sheetId,
+        sheet_state: sheetState || "draft",
+        expense_ids: expense_ids,
+        result: result
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ CREATE EXPENSE REPORT ERROR:", error);
+    console.error("🔥 Error Stack:", error.stack);
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Failed to create expense report"
+    });
+  }
+};
+const submitExpenseSheetToManager = async (req, res) => {
+  try {
+    console.log("══════════════════════════════════════");
+    console.log("🚀 API CALLED → SUBMIT EXPENSE SHEET TO MANAGER");
+
+    const { sheet_id } = req.body;
+    const user_id = req.body.user_id || req.query.user_id;
+
+    if (!sheet_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "sheet_id is required"
+      });
+    }
+
+    if (!user_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "user_id is required"
+      });
+    }
+
+    const { client_id } = await getClientFromRequest(req);
+    if (!client_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "client_id not found"
+      });
+    }
+
+    console.log(`👤 User: ${user_id} | 🏢 Client: ${client_id}`);
+    console.log(`📄 Sheet ID to submit: ${sheet_id}`);
+
+    const sheets = await odooService.searchRead(
+      "hr.expense.sheet",
+      [["id", "=", Number(sheet_id)]],
+      ["id", "name", "employee_id", "state", "expense_line_ids"],
+      0,
+      1
+    );
+
+    if (!sheets.length) {
+      return res.status(404).json({
+        status: "error",
+        message: `Expense sheet with ID ${sheet_id} not found`
+      });
+    }
+
+    const sheet = sheets[0];
+
+    if (sheet.state !== "draft") {
+      return res.status(400).json({
+        status: "error",
+        message: `Expense sheet must be in draft state. Current state: ${sheet.state}`,
+        current_state: sheet.state
+      });
+    }
+
+    console.log("✅ Sheet validation passed. Calling action_submit_sheet...");
+
+    const result = await odooService.callCustomMethod(
+      "hr.expense.sheet",
+      "action_submit_sheet",
+      [[Number(sheet_id)]]
+    );
+
+    console.log("📊 Method Result:", JSON.stringify(result, null, 2));
+
+    // ───────── FETCH UPDATED SHEET STATE ─────────
+    const updatedSheets = await odooService.searchRead(
+      "hr.expense.sheet",
+      [["id", "=", Number(sheet_id)]],
+      ["id", "name", "state", "employee_id"],
+      0,
+      1
+    );
+
+    const updatedState = updatedSheets.length > 0 ? updatedSheets[0].state : null;
+
+    return res.status(200).json({
+      status: "success",
+      message: "Expense sheet submitted to manager successfully",
+      data: {
+        sheet_id: sheet_id,
+        previous_state: "draft",
+        current_state: updatedState || "submit",
+        employee_id: sheet.employee_id,
+        result: result
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ SUBMIT EXPENSE SHEET ERROR:", error);
+    console.error("🔥 Error Stack:", error.stack);
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Failed to submit expense sheet to manager"
+    });
+  }
+};
+
+const updateExpenseCategory = async (req, res) => {
+  try {
+    const id = req.params.id || req.body.id;
+    const user_id = req.query.user_id || req.body.user_id;
+    const {
+      name,
+      cost,
+      reference,
+      category_name,
+      description,
+      expense_account_name,
+      sales_tax_names,
+      purchase_tax_names,
+      re_invoice_policy,
+    } = req.body;
+
+    if (!id || !user_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Expense Category ID and User ID are required",
+      });
+    }
+
+    // ───────── 1️⃣ FETCH CLIENT CONTEXT ─────────
+    const context = await getClientFromRequest(req);
+    const client_id = context.client_id;
+
+
+    // ───────── 2️⃣ VERIFY RECORD EXISTENCE ─────────
+    const debugRecord = await odooService.searchRead(
+      "product.product",
+      [["id", "=", parseInt(id)], ["client_id", "=", client_id]],
+      ["id", "name", "client_id"],
+      1
+    );
+
+    if (debugRecord.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Record not found for this client.",
+      });
+    }
+
+    const updateVals = {};
+    if (name) updateVals.name = name;
+    if (cost !== undefined) updateVals.standard_price = parseFloat(cost);
+    if (reference !== undefined) updateVals.default_code = reference;
+    if (description !== undefined) updateVals.description = description;
+    if (re_invoice_policy) updateVals.expense_policy = re_invoice_policy;
+
+
+    await odooService.write(
+      "product.product",
+      [parseInt(id)],
+      updateVals,
+      null
+    );
+    return res.status(200).json({
+      status: "success",
+      message: "Expense category updated successfully",
+      updated_id: id
+    });
+
+  } catch (error) {
+    console.error("❌ EXCEPTION in updateExpenseCategory:", error.message);
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+const deleteExpenseCategory = async (req, res) => {
+  try {
+    console.log("------------------------------------------------");
+    console.log("🗑️ API Called: deleteExpenseCategory");
+
+    const id = req.params.id;
+    const user_id = (req.query && req.query.user_id) || (req.body && req.body.user_id);
+
+    // ✅ User ID missing check
+    if (!user_id) {
+      return res.status(400).json({
+        status: "error",
+        message: "User ID not found in query or body",
+      });
+    }
+
+    if (!id) {
+      return res.status(400).json({
+        status: "error",
+        message: "Expense Category ID is required",
+      });
+    }
+
+    const context = await getClientFromRequest(req);
+    const client_id = context ? context.client_id : null;
+
+    if (!client_id) {
+      return res.status(404).json({
+        status: "error",
+        message: "Client context not found for this user",
+      });
+    }
+
+    // ✅ Ownership verify karein
+    const existingRecord = await odooService.searchRead(
+      "product.product",
+      [["id", "=", parseInt(id)], ["client_id", "=", client_id]],
+      ["id"],
+      1
+    );
+
+    if (existingRecord.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Expense category not found .",
+      });
+    }
+
+    // ───────── EXECUTE DELETE ─────────
+    await odooService.unlink("product.product", [parseInt(id)], null);
+
+    return res.status(200).json({
+      status: "success",
+      message: "Expense category deleted successfully",
+      deleted_id: id
+    });
+
+  } catch (error) {
+    console.error("❌ ODOO ERROR:", error.message);
+
+    // ✅ Check for specific Odoo Foreign Key Constraints (fkey)
+    const errMsg = error.message;
+
+    if (errMsg.includes("account_move_line_product_id_fkey") || errMsg.includes("Journal Item")) {
+      return res.status(409).json({ // 409 Conflict best rehta hai Linked records ke liye
+        status: "error",
+        message: "Sorry, you cannot delete this product because it is already linked to Journal Items.",
+      });
+    }
+
+    if (errMsg.includes("hr_expense_product_id_fkey") || errMsg.includes("hr.expense")) {
+      return res.status(409).json({
+        status: "error",
+        message: "Sorry, you cannot delete this Expense  because it is linked to existing Employee Expenses",
+      });
+    }
+
+    if (errMsg.includes("Access Denied")) {
+      return res.status(403).json({
+        status: "error",
+        message: "Access Denied: You do not have permission to delete this record.",
+      });
+    }
+
+    // Default Error agar kuch naya aaye
+    return res.status(400).json({
+      status: "error",
+      message: `Odoo Restriction: ${errMsg.split('\n')[0]}`,
+    });
+  }
+};
 module.exports = {
+  updateExpenseCategory,
   createEmployee,
   updateEmployee,
   getEmployees,
@@ -3716,4 +5120,7 @@ module.exports = {
   getPurchaseTaxes,
   getSalesTaxes,
   getEmployeesBasicInfo,
+  createExpenseReport,
+  submitExpenseSheetToManager,
+  deleteExpenseCategory
 };

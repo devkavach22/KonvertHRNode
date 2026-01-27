@@ -401,11 +401,24 @@ router.get(
   apiController.getWorkingSchedules.bind(apiController)
 );
 
+router.put(
+  '/update/workingSchedules/:calendar_id',
+  authenticate,
+  apiController.updateWorkingSchedule.bind(apiController)
+);
+
+router.delete(
+  '/delete/workingSchedules/:calendar_id',
+  authenticate,
+  apiController.deleteWorkingSchedule.bind(apiController)
+);
 router.post(
   "/create/skills",
   authenticate,
   apiController.createSkill.bind(apiController)
 );
+
+
 router.delete(
   "/delete/skills/:skill_type_id",
   authenticate,
@@ -547,7 +560,7 @@ router.post(
 
 router.get(
   "/admin/requests",
-  authenticate,
+  authenticate ,
   apiController.getAllApprovalRequests.bind(apiController)
 );
 
@@ -583,7 +596,16 @@ router.get(
   authenticate,
   PayrollController.getStructureTypes.bind(PayrollController)
 );
-
+router.post(
+  "/create/Input-Type",
+  authenticate,
+  PayrollController.createInputType.bind(PayrollController)
+);
+router.get(
+  "/Input-Type",
+  authenticate,
+  PayrollController.getInputTypes.bind(PayrollController)
+);
 router.post(
   "/create/salary-rule-category",
   authenticate,
@@ -808,7 +830,7 @@ router.post(
 );
 
 router.put(
-  "/updateUserContact",
+  "/updateUserContact/:contact_id",
   authenticate,
   apiController.updateUserContact.bind(apiController)
 );
@@ -833,5 +855,36 @@ router.get(
   "/getCustomerSubscriptions",
   authenticate,
   productController.getCustomerSubscriptions.bind(productController)
+);
+router.get(
+  "/getClientLeaveDashboardCount",
+  authenticate,
+  apiController.getClientLeaveDashboardCount.bind(apiController)
+);
+
+
+
+router.post(
+  "/create/paySlip",
+  authenticate,
+  PayrollController.createPayslip.bind(PayrollController)
+);
+
+router.post(
+  "/compute/payslip/:id",
+  authenticate,
+  PayrollController.computePayslip.bind(PayrollController)
+);
+
+router.post(
+  "/confirm/payslip/:id",
+  authenticate,
+  PayrollController.confirmPayslip.bind(PayrollController)
+);
+
+router.post(
+  "/mark-paid/payslip/:id",
+  authenticate,
+  PayrollController.markPayslipAsPaid.bind(PayrollController)
 );
 module.exports = router;

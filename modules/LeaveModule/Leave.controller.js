@@ -3,6 +3,138 @@ const odooService = require("../../Masters/services/odoo.service");
 const { getClientFromRequest } = require("../../Masters/services/plan.helper");
 
 class LeaveController {
+  // async createLeaveType(req, res) {
+  //   try {
+  //     console.log("API Called createLeaveType");
+
+  //     const {
+  //       name,
+
+  //       // Approval
+  //       leave_validation_type,
+  //       allocation_validation_type,
+
+  //       // Allocation behavior
+  //       requires_allocation,
+  //       employee_requests,
+
+  //       // Officers
+  //       responsible_ids,
+
+  //       // Meta
+  //       leave_type_code,
+  //       leave_category,
+  //       request_unit,
+
+  //       // Flags
+  //       include_public_holidays_in_duration,
+  //       overtime_deductible,
+  //       is_earned_leave
+  //     } = req.body;
+  //     console.log(req.body);
+
+  //     const { user_id, client_id } = await getClientFromRequest(req);
+
+  //     /* ---------------- REQUIRED ---------------- */
+  //     if (!name) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "name is required"
+  //       });
+  //     }
+
+  //     /* ---------------- VALIDATIONS ---------------- */
+  //     const approvalTypes = ["no_validation", "hr", "manager", "both"];
+  //     const yesNo = ["yes", "no"];
+  //     const categories = ["statutory", "non_statutory", "custom"];
+  //     const requestUnits = ["day", "half_day", "hour"];
+
+  //     if (leave_validation_type && !approvalTypes.includes(leave_validation_type)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid leave_validation_type" });
+  //     }
+
+  //     if (allocation_validation_type && !approvalTypes.includes(allocation_validation_type)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid allocation_validation_type" });
+  //     }
+
+  //     if (requires_allocation && !yesNo.includes(requires_allocation)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid requires_allocation" });
+  //     }
+
+  //     if (employee_requests && !yesNo.includes(employee_requests)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid employee_requests" });
+  //     }
+
+  //     if (leave_category && !categories.includes(leave_category)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid leave_category" });
+  //     }
+
+  //     if (request_unit && !requestUnits.includes(request_unit)) {
+  //       return res.status(400).json({ status: "error", message: "Invalid request_unit" });
+  //     }
+
+  //     /* ---------------- DUPLICATE CHECK ---------------- */
+  //     const existing = await odooService.searchRead(
+  //       "hr.leave.type",
+  //       [["name", "=", name], ["client_id", "=", client_id]],
+  //       ["id"],
+  //       1
+  //     );
+
+  //     if (existing.length) {
+  //       return res.status(409).json({
+  //         status: "error",
+  //         message: `Leave type '${name}' already exists`
+  //       });
+  //     }
+
+  //     /* ---------------- PAYLOAD ---------------- */
+  //     const vals = {
+  //       name,
+  //       client_id,
+  //       leave_validation_type: leave_validation_type || "no_validation",
+  //       allocation_validation_type: allocation_validation_type || "no_validation",
+
+  //       requires_allocation: requires_allocation || "yes",
+  //       employee_requests: employee_requests || "no",
+
+  //       leave_type_code: leave_type_code || null,
+  //       leave_category: leave_category || "custom",
+  //       request_unit: request_unit || "day",
+
+  //       include_public_holidays_in_duration: Boolean(include_public_holidays_in_duration),
+  //       overtime_deductible: Boolean(overtime_deductible),
+  //       is_earned_leave: Boolean(is_earned_leave),
+
+  //       active: true,
+  //       create_uid: user_id
+  //     };
+
+  //     /* ---------------- MANY2MANY ---------------- */
+  //     if (Array.isArray(responsible_ids)) {
+  //       vals.responsible_ids = [[6, 0, responsible_ids]];
+  //     }
+
+  //     console.log("Leave Type Payload:", vals);
+
+  //     /* ---------------- CREATE ---------------- */
+  //     const leaveTypeId = await odooService.create("hr.leave.type", vals);
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Leave type created successfully",
+  //       leave_type_id: leaveTypeId
+  //     });
+
+  //   } catch (error) {
+  //     console.error("Create Leave Type Error:", error);
+
+  //     return res.status(error.status || 500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to create leave type"
+  //     });
+  //   }
+  // }
   async createLeaveType(req, res) {
     try {
       console.log("API Called createLeaveType");
@@ -33,7 +165,18 @@ class LeaveController {
       } = req.body;
       console.log(req.body);
 
-      const { user_id, client_id } = await getClientFromRequest(req);
+      let user_id, client_id;
+      try {
+        const clientData = await getClientFromRequest(req);
+        user_id = clientData.user_id;
+        client_id = clientData.client_id;
+      } catch (authError) {
+        console.error("Auth error:", authError);
+        return res.status(400).json({
+          status: "error",
+          message: authError.message || "Either user_id or unique_user_id is required"
+        });
+      }
 
       /* ---------------- REQUIRED ---------------- */
       if (!name) {
@@ -50,36 +193,78 @@ class LeaveController {
       const requestUnits = ["day", "half_day", "hour"];
 
       if (leave_validation_type && !approvalTypes.includes(leave_validation_type)) {
-        return res.status(400).json({ status: "error", message: "Invalid leave_validation_type" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid leave_validation_type: '${leave_validation_type}'. Allowed values: ${approvalTypes.join(', ')}`
+        });
       }
 
       if (allocation_validation_type && !approvalTypes.includes(allocation_validation_type)) {
-        return res.status(400).json({ status: "error", message: "Invalid allocation_validation_type" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid allocation_validation_type: '${allocation_validation_type}'. Allowed values: ${approvalTypes.join(', ')}`
+        });
       }
 
       if (requires_allocation && !yesNo.includes(requires_allocation)) {
-        return res.status(400).json({ status: "error", message: "Invalid requires_allocation" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid requires_allocation: '${requires_allocation}'. Allowed values: ${yesNo.join(', ')}`
+        });
       }
 
       if (employee_requests && !yesNo.includes(employee_requests)) {
-        return res.status(400).json({ status: "error", message: "Invalid employee_requests" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid employee_requests: '${employee_requests}'. Allowed values: ${yesNo.join(', ')}`
+        });
       }
 
       if (leave_category && !categories.includes(leave_category)) {
-        return res.status(400).json({ status: "error", message: "Invalid leave_category" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid leave_category: '${leave_category}'. Allowed values: ${categories.join(', ')}`
+        });
       }
 
       if (request_unit && !requestUnits.includes(request_unit)) {
-        return res.status(400).json({ status: "error", message: "Invalid request_unit" });
+        return res.status(400).json({
+          status: "error",
+          message: `Invalid request_unit: '${request_unit}'. Allowed values: ${requestUnits.join(', ')}`
+        });
+      }
+
+      // Validate responsible_ids if provided
+      if (responsible_ids !== undefined && !Array.isArray(responsible_ids)) {
+        return res.status(400).json({
+          status: "error",
+          message: "responsible_ids must be an array of user IDs"
+        });
+      }
+
+      if (Array.isArray(responsible_ids) && responsible_ids.some(id => typeof id !== 'number')) {
+        return res.status(400).json({
+          status: "error",
+          message: "All responsible_ids must be valid numbers"
+        });
       }
 
       /* ---------------- DUPLICATE CHECK ---------------- */
-      const existing = await odooService.searchRead(
-        "hr.leave.type",
-        [["name", "=", name], ["client_id", "=", client_id]],
-        ["id"],
-        1
-      );
+      let existing;
+      try {
+        existing = await odooService.searchRead(
+          "hr.leave.type",
+          [["name", "=", name], ["client_id", "=", client_id]],
+          ["id"],
+          1
+        );
+      } catch (searchError) {
+        console.error("Error checking duplicate leave type:", searchError);
+        return res.status(400).json({
+          status: "error",
+          message: "Failed to check for duplicate leave type"
+        });
+      }
 
       if (existing.length) {
         return res.status(409).json({
@@ -118,7 +303,89 @@ class LeaveController {
       console.log("Leave Type Payload:", vals);
 
       /* ---------------- CREATE ---------------- */
-      const leaveTypeId = await odooService.create("hr.leave.type", vals);
+      let leaveTypeId;
+      try {
+        leaveTypeId = await odooService.create("hr.leave.type", vals);
+      } catch (createError) {
+        console.error("Odoo Create Error:", createError);
+
+        const errorMessage = createError.message || createError.faultString || "Unknown error";
+
+        // Duplicate name constraint (in case race condition)
+        if (errorMessage.includes("duplicate") ||
+          errorMessage.includes("already exists") ||
+          errorMessage.includes("unique constraint")) {
+          return res.status(409).json({
+            status: "error",
+            message: `Leave type '${name}' already exists`
+          });
+        }
+
+        // Access Denied
+        if (errorMessage.includes("Access Denied") ||
+          errorMessage.includes("AccessError") ||
+          errorMessage.includes("access rights")) {
+          return res.status(403).json({
+            status: "error",
+            message: "Access Denied: You don't have permission to create leave types"
+          });
+        }
+
+        // Required field missing (Odoo constraint)
+        if (errorMessage.includes("required") ||
+          errorMessage.includes("cannot be empty") ||
+          errorMessage.includes("null value")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Missing required field in Odoo: " + errorMessage
+          });
+        }
+
+        // Invalid field value
+        if (errorMessage.includes("invalid") ||
+          errorMessage.includes("not valid") ||
+          errorMessage.includes("ValidationError")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid field value: " + errorMessage
+          });
+        }
+
+        // Foreign key constraint (invalid responsible_ids, client_id, etc.)
+        if (errorMessage.includes("foreign key") ||
+          errorMessage.includes("does not exist") ||
+          errorMessage.includes("not found")) {
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid reference: One or more IDs are invalid"
+          });
+        }
+
+        // Wrong credentials
+        if (errorMessage.includes("password") ||
+          errorMessage.includes("credentials") ||
+          errorMessage.includes("authentication")) {
+          return res.status(401).json({
+            status: "error",
+            message: "Invalid credentials"
+          });
+        }
+
+        // Generic XML-RPC fault
+        if (createError.faultCode) {
+          return res.status(400).json({
+            status: "error",
+            message: errorMessage,
+            code: createError.faultCode
+          });
+        }
+
+        // Default case - return 400 for Odoo business logic errors
+        return res.status(400).json({
+          status: "error",
+          message: errorMessage || "Failed to create leave type"
+        });
+      }
 
       return res.status(200).json({
         status: "success",
@@ -129,48 +396,258 @@ class LeaveController {
     } catch (error) {
       console.error("Create Leave Type Error:", error);
 
-      return res.status(error.status || 500).json({
+      // Only return 500 for actual server errors
+      return res.status(500).json({
         status: "error",
-        message: error.message || "Failed to create leave type"
+        message: "Internal server error. Please contact support."
       });
     }
   }
+  // async getLeaveTypes(req, res) {
+  //   try {
+  //     console.log("------------------------------------------------");
+  //     console.log("API Called: getLeaveTypes");
+  //     console.log("Request Body:", JSON.stringify(req.body, null, 2));
+  //     console.log("Request Query:", JSON.stringify(req.query, null, 2));
+
+  //     // -----------------------------
+  //     // 1. Get client context from request
+  //     // -----------------------------
+  //     console.log("Attempting to get client context from request...");
+  //     const context = await getClientFromRequest(req);
+  //     const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
+  //     const { client_id } = context;
+
+  //     console.log(`Context Retrieved - User ID: ${user_id}, Client ID: ${client_id}`);
+
+  //     if (!client_id) {
+  //       console.error("❌ Client ID missing from auth context");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "client_id is required"
+  //       });
+  //     }
+
+  //     // -----------------------------
+  //     // 2. Fetch employee info
+  //     // -----------------------------
+  //     console.log("Fetching employee info for user_id:", user_id);
+  //     const employeeInfo = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", user_id]],
+  //       ["id", "name"]
+  //     );
+
+  //     if (!employeeInfo.length) {
+  //       console.error(`❌ Employee not found for user_id ${user_id}`);
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Employee not linked with this user."
+  //       });
+  //     }
+
+  //     const employeeId = employeeInfo[0].id;
+  //     console.log(`✅ Employee ID: ${employeeId}`);
+
+  //     // -----------------------------
+  //     // 3. Fetch allocated leave types for this employee
+  //     // -----------------------------
+  //     console.log("Fetching leave allocations for employee:", employeeId);
+  //     const allocations = await odooService.searchRead(
+  //       "hr.leave.allocation",
+  //       [
+  //         ["employee_id", "=", employeeId],
+  //         ["state", "=", "validate"] // Only validated allocations
+  //       ],
+  //       ["holiday_status_id"]
+  //     );
+
+  //     console.log(`Found ${allocations.length} validated allocations`);
+
+  //     if (allocations.length === 0) {
+  //       console.log("No allocations found for this employee");
+  //       return res.status(200).json({
+  //         status: "success",
+  //         total: 0,
+  //         data: [],
+  //         message: "No leave types allocated to this employee"
+  //       });
+  //     }
+
+  //     // Extract unique leave type IDs
+  //     const leaveTypeIds = [...new Set(allocations.map(a => a.holiday_status_id[0]))];
+  //     console.log("Leave Type IDs with allocations:", leaveTypeIds);
+
+  //     // -----------------------------
+  //     // 4. Define fields to fetch
+  //     // -----------------------------
+  //     const fields = [
+  //       "name",                 // Leave Name
+  //       "leave_type_code",      // Leave Type Code
+  //       "leave_category",       // Leave Category
+  //       "leave_validation_type" // Approved By
+  //     ];
+  //     console.log("Fields defined for search:", fields);
+
+  //     // -----------------------------
+  //     // 5. Domain (client scoped + allocated leave types only)
+  //     // -----------------------------
+  //     const domain = [
+  //       ["client_id", "=", client_id],
+  //       ["id", "in", leaveTypeIds] // Only leave types that are allocated
+  //     ];
+  //     console.log("Odoo Domain:", JSON.stringify(domain));
+
+  //     // -----------------------------
+  //     // 6. Fetch from Odoo
+  //     // -----------------------------
+  //     console.log(`Calling odooService.searchRead for model 'hr.leave.type' with client_id: ${client_id}...`);
+  //     const leaveTypes = await odooService.searchRead(
+  //       "hr.leave.type",
+  //       domain,
+  //       fields
+  //     );
+
+  //     console.log("Odoo Service call successful.");
+  //     console.log(`Total Leave Types Found: ${leaveTypes ? leaveTypes.length : 0}`);
+  //     console.log("Leave Types Data:", JSON.stringify(leaveTypes, null, 2));
+
+  //     // -----------------------------
+  //     // 7. Send Response
+  //     // -----------------------------
+  //     console.log("Sending success response to client...");
+  //     return res.status(200).json({
+  //       status: "success",
+  //       total: leaveTypes.length,
+  //       data: leaveTypes
+  //     });
+  //   } catch (error) {
+  //     console.error("!!! ERROR in getLeaveTypes !!!");
+  //     console.error("Error Message:", error.message);
+  //     console.error("Error Stack:", error.stack);
+  //     return res.status(error.status || 500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to fetch leave types"
+  //     });
+  //   }
+  // }
+
   async getLeaveTypes(req, res) {
     try {
       console.log("------------------------------------------------");
       console.log("API Called: getLeaveTypes");
       console.log("Request Body:", JSON.stringify(req.body, null, 2));
+      console.log("Request Query:", JSON.stringify(req.query, null, 2));
 
-      // Get client context
+      // -----------------------------
+      // 1. Get client context from request
+      // -----------------------------
       console.log("Attempting to get client context from request...");
-      const { user_id, client_id } = await getClientFromRequest(req);
+      const context = await getClientFromRequest(req);
+      const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
+      const { client_id } = context;
+
       console.log(`Context Retrieved - User ID: ${user_id}, Client ID: ${client_id}`);
 
-      // Define fields
+      if (!client_id) {
+        console.error("❌ Client ID missing from auth context");
+        return res.status(400).json({
+          status: "error",
+          message: "client_id is required"
+        });
+      }
+
+      // -----------------------------
+      // 2. Fetch employee info & Admin check
+      // -----------------------------
+      console.log("Fetching employee info for user_id:", user_id);
+      // Added 'is_client_employee_admin' in the fields to check admin status
+      const employeeInfo = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", user_id]],
+        ["id", "name", "is_client_employee_admin"]
+      );
+
+      if (!employeeInfo.length) {
+        console.error(`❌ Employee not found for user_id ${user_id}`);
+        return res.status(404).json({
+          status: "error",
+          message: "Employee not linked with this user."
+        });
+      }
+
+      const employeeId = employeeInfo[0].id;
+      const isAdmin = employeeInfo[0].is_client_employee_admin === true;
+      console.log(`✅ Employee ID: ${employeeId}, Is Admin: ${isAdmin}`);
+
+      let leaveTypeIds = [];
+
+      // -----------------------------
+      // 3. Fetch allocated leave types (Only for non-admins)
+      // -----------------------------
+      if (!isAdmin) {
+        console.log("Fetching leave allocations for employee:", employeeId);
+        const allocations = await odooService.searchRead(
+          "hr.leave.allocation",
+          [
+            ["employee_id", "=", employeeId],
+            ["state", "=", "validate"]
+          ],
+          ["holiday_status_id"]
+        );
+
+        console.log(`Found ${allocations.length} validated allocations`);
+
+        if (allocations.length === 0) {
+          console.log("No allocations found for this employee");
+          return res.status(200).json({
+            status: "success",
+            total: 0,
+            data: [],
+            message: "No leave types allocated to this employee"
+          });
+        }
+
+        // Extract unique leave type IDs
+        leaveTypeIds = [...new Set(allocations.map(a => a.holiday_status_id[0]))];
+        console.log("Leave Type IDs with allocations:", leaveTypeIds);
+      } else {
+        console.log("User is Admin, skipping allocation check to show all types.");
+      }
+
+      // -----------------------------
+      // 4. Define fields to fetch
+      // -----------------------------
       const fields = [
-        "name",                 // Leave Name
-        "leave_type_code",      // Leave Type Code
-        "leave_category",       // Leave Category
-        "leave_validation_type" // Approved By
+        "name",
+        "leave_type_code",
+        "leave_category",
+        "leave_validation_type"
       ];
-      console.log("Fields defined for search:", fields);
 
-      // Fetch from Odoo model 'hr.leave.type'
-      console.log(`Calling odooService.searchRead for model 'hr.leave.type' with Client ID: ${client_id}...`);
+      // -----------------------------
+      // 5. Domain (Dynamic based on Admin status)
+      // -----------------------------
+      let domain = [["client_id", "=", client_id]];
 
+      // Agar admin nahi hai, tabhi ID filter lagao
+      if (!isAdmin) {
+        domain.push(["id", "in", leaveTypeIds]);
+      }
+
+      console.log("Odoo Domain:", JSON.stringify(domain));
+
+      // -----------------------------
+      // 6. Fetch from Odoo
+      // -----------------------------
+      console.log(`Calling odooService.searchRead for model 'hr.leave.type' with client_id: ${client_id}...`);
       const leaveTypes = await odooService.searchRead(
         "hr.leave.type",
-        [],
-        fields,
-        user_id,
-        client_id
+        domain,
+        fields
       );
 
       console.log("Odoo Service call successful.");
-      console.log(`Total Leave Types Found: ${leaveTypes ? leaveTypes.length : 0}`);
-      console.log("Leave Types Data:", JSON.stringify(leaveTypes, null, 2));
-
-      console.log("Sending success response to client...");
       return res.status(200).json({
         status: "success",
         total: leaveTypes.length,
@@ -180,15 +657,12 @@ class LeaveController {
     } catch (error) {
       console.error("!!! ERROR in getLeaveTypes !!!");
       console.error("Error Message:", error.message);
-      console.error("Error Stack:", error.stack);
-
       return res.status(error.status || 500).json({
         status: "error",
         message: error.message || "Failed to fetch leave types"
       });
     }
   }
-
   async updateLeaveType(req, res) {
     try {
       console.log("API Called updateLeaveType");
@@ -360,11 +834,147 @@ class LeaveController {
       });
     }
   }
+  // async createLeaveAllocation(req, res) {
+  //   try {
+  //     console.log("------------------------------------------------");
+  //     console.log("API Called: createLeaveAllocation");
+  //     console.log("Request Body:", JSON.stringify(req.body, null, 2));
+
+  //     const {
+  //       holiday_status_id,
+  //       employee_id,
+  //       allocation_type,
+  //       date_from,
+  //       date_to,
+  //       number_of_days,
+  //       description,
+  //       accrual_plan_id // <-- Added for accrual allocation
+  //     } = req.body;
+
+  //     // 1. Fetch Context & Debug Logs
+  //     console.log("Fetching client context from request...");
+  //     const context = await getClientFromRequest(req);
+
+  //     console.log("DEBUG: Raw context object:", JSON.stringify(context, null, 2));
+
+  //     if (!context) {
+  //       throw new Error("Client context is null or undefined");
+  //     }
+
+  //     const { user_id, client_id } = context;
+  //     console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
+
+  //     // Validation Checks
+  //     console.log("Starting Input Validation...");
+
+  //     if (!holiday_status_id || !employee_id || !allocation_type || !date_from) {
+  //       console.warn("Validation Failed: Missing required fields");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Required missing fields: holiday_status_id, employee_id, allocation_type, date_from"
+  //       });
+  //     }
+
+  //     if (!["regular", "accrual"].includes(allocation_type)) {
+  //       console.warn(`Validation Failed: Invalid allocation_type '${allocation_type}'`);
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Invalid allocation type"
+  //       });
+  //     }
+
+  //     // For regular allocation, number_of_days is required
+  //     if (allocation_type === "regular" && (!number_of_days || number_of_days <= 0)) {
+  //       console.warn("Validation Failed: Invalid number_of_days for regular allocation");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Allocation days are required for regular allocation."
+  //       });
+  //     }
+
+  //     // For accrual allocation, accrual_plan_id is required
+  //     if (allocation_type === "accrual" && !accrual_plan_id) {
+  //       console.warn("Validation Failed: accrual_plan_id is required for accrual allocation");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Accrual Plan is required for accrual allocation."
+  //       });
+  //     }
+
+  //     console.log("Validation Passed.");
+
+  //     // Fetch Leave Type Name
+  //     console.log(`Fetching Leave Type Name for ID: ${holiday_status_id} with Client ID: ${client_id}...`);
+
+  //     const leaveTypeInfo = await odooService.searchRead(
+  //       "hr.leave.type",
+  //       [["id", "=", parseInt(holiday_status_id)]],
+  //       ["name"],
+  //       1,
+  //       client_id
+  //     );
+
+  //     console.log("Leave Type Info Retrieved:", JSON.stringify(leaveTypeInfo, null, 2));
+
+  //     const leave_type_name = leaveTypeInfo.length > 0 ? leaveTypeInfo[0].name : "Unknown Leave Type";
+  //     console.log("Resolved Leave Type Name:", leave_type_name);
+
+  //     // Prepare Payload
+  //     const vals = {
+  //       holiday_status_id: parseInt(holiday_status_id),
+  //       employee_id: parseInt(employee_id),
+  //       allocation_type: allocation_type === "accrual" ? "accrual" : allocation_type,
+  //       date_from: date_from,
+  //       date_to: date_to || null,
+  //       number_of_days: allocation_type === "regular" ? parseFloat(number_of_days) : 0, // 0 for accrual
+  //       name: description || null,
+  //       state: "confirm",
+  //       create_uid: user_id,
+  //       accrual_plan_id: allocation_type === "accrual" ? parseInt(accrual_plan_id) : null // <-- Add accrual plan
+  //     };
+
+  //     console.log("Constructed Odoo Payload:", JSON.stringify(vals, null, 2));
+  //     console.log(`Attempting to create record in 'hr.leave.allocation' for Client ID: ${client_id}...`);
+
+  //     const allocationId = await odooService.create(
+  //       "hr.leave.allocation",
+  //       vals,
+  //       client_id
+  //     );
+
+  //     console.log(`Odoo Create Success! New Allocation ID: ${allocationId}`);
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Leave allocation created successfully",
+  //       data: {
+  //         allocation_id: allocationId,
+  //         leave_type_id: leave_type_name,
+  //         validity_period: {
+  //           from: date_from,
+  //           to: date_to
+  //         },
+  //         accrual_plan_id: allocation_type === "accrual" ? accrual_plan_id : null
+  //       }
+  //     });
+
+  //   } catch (error) {
+  //     console.error("!!! ERROR in createLeaveAllocation !!!");
+  //     console.error("Error Message:", error.message);
+  //     console.error("Error Stack:", error.stack);
+
+  //     return res.status(error.status || 500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to create leave allocation"
+  //     });
+  //   }
+  // }
+
+
   async createLeaveAllocation(req, res) {
     try {
       console.log("------------------------------------------------");
       console.log("API Called: createLeaveAllocation");
-      console.log("Request Body:", JSON.stringify(req.body, null, 2));
 
       const {
         holiday_status_id,
@@ -374,7 +984,7 @@ class LeaveController {
         date_to,
         number_of_days,
         description,
-        accrual_plan_id // <-- Added for accrual allocation
+        accrual_plan_id
       } = req.body;
 
       // 1. Fetch Context & Debug Logs
@@ -391,18 +1001,14 @@ class LeaveController {
       console.log(`Context Extracted - User ID: ${user_id}, Client ID: ${client_id}`);
 
       // Validation Checks
-      console.log("Starting Input Validation...");
-
       if (!holiday_status_id || !employee_id || !allocation_type || !date_from) {
-        console.warn("Validation Failed: Missing required fields");
         return res.status(400).json({
           status: "error",
-          message: "Required missing fields: holiday_status_id, employee_id, allocation_type, date_from"
+          message: "Missing required fields: holiday_status_id, employee_id, allocation_type, or date_from"
         });
       }
 
       if (!["regular", "accrual"].includes(allocation_type)) {
-        console.warn(`Validation Failed: Invalid allocation_type '${allocation_type}'`);
         return res.status(400).json({
           status: "error",
           message: "Invalid allocation type"
@@ -427,8 +1033,6 @@ class LeaveController {
         });
       }
 
-      console.log("Validation Passed.");
-
       // Fetch Leave Type Name
       console.log(`Fetching Leave Type Name for ID: ${holiday_status_id} with Client ID: ${client_id}...`);
 
@@ -452,15 +1056,12 @@ class LeaveController {
         allocation_type: allocation_type === "accrual" ? "accrual" : allocation_type,
         date_from: date_from,
         date_to: date_to || null,
-        number_of_days: allocation_type === "regular" ? parseFloat(number_of_days) : 0, // 0 for accrual
+        number_of_days: allocation_type === "regular" ? parseFloat(number_of_days) : 0,
         name: description || null,
         state: "confirm",
         create_uid: user_id,
-        accrual_plan_id: allocation_type === "accrual" ? parseInt(accrual_plan_id) : null // <-- Add accrual plan
+        accrual_plan_id: allocation_type === "accrual" ? parseInt(accrual_plan_id) : null
       };
-
-      console.log("Constructed Odoo Payload:", JSON.stringify(vals, null, 2));
-      console.log(`Attempting to create record in 'hr.leave.allocation' for Client ID: ${client_id}...`);
 
       const allocationId = await odooService.create(
         "hr.leave.allocation",
@@ -475,11 +1076,8 @@ class LeaveController {
         message: "Leave allocation created successfully",
         data: {
           allocation_id: allocationId,
-          leave_type_id: leave_type_name,
-          validity_period: {
-            from: date_from,
-            to: date_to
-          },
+          leave_type_id: holiday_status_id,
+          validity_period: { from: date_from, to: date_to },
           accrual_plan_id: allocation_type === "accrual" ? accrual_plan_id : null
         }
       });
@@ -495,99 +1093,170 @@ class LeaveController {
       });
     }
   }
-async getLeaveAllocation(req, res) {
-  try {
-    console.log("------------------------------------------------");
-    console.log("API Called: getLeaveAllocation");
-    
-    const context = await getClientFromRequest(req);
-    const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
-    
-    console.log(`Step 1: Checking User ${user_id} flags...`);
-    
-    const userData = await odooService.searchRead(
-      "res.users",
-      [["id", "=", user_id]],
-      ["is_client_employee_admin", "is_client_employee_user", "address_id"]
-    );
-    
-    if (!userData || userData.length === 0) {
-      return res.status(404).json({ 
-        status: "error", 
-        message: "User not found" 
-      });
-    }
-    
-    const user = userData[0];
-    let domain = [];
-    
-    if (user.is_client_employee_user) {
-      console.log("User is regular employee. Fetching own records.");
-      
-      const employeeData = await odooService.searchRead(
-        "hr.employee",
-        [["user_id", "=", user_id]],
-        ["id"]
-      );
-      
-      if (employeeData.length > 0) {
-        domain.push(["employee_id", "=", employeeData[0].id]);
-      } else {
-        return res.status(404).json({
+
+  async getLeaveAllocation(req, res) {
+    try {
+      console.log("API called for getLeaveAllocation");
+
+      // -----------------------------
+      // 1. Get client_id and user_id from auth
+      // -----------------------------
+      const context = await getClientFromRequest(req);
+      const { client_id } = context;
+      const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
+
+      console.log("Resolved client_id:", client_id);
+      console.log("Resolved user_id:", user_id);
+
+      if (!client_id) {
+        return res.status(400).json({
           status: "error",
-          message: "Employee record not found for this user"
+          message: "client_id is required"
         });
       }
-      
-    } else if (user.is_client_employee_admin) {
-      console.log("User is Admin. Fetching records based on filters.");
-            if (req.query.employee_id) {
-        domain.push(["employee_id", "=", parseInt(req.query.employee_id)]);
+
+      // -----------------------------
+      // 2. Check if user is employee (not admin)
+
+      // -----------------------------
+      console.log("Checking user permissions...");
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", user_id]],
+        ["is_client_employee_admin", "is_client_employee_user"]
+      );
+
+      if (!userData || userData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found"
+        });
       }
-    }
-    
-    domain.push(["client_id", "=", context.client_id]);
-    
-    console.log(`Step 2: Fetching Allocations with domain:`, domain);
-    
-    // 5. Fetch leave allocations using searchRead
-    const allocations = await odooService.searchRead(
-      "hr.leave.allocation",
-      domain,
-      [
-        "id",
-        "name",
-        "holiday_status_id",
+
+      const user = userData[0];
+      let employeeId = null;
+
+      // If regular employee (not admin), get their employee_id
+      if (user.is_client_employee_user && !user.is_client_employee_admin) {
+        console.log("User is regular employee. Fetching employee info...");
+
+        const employeeInfo = await odooService.searchRead(
+          "hr.employee",
+          [["user_id", "=", user_id]],
+          ["id"]
+        );
+
+        if (!employeeInfo.length) {
+          console.error(`❌ Employee not found for user_id ${user_id}`);
+          return res.status(404).json({
+            status: "error",
+            message: "Employee not linked with this user."
+          });
+        }
+
+        employeeId = employeeInfo[0].id;
+        console.log(`✅ Employee ID: ${employeeId}`);
+      }
+
+      // -----------------------------
+      // 3. Optional query filters
+      // -----------------------------
+      const {
+        employee_id,
+        leave_type_id,
+        date_from,
+        date_to,
+        status
+      } = req.query;
+
+      // -----------------------------
+      // 4. Domain (CLIENT SCOPED)
+      // -----------------------------
+      const domain = [["client_id", "=", client_id]];
+
+      // If regular employee, only show their allocations
+      if (employeeId) {
+        domain.push(["employee_id", "=", employeeId]);
+        console.log("Filtering allocations for employee:", employeeId);
+      }
+      // If admin and employee_id filter provided, use that
+      else if (employee_id) {
+        domain.push(["employee_id", "=", Number(employee_id)]);
+        console.log("Admin filtering by employee_id:", employee_id);
+      }
+      // Otherwise admin sees all (no employee_id filter)
+
+      if (leave_type_id) {
+        domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
+      }
+      if (status) {
+        domain.push(["state", "=", status]);
+      }
+      if (date_from) {
+        domain.push(["date_from", ">=", date_from]);
+      }
+      if (date_to) {
+        domain.push(["date_to", "<=", date_to]);
+      }
+
+      console.log("Final Odoo Domain:", JSON.stringify(domain));
+
+      // -----------------------------
+      // 5. Fields
+      // -----------------------------
+      const fields = [
         "employee_id",
+        "holiday_status_id",
         "allocation_type",
+        "date_from",
+        "date_to",
         "number_of_days",
-        "state"
-      ]
-    );
-    
-    console.log(`Found ${allocations.length} allocations`);
-    
-    return res.status(200).json({
-      status: "success",
-      count: allocations.length,
-      data: allocations.map(a => ({
-        id: a.id,
-        description: a.name,
-        leave_type: a.holiday_status_id ? a.holiday_status_id[1] : null,
-        employee: a.employee_id ? a.employee_id[1] : null,
-        days: a.number_of_days,
-        status: a.state
-      }))
-    });
-    
-  } catch (error) {
-    console.error("Get Leave Allocation Error:", error);
-    return res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "Failed to fetch leave allocations"
-    });
+        "name",
+        "state",
+        "create_uid",
+        "create_date"
+      ];
+
+      const records = await odooService.searchRead(
+        "hr.leave.allocation",
+        domain,
+        fields
+      );
+
+      console.log(`Fetched ${records.length} allocation records`);
+
+      // -----------------------------
+      // 6. Response formatting
+      // -----------------------------
+      const data = records.map(rec => ({
+        id: rec.id,
+        employee_id: rec.employee_id?.[0],
+        employee_name: rec.employee_id?.[1],
+        leave_type_id: rec.holiday_status_id?.[0],
+        leave_type_name: rec.holiday_status_id?.[1],
+        date_from: rec.date_from,
+        date_to: rec.date_to,
+        status: rec.state,
+        allocation_type: rec.allocation_type,
+        number_of_days: rec.number_of_days,
+        description: rec.name || null,
+        created_by: rec.create_uid?.[0] || null,
+        created_on: rec.create_date
+      }));
+
+      return res.status(200).json({
+        status: "success",
+        total: data.length,
+        data
+      });
+    } catch (error) {
+      console.error("Get Leave Allocation error:", error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to fetch leave allocations"
+      });
+    }
   }
-}
 
 
   async updateLeaveAllocation(req, res) {
@@ -849,28 +1518,13 @@ async getLeaveAllocation(req, res) {
       console.log("Incoming Request Body:", JSON.stringify(req.body, null, 2));
       console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
 
-      const {
-        holiday_status_id,
-        date_from,
-        date_to,
-        reason,
-      } = req.body;
+      const { holiday_status_id, date_from, date_to, reason } = req.body;
 
       /* ───────── 1. GET USER ID ───────── */
       const rawUserId = req.body.user_id ?? req.query.user_id;
       const user_id = Number(rawUserId);
 
-      console.log("Resolved raw user_id:", rawUserId);
-      console.log("Parsed numeric user_id:", user_id);
-
-      if (
-        rawUserId === undefined ||
-        rawUserId === null ||
-        rawUserId === "" ||
-        Number.isNaN(user_id) ||
-        user_id <= 0
-      ) {
-        console.error("❌ user_id missing in request");
+      if (!rawUserId || Number.isNaN(user_id) || user_id <= 0) {
         return res.status(400).json({
           status: "error",
           message: "user_id is required"
@@ -879,11 +1533,6 @@ async getLeaveAllocation(req, res) {
 
       /* ───────── 2. REQUIRED FIELD VALIDATION ───────── */
       if (!holiday_status_id || !date_from || !date_to) {
-        console.error("❌ Validation failed - missing required fields", {
-          holiday_status_id,
-          date_from,
-          date_to
-        });
         return res.status(400).json({
           status: "error",
           message: "Require fields missing: holiday_status_id, date_from, date_to"
@@ -891,10 +1540,8 @@ async getLeaveAllocation(req, res) {
       }
 
       const leaveTypeIdInt = parseInt(holiday_status_id);
-      console.log("Parsed Leave Type ID:", leaveTypeIdInt);
 
       /* ───────── 3. FETCH USER → COMPANY ───────── */
-      console.log("Fetching user company from Odoo...");
       const userInfo = await odooService.searchRead(
         "res.users",
         [["id", "=", user_id]],
@@ -902,32 +1549,22 @@ async getLeaveAllocation(req, res) {
         1
       );
 
-      console.log("User Info Response:", userInfo);
-
       if (!userInfo.length || !userInfo[0].company_id) {
-        console.error(`❌ Company not found for user_id ${user_id}`);
         return res.status(404).json({
           status: "error",
           message: "User company not found."
         });
       }
 
-      const companyId = userInfo[0].company_id[0];
-      console.log("Resolved companyId:", companyId);
-
-      /* ───────── 4. FETCH EMPLOYEE USING COMPANY_ID ───────── */
-      console.log("Fetching employee using company_id...");
+      /* ───────── 4. FETCH EMPLOYEE ───────── */
       const employeeInfo = await odooService.searchRead(
         "hr.employee",
         [["user_id", "=", user_id]],
-        ["id", "name", "department_id", "company_id", "user_id"],
+        ["id", "name", "department_id", "company_id"],
         1
       );
 
-      console.log("Employee Info Response:", employeeInfo);
-
       if (!employeeInfo.length) {
-        console.error(`❌ Employee not found for company_id ${companyId}`);
         return res.status(404).json({
           status: "error",
           message: "Employee not linked with this user."
@@ -939,21 +1576,13 @@ async getLeaveAllocation(req, res) {
 
       const department_name = empData.department_id
         ? empData.department_id[1]
-        : "No Department Found.";
+        : "No Department Found";
 
       const company_name = empData.company_id
         ? empData.company_id[1]
-        : "No Company Found.";
-
-      console.log("Resolved Employee Details:", {
-        empIdInt,
-        empName: empData.name,
-        department_name,
-        company_name
-      });
+        : "No Company Found";
 
       /* ───────── 5. FETCH LEAVE TYPE ───────── */
-      console.log("Fetching leave type...");
       const leaveTypeInfo = await odooService.searchRead(
         "hr.leave.type",
         [["id", "=", leaveTypeIdInt]],
@@ -961,73 +1590,81 @@ async getLeaveAllocation(req, res) {
         1
       );
 
-      console.log("Leave Type Response:", leaveTypeInfo);
-
       const leave_type_name =
-        leaveTypeInfo.length > 0 ? leaveTypeInfo[0].name : "Unknown Type.";
-
-      console.log(
-        `Context Resolved → Employee:${empData.name} | Dept:${department_name} | Company:${company_name} | Leave Type:${leave_type_name}`
-      );
+        leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
 
       /* ───────── 6. CREATE LEAVE REQUEST ───────── */
+      // ✅ CORRECTED: Using request_date_from and request_date_to
       const vals = {
         employee_id: empIdInt,
         holiday_status_id: leaveTypeIdInt,
-        date_from: date_from,
-        date_to: date_to,
-        name: reason || null,
+        request_date_from: date_from, // ✅ Changed from date_from
+        request_date_to: date_to, // ✅ Changed from date_to
+        name: reason || false, // ✅ Changed from null to false (as per Odoo vals)
         create_uid: user_id
       };
 
-      console.log("Leave Creation Payload:", JSON.stringify(vals, null, 2));
-      console.log("Attempting to create leave in Odoo...");
+      console.log("Leave Creation Payload:", vals);
 
-      const requestId = await odooService.create("hr.leave", vals);
+      const leaveId = await odooService.create("hr.leave", vals);
+      console.log(`✅ Leave created. ID: ${leaveId}`);
 
-      console.log(`✅ Leave Request Created Successfully. Request ID: ${requestId}`);
+      /* ───────── 7. AUTO SUBMIT (UI BUTTON LOGIC) ───────── */
+      try {
+        console.log("Calling make_approval_request...");
+        await odooService.callMethod(
+          "hr.leave",
+          "make_approval_request",
+          [[leaveId]]
+        );
+        console.log("✅ Leave submit executed");
+      } catch (submitError) {
+        const msg = (submitError?.message || "").toLowerCase();
 
-      /* ───────── 7. RESPONSE ───────── */
+        // ✅ ODOO KNOWN BEHAVIOR (TYPO SAFE)
+        if (
+          msg.includes("already") &&
+          (msg.includes("generated") || msg.includes("genrated"))
+        ) {
+          console.log("ℹ️ Approval request already generated by Odoo (safe to ignore)");
+        } else {
+          console.error("❌ Unexpected submit error:", submitError.message);
+          return res.status(500).json({
+            status: "error",
+            message: "Leave created but submit failed",
+            details: submitError.message
+          });
+        }
+      }
+
+      /* ───────── 8. SUCCESS RESPONSE ───────── */
       return res.status(200).json({
         status: "success",
-        message: "Leave request created successfully.",
+        message: "Leave request created and submitted successfully.",
         data: {
-          request_id: requestId,
+          request_id: leaveId,
           employee_name: empData.name,
-          leave_type_name: leave_type_name,
-          company_name: company_name,
-          department_name: department_name,
+          leave_type_name,
+          company_name,
+          department_name,
           validity: {
             from: date_from,
             to: date_to
           },
-          reason: reason
+          reason
         }
       });
 
     } catch (error) {
       console.error("========== CREATE LEAVE REQUEST FAILED ==========");
 
-      // Get raw message from Odoo
       const rawError = error?.message || "";
 
-      // Check if it's an overlap error
       if (rawError.includes("overlaps with this period")) {
-        console.error("❌ Leave overlap detected");
-
-        // Clean the message: Remove "XML-RPC fault: " and extract the conflict details
-        const cleanConflictInfo = rawError.replace("XML-RPC fault: ", "").trim();
-
         return res.status(409).json({
           status: "error",
-          // Combine user's requested dates with Odoo's conflict info
           message: `Your requested leave (${req.body.date_from} to ${req.body.date_to}) conflicts with an existing entry.`,
-          conflict_details: cleanConflictInfo,
-          error_type: "LEAVE_OVERLAP",
-          requested_dates: {
-            from: req.body.date_from,
-            to: req.body.date_to
-          }
+          error_type: "LEAVE_OVERLAP"
         });
       }
 
@@ -1040,163 +1677,163 @@ async getLeaveAllocation(req, res) {
 
 
 
-async getLeaveRequest(req, res) {
-  try {
-    console.log("========== GET LEAVE REQUEST API START ==========");
-    console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
-    
-    /* ───────── 1. GET CONTEXT ───────── */
-    const context = await getClientFromRequest(req);
-    const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
-    
-    console.log(`Resolved user_id: ${user_id}`);
-    
-    /* ───────── 2. CHECK USER FLAGS ───────── */
-    console.log("Checking user permissions...");
-    const userData = await odooService.searchRead(
-      "res.users",
-      [["id", "=", user_id]],
-      ["is_client_employee_admin", "is_client_employee_user"]
-    );
-    
-    if (!userData || userData.length === 0) {
-      return res.status(404).json({ 
-        status: "error", 
-        message: "User not found" 
-      });
-    }
-    
-    const user = userData[0];
-    let domain = [];
-    let employeeInfo = null;
-    
-    /* ───────── 3. BUILD DOMAIN BASED ON USER TYPE ───────── */
-    if (user.is_client_employee_user) {
-      console.log("User is regular employee. Fetching own leave requests.");
-      
-      // Fetch employee linked to this user
-      employeeInfo = await odooService.searchRead(
-        "hr.employee",
-        [["user_id", "=", user_id]],
-        ["id", "name", "department_id", "company_id"]
+  async getLeaveRequest(req, res) {
+    try {
+      console.log("========== GET LEAVE REQUEST API START ==========");
+      console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
+
+      /* ───────── 1. GET CONTEXT ───────── */
+      const context = await getClientFromRequest(req);
+      const user_id = req.query.user_id ? parseInt(req.query.user_id) : context.user_id;
+
+      console.log(`Resolved user_id: ${user_id}`);
+
+      /* ───────── 2. CHECK USER FLAGS ───────── */
+      console.log("Checking user permissions...");
+      const userData = await odooService.searchRead(
+        "res.users",
+        [["id", "=", user_id]],
+        ["is_client_employee_admin", "is_client_employee_user"]
       );
-      
-      if (!employeeInfo.length) {
-        console.error(`❌ Employee not found for user_id ${user_id}`);
+
+      if (!userData || userData.length === 0) {
         return res.status(404).json({
           status: "error",
-          message: "Employee not linked with this user."
+          message: "User not found"
         });
       }
-      
-      // Filter by employee_id
-      domain.push(["employee_id", "=", employeeInfo[0].id]);
-      
-    } else if (user.is_client_employee_admin) {
-      console.log("User is Admin. Fetching based on filters.");
-      
-      // Admin can filter by specific employee or see all
-      if (req.query.employee_id) {
-        const empId = parseInt(req.query.employee_id);
-        domain.push(["employee_id", "=", empId]);
-        
-        // Fetch that specific employee's info for response
+
+      const user = userData[0];
+      let domain = [];
+      let employeeInfo = null;
+
+      /* ───────── 3. BUILD DOMAIN BASED ON USER TYPE ───────── */
+      if (user.is_client_employee_user) {
+        console.log("User is regular employee. Fetching own leave requests.");
+
+        // Fetch employee linked to this user
         employeeInfo = await odooService.searchRead(
           "hr.employee",
-          [["id", "=", empId]],
+          [["user_id", "=", user_id]],
           ["id", "name", "department_id", "company_id"]
         );
+
+        if (!employeeInfo.length) {
+          console.error(`❌ Employee not found for user_id ${user_id}`);
+          return res.status(404).json({
+            status: "error",
+            message: "Employee not linked with this user."
+          });
+        }
+
+        // Filter by employee_id
+        domain.push(["employee_id", "=", employeeInfo[0].id]);
+
+      } else if (user.is_client_employee_admin) {
+        console.log("User is Admin. Fetching based on filters.");
+
+        // Admin can filter by specific employee or see all
+        if (req.query.employee_id) {
+          const empId = parseInt(req.query.employee_id);
+          domain.push(["employee_id", "=", empId]);
+
+          // Fetch that specific employee's info for response
+          employeeInfo = await odooService.searchRead(
+            "hr.employee",
+            [["id", "=", empId]],
+            ["id", "name", "department_id", "company_id"]
+          );
+        }
+        // If no employee_id filter, admin sees all (we won't fetch specific employee info)
       }
-      // If no employee_id filter, admin sees all (we won't fetch specific employee info)
-    }
-    
-    /* ───────── 4. ADD CLIENT_ID & OPTIONAL FILTERS ───────── */
-    domain.push(["client_id", "=", context.client_id]);
-    
-    // Optional date filters
-    if (req.query.date_from && req.query.date_to) {
-      domain.push(["date_from", ">=", req.query.date_from]);
-      domain.push(["date_to", "<=", req.query.date_to]);
-    }
-    
-    // Optional leave type filter
-    if (req.query.holiday_status_id) {
-      domain.push(["holiday_status_id", "=", parseInt(req.query.holiday_status_id)]);
-    }
-    
-    // Optional status filter
-    if (req.query.state) {
-      domain.push(["state", "=", req.query.state]);
-    }
-    
-    console.log("Final Search Domain:", JSON.stringify(domain));
-    
-    /* ───────── 5. FETCH LEAVE REQUESTS ───────── */
-    console.log("Fetching leave requests from Odoo...");
-    const leaveRequests = await odooService.searchRead(
-      "hr.leave",
-      domain,
-      [
-        "id",
-        "name",
-        "employee_id",
-        "holiday_status_id",
-        "date_from",
-        "date_to",
-        "number_of_days",
-        "state",
-        "create_date"
-      ]
-    );
-    
-    console.log(`Fetched ${leaveRequests.length} leave records`);
-    
-    /* ───────── 6. FORMAT RESPONSE ───────── */
-    const responseData = leaveRequests.map(lr => ({
-      request_id: lr.id,
-      employee_id: lr.employee_id?.[0] || null,
-      employee_name: lr.employee_id?.[1] || null,
-      leave_type_id: lr.holiday_status_id?.[0] || null,
-      leave_type_name: lr.holiday_status_id?.[1] || "Unknown",
-      from: lr.date_from,
-      to: lr.date_to,
-      days: lr.number_of_days,
-      status: lr.state,
-      reason: lr.name || null,
-      created_on: lr.create_date
-    }));
-    
-    /* ───────── 7. BUILD RESPONSE ───────── */
-    const response = {
-      status: "success",
-      message: "Leave requests fetched successfully.",
-      total_records: responseData.length,
-      data: responseData
-    };
-    
-    // Include employee info only if we have it (regular user or admin filtering by specific employee)
-    if (employeeInfo && employeeInfo.length > 0) {
-      const empData = employeeInfo[0];
-      response.employee = {
-        id: empData.id,
-        name: empData.name,
-        department: empData.department_id?.[1] || null,
-        company: empData.company_id?.[1] || null
+
+      /* ───────── 4. ADD CLIENT_ID & OPTIONAL FILTERS ───────── */
+      domain.push(["client_id", "=", context.client_id]);
+
+      // Optional date filters
+      if (req.query.date_from && req.query.date_to) {
+        domain.push(["date_from", ">=", req.query.date_from]);
+        domain.push(["date_to", "<=", req.query.date_to]);
+      }
+
+      // Optional leave type filter
+      if (req.query.holiday_status_id) {
+        domain.push(["holiday_status_id", "=", parseInt(req.query.holiday_status_id)]);
+      }
+
+      // Optional status filter
+      if (req.query.state) {
+        domain.push(["state", "=", req.query.state]);
+      }
+
+      console.log("Final Search Domain:", JSON.stringify(domain));
+
+      /* ───────── 5. FETCH LEAVE REQUESTS ───────── */
+      console.log("Fetching leave requests from Odoo...");
+      const leaveRequests = await odooService.searchRead(
+        "hr.leave",
+        domain,
+        [
+          "id",
+          "name",
+          "employee_id",
+          "holiday_status_id",
+          "date_from",
+          "date_to",
+          "number_of_days",
+          "state",
+          "create_date"
+        ]
+      );
+
+      console.log(`Fetched ${leaveRequests.length} leave records`);
+
+      /* ───────── 6. FORMAT RESPONSE ───────── */
+      const responseData = leaveRequests.map(lr => ({
+        request_id: lr.id,
+        employee_id: lr.employee_id?.[0] || null,
+        employee_name: lr.employee_id?.[1] || null,
+        leave_type_id: lr.holiday_status_id?.[0] || null,
+        leave_type_name: lr.holiday_status_id?.[1] || "Unknown",
+        from: lr.date_from,
+        to: lr.date_to,
+        days: lr.number_of_days,
+        status: lr.state,
+        reason: lr.name || null,
+        created_on: lr.create_date
+      }));
+
+      /* ───────── 7. BUILD RESPONSE ───────── */
+      const response = {
+        status: "success",
+        message: "Leave requests fetched successfully.",
+        total_records: responseData.length,
+        data: responseData
       };
+
+      // Include employee info only if we have it (regular user or admin filtering by specific employee)
+      if (employeeInfo && employeeInfo.length > 0) {
+        const empData = employeeInfo[0];
+        response.employee = {
+          id: empData.id,
+          name: empData.name,
+          department: empData.department_id?.[1] || null,
+          company: empData.company_id?.[1] || null
+        };
+      }
+
+      console.log("========== GET LEAVE REQUEST SUCCESS ==========");
+      return res.status(200).json(response);
+
+    } catch (error) {
+      console.error("========== GET LEAVE REQUEST FAILED ==========");
+      console.error(error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to fetch leave requests."
+      });
     }
-    
-    console.log("========== GET LEAVE REQUEST SUCCESS ==========");
-    return res.status(200).json(response);
-    
-  } catch (error) {
-    console.error("========== GET LEAVE REQUEST FAILED ==========");
-    console.error(error);
-    return res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "Failed to fetch leave requests."
-    });
   }
-}
 
   async updateLeaveRequest(req, res) {
     try {
@@ -1329,7 +1966,203 @@ async getLeaveRequest(req, res) {
       });
     }
   }
-  // New Admin Leave Dashboard 
+  // async getAdminLeave(req, res) {
+  //   try {
+  //     const { user_id, limit = 20, offset = 0 } = req.query;
+
+  //     if (!user_id) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "user_id is required"
+  //       });
+  //     }
+
+  //     /* =====================
+  //        RESOLVE CLIENT
+  //     ===================== */
+  //     const user = await odooService.searchRead(
+  //       "res.users",
+  //       [["id", "=", Number(user_id)]],
+  //       ["partner_id"],
+  //       1
+  //     );
+
+  //     if (!user.length) throw new Error("User not found");
+
+  //     const partnerId = user[0].partner_id[0];
+
+  //     const adminEmployee = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["address_id", "=", partnerId]],
+  //       ["address_id"],
+  //       1
+  //     );
+
+  //     if (!adminEmployee.length)
+  //       throw new Error("Admin employee not found");
+
+  //     const client_id = adminEmployee[0].address_id[0];
+  //     const today = new Date().toISOString().split("T")[0];
+
+  //     /* =====================
+  //        DASHBOARD METRICS
+  //     ===================== */
+  //     const [
+  //       presentTodayCount,
+  //       plannedLeavesCount,
+  //       absentUnplannedCount,
+  //       pendingApprovalsCount
+  //     ] = await Promise.all([
+
+  //       odooService.callCustomMethod(
+  //         "simple.action",
+  //         "get_total_present_employee",
+  //         [[], false, false, client_id]
+  //       ),
+
+  //       odooService.searchCount("hr.leave", [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["state", "=", "validate"],
+  //         ["request_date_from", ">", today]
+  //       ]),
+
+  //       odooService.callCustomMethod(
+  //         "simple.action",
+  //         "get_total_no_of_uninformed_employee",
+  //         [client_id]
+  //       ),
+
+  //       odooService.searchCount("hr.leave", [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["state", "=", "confirm"]
+  //       ])
+  //     ]);
+
+  //     /* =====================
+  //        LEAVE TABLE DATA
+  //     ===================== */
+
+  //     // Present Today - Get attendance records for today
+  //     const presentTodayTable = await odooService.searchRead(
+  //       "hr.attendance",
+  //       [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["check_in", ">=", `${today} 00:00:00`],
+  //         ["check_in", "<=", `${today} 23:59:59`]
+  //       ],
+  //       ["employee_id", "check_in", "check_out"],
+  //       Number(offset),
+  //       Number(limit),
+  //       "check_in desc"
+  //     );
+
+  //     // Planned Leaves
+  //     const plannedLeavesTable = await odooService.searchRead(
+  //       "hr.leave",
+  //       [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["state", "=", "validate"],
+  //         ["request_date_from", ">", today]
+  //       ],
+  //       [
+  //         "employee_id",
+  //         "holiday_status_id",
+  //         "request_date_from",
+  //         "request_date_to",
+  //         "number_of_days",
+  //         "state"
+  //       ],
+  //       Number(offset),
+  //       Number(limit),
+  //       "request_date_from asc"
+  //     );
+
+  //     // Pending Approvals
+  //     const pendingApprovalsTable = await odooService.searchRead(
+  //       "hr.leave",
+  //       [
+  //         ["employee_id.address_id", "=", client_id],
+  //         ["state", "=", "confirm"]
+  //       ],
+  //       [
+  //         "employee_id",
+  //         "holiday_status_id",
+  //         "request_date_from",
+  //         "request_date_to",
+  //         "number_of_days",
+  //         "state"
+  //       ],
+  //       Number(offset),
+  //       Number(limit),
+  //       "request_date_from asc"
+  //     );
+
+  //     // Absent / Unplanned (SAFE NORMALIZATION)
+  //     let absentUnplannedRaw = await odooService.callCustomMethod(
+  //       "simple.action",
+  //       "get_total_no_of_uninformed_employee",
+  //       [client_id]
+  //     );
+
+  //     // 🔑 FORCE ARRAY SHAPE
+  //     if (!Array.isArray(absentUnplannedRaw)) {
+  //       absentUnplannedRaw = absentUnplannedRaw ? [absentUnplannedRaw] : [];
+  //     }
+
+  //     /* =====================
+  //        NORMALIZERS
+  //     ===================== */
+  //     const normalizeLeave = (l) => ({
+  //       employee_id: l.employee_id?.[0] || l.employee_id || null,
+  //       employee_name: l.employee_id?.[1] || l.employee_name || null,
+  //       leave_type: l.holiday_status_id?.[1] || l.leave_type || "Unplanned Absence",
+  //       from: l.request_date_from || l.from || today,
+  //       to: l.request_date_to || l.to || today,
+  //       number_of_days: l.number_of_days || 1,
+  //       status: l.state || "absent"
+  //     });
+
+  //     const normalizePresent = (p) => ({
+  //       employee_id: p.employee_id?.[0] || p.employee_id || null,
+  //       employee_name: p.employee_id?.[1] || p.employee_name || null,
+  //       check_in: p.check_in || null,
+  //       check_out: p.check_out || null,
+  //       status: "present"
+  //     });
+
+  //     /* =====================
+  //        RESPONSE
+  //     ===================== */
+  //     return res.status(200).json({
+  //       success: true,
+  //       dashboard: {
+  //         present_today: presentTodayCount,
+  //         planned_leaves: plannedLeavesCount,
+  //         absent_unplanned: absentUnplannedCount,
+  //         pending_approvals: pendingApprovalsCount
+  //       },
+  //       tables: {
+  //         present_today: presentTodayTable.map(normalizePresent),
+  //         planned_leaves: plannedLeavesTable.map(normalizeLeave),
+  //         pending_approvals: pendingApprovalsTable.map(normalizeLeave),
+  //         absent_unplanned: absentUnplannedRaw.map(normalizeLeave)
+  //       },
+  //       meta: {
+  //         client_id,
+  //         limit: Number(limit),
+  //         offset: Number(offset)
+  //       }
+  //     });
+
+  //   } catch (error) {
+  //     console.error("❌ Admin Leave Dashboard Error:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: error.message
+  //     });
+  //   }
+  // }
+
   async getAdminLeave(req, res) {
     try {
       const { user_id, limit = 20, offset = 0 } = req.query;
@@ -1340,10 +2173,14 @@ async getLeaveRequest(req, res) {
           message: "user_id is required"
         });
       }
+      const convertToIST = (utcDatetime) => {
+        if (!utcDatetime) return null;
 
-      /* =====================
-         RESOLVE CLIENT
-      ===================== */
+        const utcDate = new Date(utcDatetime + ' UTC');
+        const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+
+        return istDate.toISOString().replace('T', ' ').substring(0, 19);
+      };
       const user = await odooService.searchRead(
         "res.users",
         [["id", "=", Number(user_id)]],
@@ -1367,12 +2204,8 @@ async getLeaveRequest(req, res) {
 
       const client_id = adminEmployee[0].address_id[0];
       const today = new Date().toISOString().split("T")[0];
-
-      /* =====================
-         DASHBOARD METRICS
-      ===================== */
       const [
-        presentToday,
+        presentTodayCount,
         plannedLeavesCount,
         absentUnplannedCount,
         pendingApprovalsCount
@@ -1381,7 +2214,7 @@ async getLeaveRequest(req, res) {
         odooService.callCustomMethod(
           "simple.action",
           "get_total_present_employee",
-          [client_id]
+          [[], false, false, client_id]
         ),
 
         odooService.searchCount("hr.leave", [
@@ -1401,12 +2234,18 @@ async getLeaveRequest(req, res) {
           ["state", "=", "confirm"]
         ])
       ]);
-
-      /* =====================
-         LEAVE TABLE DATA
-      ===================== */
-
-      // Planned Leaves
+      const presentTodayTable = await odooService.searchRead(
+        "hr.attendance",
+        [
+          ["employee_id.address_id", "=", client_id],
+          ["check_in", ">=", `${today} 00:00:00`],
+          ["check_in", "<=", `${today} 23:59:59`]
+        ],
+        ["employee_id", "check_in", "check_out"],
+        Number(offset),
+        Number(limit),
+        "check_in desc"
+      );
       const plannedLeavesTable = await odooService.searchRead(
         "hr.leave",
         [
@@ -1426,8 +2265,6 @@ async getLeaveRequest(req, res) {
         Number(limit),
         "request_date_from asc"
       );
-
-      // Pending Approvals
       const pendingApprovalsTable = await odooService.searchRead(
         "hr.leave",
         [
@@ -1446,22 +2283,50 @@ async getLeaveRequest(req, res) {
         Number(limit),
         "request_date_from asc"
       );
-
-      // Absent / Unplanned (SAFE NORMALIZATION)
-      let absentUnplannedRaw = await odooService.callCustomMethod(
-        "simple.action",
-        "get_total_no_of_uninformed_employee",
-        [client_id]
+      const allEmployees = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", client_id]],
+        ["id", "name"]
+      );
+      const presentEmployeeIds = presentTodayTable.map(p => p.employee_id[0]);
+      const onLeaveToday = await odooService.searchRead(
+        "hr.leave",
+        [
+          ["employee_id.address_id", "=", client_id],
+          ["state", "=", "validate"],
+          ["request_date_from", "<=", today],
+          ["request_date_to", ">=", today]
+        ],
+        ["employee_id"]
+      );
+      const onLeaveEmployeeIds = onLeaveToday.map(l => l.employee_id[0]);
+      const pendingLeaveToday = await odooService.searchRead(
+        "hr.leave",
+        [
+          ["employee_id.address_id", "=", client_id],
+          ["state", "=", "confirm"],
+          ["request_date_from", "<=", today],
+          ["request_date_to", ">=", today]
+        ],
+        ["employee_id"]
       );
 
-      // 🔑 FORCE ARRAY SHAPE
-      if (!Array.isArray(absentUnplannedRaw)) {
-        absentUnplannedRaw = absentUnplannedRaw ? [absentUnplannedRaw] : [];
-      }
-
-      /* =====================
-         NORMALIZER
-      ===================== */
+      const pendingLeaveEmployeeIds = pendingLeaveToday.map(l => l.employee_id[0]);
+      const absentUnplannedRaw = allEmployees
+        .filter(emp =>
+          !presentEmployeeIds.includes(emp.id) &&
+          !onLeaveEmployeeIds.includes(emp.id) &&
+          !pendingLeaveEmployeeIds.includes(emp.id)
+        )
+        .map(emp => ({
+          employee_id: emp.id,
+          employee_name: emp.name,
+          from: today,
+          to: today,
+          number_of_days: 1,
+          leave_type: "Unplanned Absence",
+          state: "absent"
+        }));
       const normalizeLeave = (l) => ({
         employee_id: l.employee_id?.[0] || l.employee_id || null,
         employee_name: l.employee_id?.[1] || l.employee_name || null,
@@ -1472,21 +2337,36 @@ async getLeaveRequest(req, res) {
         status: l.state || "absent"
       });
 
-      /* =====================
-         RESPONSE
-      ===================== */
+      const normalizePresent = (p) => ({
+        employee_id: p.employee_id?.[0] || p.employee_id || null,
+        employee_name: p.employee_id?.[1] || p.employee_name || null,
+        check_in: convertToIST(p.check_in),
+        check_out: convertToIST(p.check_out),
+        status: "present"
+      });
+
+      const normalizeAbsent = (a) => ({
+        employee_id: a.employee_id || null,
+        employee_name: a.employee_name || null,
+        leave_type: a.leave_type || "Unplanned Absence",
+        from: a.from || today,
+        to: a.to || today,
+        number_of_days: a.number_of_days || 1,
+        status: a.state || "absent"
+      });
       return res.status(200).json({
         success: true,
         dashboard: {
-          present_today: presentToday,
+          present_today: presentTodayCount,
           planned_leaves: plannedLeavesCount,
           absent_unplanned: absentUnplannedCount,
           pending_approvals: pendingApprovalsCount
         },
         tables: {
+          present_today: presentTodayTable.map(normalizePresent),
           planned_leaves: plannedLeavesTable.map(normalizeLeave),
           pending_approvals: pendingApprovalsTable.map(normalizeLeave),
-          absent_unplanned: absentUnplannedRaw.map(normalizeLeave)
+          absent_unplanned: absentUnplannedRaw.map(normalizeAbsent)
         },
         meta: {
           client_id,
@@ -1503,272 +2383,6 @@ async getLeaveRequest(req, res) {
       });
     }
   }
-
-  // Old Admin Leave Dashboard
-  // async getAdminLeave(req, res) {
-  //   try {
-  //     const {
-  //       user_id,
-  //       date_from,
-  //       date_to,
-  //       limit = 100,
-  //       offset = 0,
-  //       leave_type_id,
-  //       leave_state
-  //     } = req.query;
-  //     console.log(req.query);
-
-  //     if (!user_id) {
-  //       return res.status(400).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: "user_id is required",
-  //       });
-  //     }
-
-  //     console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
-
-  //     const partner = await odooService.searchRead(
-  //       "res.users",
-  //       [["id", "=", parseInt(user_id)]],
-  //       ["id", "partner_id"]
-  //     );
-
-  //     if (!partner.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: `Partner not found for user_id: ${user_id}`,
-  //       });
-  //     }
-
-  //     const partnerId = partner[0].partner_id?.[0];
-
-  //     const adminEmployee = await odooService.searchRead(
-  //       "hr.employee",
-  //       [["address_id", "=", partnerId]],
-  //       ["id", "address_id"]
-  //     );
-
-  //     if (!adminEmployee.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: `Employee not found for partner ${partnerId}`,
-  //       });
-  //     }
-
-  //     const client_id = adminEmployee[0].address_id?.[0];
-  //     console.log(client_id, "✔ client_id");
-
-  //     const totalEmployees = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_number_of_employee",
-  //       [[], client_id]
-  //     );
-
-  //     const Presentemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_present_employee",
-  //       [client_id]
-  //     );
-
-  //     const TotalLateemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_late_employee",
-  //       [client_id]
-  //     );
-
-  //     const Ununiformendemployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_uninformed_employee",
-  //       [client_id]
-  //     );
-
-  //     const pendingRequests = await odooService.searchCount("hr.leave", [
-  //       ["employee_id.address_id", "=", client_id],
-  //       ["state", "=", "confirm"]
-  //     ]);
-
-  //     const plannedLeaves = await odooService.searchCount("hr.leave", [
-  //       ["employee_id.address_id", "=", client_id],
-  //       ["state", "=", "validate"]
-  //     ]);
-
-  //     const TodayAbsetEmployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_employees_no_attendance_today",
-  //       [client_id]
-  //     );
-
-  //     const ApprovedLeaveOfEmployee = await odooService.callCustomMethod(
-  //       "simple.action",
-  //       "get_total_no_of_permited_employee",
-  //       [client_id]
-  //     );
-  //     console.log("Employee Who took Permision : ", ApprovedLeaveOfEmployee)
-
-  //     const allEmployees = await odooService.searchRead(
-  //       "hr.employee",
-  //       [["address_id", "=", client_id]],
-  //       ["id", "name", "job_id"]
-  //     );
-
-  //     if (!allEmployees.length) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         status: "error",
-  //         errorMessage: "No employees found for this client_id",
-  //       });
-  //     }
-  //     const employeeMap = {};
-  //     allEmployees.forEach(emp => {
-  //       employeeMap[emp.id] = {
-  //         job_id: emp.job_id || null,
-  //         job_name: emp.job_id ? emp.job_id[1] : null,
-  //       };
-  //     });
-
-  //     const employeeIds = allEmployees.map(e => e.id);
-  //     let domain = [["employee_id", "in", employeeIds]];
-  //     if (date_from) domain.push(["check_in", ">=", date_from]);
-  //     if (date_to) domain.push(["check_in", "<=", date_to]);
-
-  //     const FIELDS = [
-  //       "employee_id",
-  //       "check_in",
-  //       "checkin_lat",
-  //       "checkin_lon",
-  //       "check_out",
-  //       "checkout_lat",
-  //       "checkout_lon",
-  //       "worked_hours",
-  //       "early_out_minutes",
-  //       "overtime_hours",
-  //       "is_early_out",
-  //       "validated_overtime_hours",
-  //       "is_late_in",
-  //       "late_time_display",
-  //       "status_code",
-  //     ];
-  //     const attendances = await odooService.searchRead(
-  //       "hr.attendance",
-  //       domain,
-  //       FIELDS,
-  //       parseInt(offset),
-  //       parseInt(limit),
-  //       "check_in desc"
-  //     );
-
-  //     const attendanceMap = {};
-  //     attendances.forEach(a => {
-  //       const empId = a.employee_id?.[0];
-  //       attendanceMap[empId] = a;
-  //     });
-
-  //     const finalData = allEmployees.map(emp => {
-  //       const att = attendanceMap[emp.id];
-
-  //       return {
-  //         id: att?.id || null,
-  //         employee_id: [emp.id, emp.name],
-
-  //         check_in: att?.check_in || null,
-  //         checkin_lat: att?.checkin_lat || null,
-  //         checkin_lon: att?.checkin_lon || null,
-
-  //         check_out: att?.check_out || null,
-  //         checkout_lat: att?.checkout_lat || null,
-  //         checkout_lon: att?.checkout_lon || null,
-
-  //         worked_hours: att?.worked_hours || null,
-  //         early_out_minutes: att?.early_out_minutes || null,
-  //         overtime_hours: att?.overtime_hours || null,
-  //         validated_overtime_hours: att?.validated_overtime_hours || null,
-
-  //         is_late_in: att?.is_late_in || null,
-  //         late_time_display: att?.late_time_display || null,
-  //         is_early_out: att?.is_early_out || null,
-  //         status_code: att?.status_code || null,
-
-  //         job_id: emp.job_id || null,
-  //         job_name: emp.job_id ? emp.job_id[1] : null,
-  //       };
-  //     });
-  //     let leaveDomain = [["employee_id.address_id", "=", client_id]];
-
-  //     if (leave_state)
-  //       leaveDomain.push(["state", "=", leave_state]);
-
-  //     if (leave_type_id)
-  //       leaveDomain.push(["holiday_status_id", "=", parseInt(leave_type_id)]);
-
-  //     if (date_from)
-  //       leaveDomain.push(["request_date_from", ">=", date_from]);
-
-  //     if (date_to)
-  //       leaveDomain.push(["request_date_to", "<=", date_to]);
-
-  //     const leaveTableRaw = await odooService.searchRead(
-  //       "hr.leave",
-  //       leaveDomain,
-  //       [
-  //         "employee_id",
-  //         "holiday_status_id",
-  //         "request_date_from",
-  //         "request_date_to",
-  //         "number_of_days",
-  //         "state",
-  //       ],
-  //       parseInt(offset),
-  //       parseInt(limit),
-  //       "request_date_from desc"
-  //     );
-
-  //     const leaveTable = leaveTableRaw.map(l => ({
-  //       employee_id: l.employee_id?.[0],
-  //       employee_name: l.employee_id?.[1],
-  //       leave_type_id: l.holiday_status_id?.[0],
-  //       leave_type: l.holiday_status_id?.[1],
-  //       from: l.request_date_from,
-  //       to: l.request_date_to,
-  //       no_of_days: l.number_of_days,
-  //       status: l.state,
-  //     }));
-  //     return res.status(200).json({
-  //       success: true,
-  //       status: "success",
-  //       successMessage: "Admin attendance records fetched",
-  //       data: finalData,
-  //       leaveTable,
-  //       meta: {
-  //         total: finalData.length,
-  //         leave_total: leaveTable.length,
-  //         limit: parseInt(limit),
-  //         offset: parseInt(offset),
-  //         admin_partner_id: partnerId,
-  //         admin_address_id: client_id,
-  //         TotalEmployee: totalEmployees,
-  //         Presentemployee: Presentemployee,
-  //         TotalLateemployee: TotalLateemployee,
-  //         Ununiformendemployee: Ununiformendemployee,
-  //         TodayAbsetEmployee: TodayAbsetEmployee,
-  //         ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee,
-  //         pendingRequests: pendingRequests,
-  //         plannedLeaves: plannedLeaves
-  //       },
-  //     });
-
-  //   } catch (error) {
-  //     console.error("🔥 Admin Attendance Error:", error);
-  //     return res.status(500).json({
-  //       success: false,
-  //       status: "error",
-  //       errorMessage: error.message || "Failed to fetch admin attendance",
-  //     });
-  //   }
-  // }
-
   async createPublicHoliday(req, res) {
     try {
       console.log("API called for Public Holiday creation");

@@ -117,6 +117,6 @@ app.use((err, req, res, next) => {
 */
 app.listen(PORT, "0.0.0.0", () => {
   console.log(
-    `🚀 ${process.env.NODE_ENV || "app"} server running on port ${PORT}`
+    `${process.env.NODE_ENV || "app"} server running on port ${PORT}`
   );
 });
