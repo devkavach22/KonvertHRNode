@@ -7758,215 +7758,215 @@ class ApiController {
   //   }
   // }
 
-  async rejectAttendanceRegularization(req, res) {
-    try {
-      const { approval_request_id, remarks, user_id } = req.body;
-      const { currentUser } = await getClientFromRequest(req);
+  // async rejectAttendanceRegularization(req, res) {
+  //   try {
+  //     const { approval_request_id, remarks, user_id } = req.body;
+  //     const { currentUser } = await getClientFromRequest(req);
 
-      const adminName = currentUser?.partner_id ? currentUser.partner_id[1] : "Approver";
+  //     const adminName = currentUser?.partner_id ? currentUser.partner_id[1] : "Approver";
 
-      if (!approval_request_id || !user_id) {
-        return res.status(400).json({
-          status: "error",
-          message: "approval_request_id and user_id are required",
-        });
-      }
+  //     if (!approval_request_id || !user_id) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "approval_request_id and user_id are required",
+  //       });
+  //     }
 
-      const approvalRecords = await odooService.searchRead(
-        "approval.request",
-        [["id", "=", parseInt(approval_request_id)]],
-        [
-          "id",
-          "name",
-          "state",
-          "attendance_regulzie_id",
-          "hr_leave_id",
-          "hr_expense_id",
-          "description",
-          "approval_log_list"
-        ]
-      );
+  //     const approvalRecords = await odooService.searchRead(
+  //       "approval.request",
+  //       [["id", "=", parseInt(approval_request_id)]],
+  //       [
+  //         "id",
+  //         "name",
+  //         "state",
+  //         "attendance_regulzie_id",
+  //         "hr_leave_id",
+  //         "hr_expense_id",
+  //         "description",
+  //         "approval_log_list"
+  //       ]
+  //     );
 
-      if (!approvalRecords?.length) {
-        return res.status(404).json({
-          status: "error",
-          message: "Approval Record not found"
-        });
-      }
+  //     if (!approvalRecords?.length) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Approval Record not found"
+  //       });
+  //     }
 
-      const approvalRecord = approvalRecords[0];
+  //     const approvalRecord = approvalRecords[0];
 
-      if (approvalRecord.state === 'refused' || approvalRecord.state === 'reject' || approvalRecord.state === 'cancel') {
-        return res.status(400).json({
-          status: "error",
-          message: "This request has already been rejected.",
-        });
-      }
+  //     if (approvalRecord.state === 'refused' || approvalRecord.state === 'reject' || approvalRecord.state === 'cancel') {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "This request has already been rejected.",
+  //       });
+  //     }
 
-      const approvalLogIds = approvalRecord.approval_log_list;
+  //     const approvalLogIds = approvalRecord.approval_log_list;
 
-      if (!approvalLogIds || approvalLogIds.length === 0) {
-        return res.status(400).json({
-          status: "error",
-          message: "No approval sequence configured",
-        });
-      }
+  //     if (!approvalLogIds || approvalLogIds.length === 0) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "No approval sequence configured",
+  //       });
+  //     }
 
-      let approvalLogs = await odooService.searchRead(
-        "approval.log.list",
-        [["id", "in", approvalLogIds]],
-        ["id", "sequence_no_of_user", "approver_id", "is_approved_by_user"]
-      );
+  //     let approvalLogs = await odooService.searchRead(
+  //       "approval.log.list",
+  //       [["id", "in", approvalLogIds]],
+  //       ["id", "sequence_no_of_user", "approver_id", "is_approved_by_user"]
+  //     );
 
-      if (!approvalLogs || approvalLogs.length === 0) {
-        return res.status(400).json({
-          status: "error",
-          message: "Could not retrieve approval sequence",
-        });
-      }
+  //     if (!approvalLogs || approvalLogs.length === 0) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Could not retrieve approval sequence",
+  //       });
+  //     }
 
-      approvalLogs.sort((a, b) => a.sequence_no_of_user - b.sequence_no_of_user);
+  //     approvalLogs.sort((a, b) => a.sequence_no_of_user - b.sequence_no_of_user);
 
-      const currentUserLog = approvalLogs.find(log => {
-        const approverId = Array.isArray(log.approver_id) ? log.approver_id[0] : log.approver_id;
-        return approverId === parseInt(user_id);
-      });
+  //     const currentUserLog = approvalLogs.find(log => {
+  //       const approverId = Array.isArray(log.approver_id) ? log.approver_id[0] : log.approver_id;
+  //       return approverId === parseInt(user_id);
+  //     });
 
-      if (!currentUserLog) {
-        return res.status(403).json({
-          status: "error",
-          message: "You are not authorized to reject this request (not in approval sequence)",
-        });
-      }
+  //     if (!currentUserLog) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "You are not authorized to reject this request (not in approval sequence)",
+  //       });
+  //     }
 
-      const currentSequence = currentUserLog.sequence_no_of_user;
+  //     const currentSequence = currentUserLog.sequence_no_of_user;
 
-      const previousApprovers = approvalLogs.filter(log =>
-        log.sequence_no_of_user < currentSequence
-      );
+  //     const previousApprovers = approvalLogs.filter(log =>
+  //       log.sequence_no_of_user < currentSequence
+  //     );
 
-      if (previousApprovers.length > 0) {
-        for (const prevLog of previousApprovers) {
-          if (prevLog.is_approved_by_user !== true) {
-            return res.status(403).json({
-              status: "error",
-              message: `Cannot reject. The approver at sequence ${prevLog.sequence_no_of_user} must approve first before you can take action.`,
-            });
-          }
-        }
-      }
+  //     if (previousApprovers.length > 0) {
+  //       for (const prevLog of previousApprovers) {
+  //         if (prevLog.is_approved_by_user !== true) {
+  //           return res.status(403).json({
+  //             status: "error",
+  //             message: `Cannot reject. The approver at sequence ${prevLog.sequence_no_of_user} must approve first before you can take action.`,
+  //           });
+  //         }
+  //       }
+  //     }
 
-      const employeeData = await odooService.searchRead(
-        "hr.employee",
-        [["user_id", "=", parseInt(user_id)]],
-        ["employee_password", "name"]
-      );
+  //     const employeeData = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", parseInt(user_id)]],
+  //       ["employee_password", "name"]
+  //     );
 
-      if (!employeeData || employeeData.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: "Employee record not found for this user"
-        });
-      }
+  //     if (!employeeData || employeeData.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Employee record not found for this user"
+  //       });
+  //     }
 
-      const fetchedPassword = employeeData[0].employee_password;
+  //     const fetchedPassword = employeeData[0].employee_password;
 
-      if (!fetchedPassword || fetchedPassword === "") {
-        return res.status(400).json({
-          status: "error",
-          message: "Password not found in Odoo for this employee."
-        });
-      }
+  //     if (!fetchedPassword || fetchedPassword === "") {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Password not found in Odoo for this employee."
+  //       });
+  //     }
 
-      // Create the wizard
-      const wizardId = await odooService.create(
-        "request.reject.wizard",
-        { remarks: remarks || `Rejected via App by ${adminName}` },
-        { uid: parseInt(user_id), userPassword: fetchedPassword }
-      );
+  //     // Create the wizard
+  //     const wizardId = await odooService.create(
+  //       "request.reject.wizard",
+  //       { remarks: remarks || `Rejected via App by ${adminName}` },
+  //       { uid: parseInt(user_id), userPassword: fetchedPassword }
+  //     );
 
-      // Call the reject action - this is the critical step
-      // If this fails, we should not proceed
-      await odooService.callMethod(
-        "request.reject.wizard",
-        "action_reject_request",
-        [parseInt(wizardId)],
-        {
-          active_id: approvalRecord.id,
-          active_model: "approval.request",
-          active_ids: [approvalRecord.id],
-        },
-        parseInt(user_id),
-        fetchedPassword
-      );
+  //     // Call the reject action - this is the critical step
+  //     // If this fails, we should not proceed
+  //     await odooService.callMethod(
+  //       "request.reject.wizard",
+  //       "action_reject_request",
+  //       [parseInt(wizardId)],
+  //       {
+  //         active_id: approvalRecord.id,
+  //         active_model: "approval.request",
+  //         active_ids: [approvalRecord.id],
+  //       },
+  //       parseInt(user_id),
+  //       fetchedPassword
+  //     );
 
-      // Try to update the related records, but don't fail if there are permission issues
-      // The rejection has already happened in Odoo via the wizard
-      let updatedRecord = null;
+  //     // Try to update the related records, but don't fail if there are permission issues
+  //     // The rejection has already happened in Odoo via the wizard
+  //     let updatedRecord = null;
 
-      try {
-        if (approvalRecord.attendance_regulzie_id) {
-          const regId = approvalRecord.attendance_regulzie_id[0];
-          await odooService.write(
-            "attendance.regular",
-            [regId],
-            { state_select: "reject" },
-            parseInt(user_id),
-            fetchedPassword
-          );
-          updatedRecord = { model: "attendance.regular", id: regId };
+  //     try {
+  //       if (approvalRecord.attendance_regulzie_id) {
+  //         const regId = approvalRecord.attendance_regulzie_id[0];
+  //         await odooService.write(
+  //           "attendance.regular",
+  //           [regId],
+  //           { state_select: "reject" },
+  //           parseInt(user_id),
+  //           fetchedPassword
+  //         );
+  //         updatedRecord = { model: "attendance.regular", id: regId };
 
-        } else if (approvalRecord.hr_leave_id) {
-          const leaveId = approvalRecord.hr_leave_id[0];
-          await odooService.write(
-            "hr.leave",
-            [leaveId],
-            { state: "refuse" },
-            parseInt(user_id),
-            fetchedPassword
-          );
-          updatedRecord = { model: "hr.leave", id: leaveId };
+  //       } else if (approvalRecord.hr_leave_id) {
+  //         const leaveId = approvalRecord.hr_leave_id[0];
+  //         await odooService.write(
+  //           "hr.leave",
+  //           [leaveId],
+  //           { state: "refuse" },
+  //           parseInt(user_id),
+  //           fetchedPassword
+  //         );
+  //         updatedRecord = { model: "hr.leave", id: leaveId };
 
-        } else if (approvalRecord.hr_expense_id) {
-          const sheetId = approvalRecord.hr_expense_id[0];
-          await odooService.write(
-            "hr.expense.sheet",
-            [sheetId],
-            { state: "cancel" },
-            parseInt(user_id),
-            fetchedPassword
-          );
-          updatedRecord = { model: "hr.expense.sheet", id: sheetId };
-        }
-      } catch (updateError) {
-        // Log the error but don't fail the request
-        // The wizard has already handled the rejection in Odoo
-        console.error("Warning: Could not update related record state:", updateError.message);
-        // Continue to return success because the rejection itself succeeded
-      }
+  //       } else if (approvalRecord.hr_expense_id) {
+  //         const sheetId = approvalRecord.hr_expense_id[0];
+  //         await odooService.write(
+  //           "hr.expense.sheet",
+  //           [sheetId],
+  //           { state: "cancel" },
+  //           parseInt(user_id),
+  //           fetchedPassword
+  //         );
+  //         updatedRecord = { model: "hr.expense.sheet", id: sheetId };
+  //       }
+  //     } catch (updateError) {
+  //       // Log the error but don't fail the request
+  //       // The wizard has already handled the rejection in Odoo
+  //       console.error("Warning: Could not update related record state:", updateError.message);
+  //       // Continue to return success because the rejection itself succeeded
+  //     }
 
-      return res.status(200).json({
-        status: "success",
-        message: `The request has been successfully rejected.`,
-        data: {
-          approval_id: approvalRecord.id,
-          updated_record: updatedRecord,
-        },
-      });
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: `The request has been successfully rejected.`,
+  //       data: {
+  //         approval_id: approvalRecord.id,
+  //         updated_record: updatedRecord,
+  //       },
+  //     });
 
-    } catch (error) {
-      // Only catch errors that happen BEFORE the wizard action is called
-      // If we reach here, the rejection hasn't happened yet, so it's safe to return an error
-      const isAccessError = error.message.includes("access") ||
-        error.message.includes("top-secret") ||
-        error.message.includes("permissions");
+  //   } catch (error) {
+  //     // Only catch errors that happen BEFORE the wizard action is called
+  //     // If we reach here, the rejection hasn't happened yet, so it's safe to return an error
+  //     const isAccessError = error.message.includes("access") ||
+  //       error.message.includes("top-secret") ||
+  //       error.message.includes("permissions");
 
-      return res.status(isAccessError ? 400 : 500).json({
-        status: "error",
-        message: error.message
-      });
-    }
-  }
+  //     return res.status(isAccessError ? 400 : 500).json({
+  //       status: "error",
+  //       message: error.message
+  //     });
+  //   }
+  // }
   async getClientLeaveDashboardCount(req, res) {
     try {
       const { user_id } = req.query;
@@ -8067,6 +8067,268 @@ class ApiController {
         success: false,
         errorMessage: "Failed to fetch leave dashboard counts",
       });
+    }
+  }
+
+  // async rejectAttendanceRegularization(req, res) {
+  //   try {
+  //     console.log("--------------------------------------------------");
+  //     console.log("🚀 START: rejectAttendanceRegularization");
+
+  //     const { approval_request_id, remarks, user_id } = req.body;
+  //     console.log("📥 Incoming Payload:", { approval_request_id, remarks, user_id });
+
+  //     if (!approval_request_id || !user_id) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "approval_request_id and user_id are required",
+  //       });
+  //     }
+
+  //     const employeeData = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", parseInt(user_id)]],
+  //       ["id", "name", "employee_password"],
+  //       1
+  //     );
+
+  //     if (!employeeData || employeeData.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Employee record not found for this user",
+  //       });
+  //     }
+
+  //     const fetchedPassword = employeeData[0].employee_password;
+
+  //     const approvalRecords = await odooService.searchRead(
+  //       "approval.request",
+  //       [["id", "=", parseInt(approval_request_id)]],
+  //       [
+  //         "id",
+  //         "state",
+  //         "attendance_regulzie_id",
+  //         "hr_leave_id",
+  //         "hr_expense_id",
+  //         "approval_log_list"
+  //       ],
+  //       1
+  //     );
+
+  //     if (!approvalRecords || approvalRecords.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Approval record not found"
+  //       });
+  //     }
+
+  //     const approvalRecord = approvalRecords[0];
+
+  //     if (['refused', 'reject', 'cancel'].includes(approvalRecord.state)) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "This request has already been rejected"
+  //       });
+  //     }
+
+  //     const approvalLogIds = approvalRecord.approval_log_list;
+  //     if (!approvalLogIds || approvalLogIds.length === 0) {
+  //       return res.status(400).json({ status: "error", message: "No approval sequence configured" });
+  //     }
+
+  //     let approvalLogs = await odooService.searchRead(
+  //       "approval.log.list",
+  //       [["id", "in", approvalLogIds]],
+  //       ["id", "sequence_no_of_user", "approver_id", "is_approved_by_user"]
+  //     );
+
+  //     approvalLogs.sort((a, b) => a.sequence_no_of_user - b.sequence_no_of_user);
+
+  //     const currentUserLog = approvalLogs.find(log => {
+  //       const approverId = Array.isArray(log.approver_id) ? log.approver_id[0] : log.approver_id;
+  //       return approverId === parseInt(user_id);
+  //     });
+
+  //     if (!currentUserLog) {
+  //       return res.status(403).json({ status: "error", message: "You are not authorized to reject this request" });
+  //     }
+
+  //     // Check if previous sequences are approved
+  //     const previousApprovers = approvalLogs.filter(log => log.sequence_no_of_user < currentUserLog.sequence_no_of_user);
+  //     for (const prevLog of previousApprovers) {
+  //       if (!prevLog.is_approved_by_user) {
+  //         return res.status(403).json({
+  //           status: "error",
+  //           message: `Approver at sequence ${prevLog.sequence_no_of_user} must approve first.`,
+  //         });
+  //       }
+  //     }
+
+  //     try {
+  //       const { currentUser } = await getClientFromRequest(req);
+  //       const adminName = currentUser?.partner_id ? currentUser.partner_id[1] : "Approver";
+
+  //       console.log(`⚡ Executing 'reject_request' on approval.request ID: ${approval_request_id}`);
+
+  //       const result = await odooService.callMethod(
+  //         "approval.request",
+  //         "reject_request",
+  //         [parseInt(approval_request_id)],
+  //         {
+  //           "remarks": remarks || `Rejected via App by ${adminName}`
+  //         },
+  //         parseInt(user_id),
+  //         fetchedPassword
+  //       );
+
+  //       console.log("✅ Odoo Execution Successful");
+
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Request rejected successfully",
+  //         data: { approval_id: approval_request_id }
+  //       });
+
+  //     } catch (odooError) {
+  //       console.error("❌ Odoo Execution Error:", odooError.message);
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: odooError.message || "Rejection failed."
+  //       });
+  //     }
+
+  //   } catch (error) {
+  //     console.error("🔥 Critical Server Error:", error.message);
+  //     return res.status(500).json({ status: "error", message: error.message });
+  //   }
+  // }
+
+  async rejectAttendanceRegularization(req, res) {
+    try {
+      console.log("--------------------------------------------------");
+      console.log("🚀 START: rejectAttendanceRegularization");
+
+      const { approval_request_id, remarks, user_id } = req.body;
+      const { currentUser } = await getClientFromRequest(req);
+      const adminName = currentUser?.partner_id ? currentUser.partner_id[1] : "Approver";
+
+      if (!approval_request_id || !user_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "approval_request_id and user_id are required",
+        });
+      }
+
+      const employeeData = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", parseInt(user_id)]],
+        ["id", "name", "employee_password"],
+        1
+      );
+
+      if (!employeeData || employeeData.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "Employee record not found for this user",
+        });
+      }
+
+      const fetchedPassword = employeeData[0].employee_password;
+
+      // --- STEP 2: Fetch Approval Record ---
+      const approvalRecords = await odooService.searchRead(
+        "approval.request",
+        [["id", "=", parseInt(approval_request_id)]],
+        ["id", "state", "attendance_regulzie_id", "hr_leave_id", "hr_expense_id", "approval_log_list"],
+        1
+      );
+
+      if (!approvalRecords?.length) {
+        return res.status(404).json({ status: "error", message: "Approval record not found" });
+      }
+
+      const approvalRecord = approvalRecords[0];
+
+      // --- STEP 3: Sequence & Status Validation ---
+      if (['refused', 'reject', 'cancel'].includes(approvalRecord.state)) {
+        return res.status(400).json({ status: "error", message: "This request has already been rejected" });
+      }
+
+      const approvalLogIds = approvalRecord.approval_log_list;
+      let approvalLogs = await odooService.searchRead(
+        "approval.log.list",
+        [["id", "in", approvalLogIds]],
+        ["id", "sequence_no_of_user", "approver_id", "is_approved_by_user"]
+      );
+
+      approvalLogs.sort((a, b) => a.sequence_no_of_user - b.sequence_no_of_user);
+      const currentUserLog = approvalLogs.find(log => (Array.isArray(log.approver_id) ? log.approver_id[0] : log.approver_id) === parseInt(user_id));
+
+      if (!currentUserLog) {
+        return res.status(403).json({ status: "error", message: "Not authorized in sequence" });
+      }
+
+      const previousApprovers = approvalLogs.filter(log => log.sequence_no_of_user < currentUserLog.sequence_no_of_user);
+      for (const prevLog of previousApprovers) {
+        if (!prevLog.is_approved_by_user) {
+          return res.status(403).json({ status: "error", message: `Sequence ${prevLog.sequence_no_of_user} must approve first.` });
+        }
+      }
+
+      // --- STEP 4: Execution Logic ---
+      try {
+        // A. Pehle Main Model ka Method Call (reject_request)
+        console.log("⚡ Step 4A: Calling reject_request on approval.request");
+        await odooService.callMethod(
+          "approval.request",
+          "reject_request",
+          [parseInt(approval_request_id)],
+          { "remarks": remarks || `Rejected by ${adminName}` },
+          parseInt(user_id),
+          fetchedPassword
+        );
+
+        // B. Uske baad Wizard Create karna
+        console.log("🔍 Step 4B: Creating request.reject.wizard");
+        const wizardId = await odooService.create(
+          "request.reject.wizard",
+          { remarks: remarks || `Rejected via App by ${adminName}` },
+          { uid: parseInt(user_id), userPassword: fetchedPassword }
+        );
+
+        // C. Wizard ka Action Method Call karna
+        console.log(`⚡ Step 4C: Executing action_reject_request on Wizard ID: ${wizardId}`);
+        await odooService.callMethod(
+          "request.reject.wizard",
+          "action_reject_request",
+          [parseInt(wizardId)],
+          {
+            active_id: approvalRecord.id,
+            active_model: "approval.request",
+            active_ids: [approvalRecord.id],
+          },
+          parseInt(user_id),
+          fetchedPassword
+        );
+
+        // Updated record info for response
+        let updatedRecord = null;
+        if (approvalRecord.attendance_regulzie_id) updatedRecord = { model: "attendance.regular", id: approvalRecord.attendance_regulzie_id[0] };
+        else if (approvalRecord.hr_leave_id) updatedRecord = { model: "hr.leave", id: approvalRecord.hr_leave_id[0] };
+        else if (approvalRecord.hr_expense_id) updatedRecord = { model: "hr.expense.sheet", id: approvalRecord.hr_expense_id[0] };
+
+        return res.status(200).json({
+          status: "success",
+          message: "The request has been successfully rejected.",
+          data: { approval_id: approvalRecord.id, updated_record: updatedRecord }
+        });
+
+      } catch (odooError) {
+        return res.status(400).json({ status: "error", message: odooError.message });
+      }
+
+    } catch (error) {
+      return res.status(500).json({ status: "error", message: error.message });
     }
   }
 }
