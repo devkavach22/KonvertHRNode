@@ -887,4 +887,15 @@ router.post(
   authenticate,
   PayrollController.markPayslipAsPaid.bind(PayrollController)
 );
+router.post(
+  "/create/PayslipBatch",
+  authenticate,
+  PayrollController.createPayslipBatch.bind(PayrollController)
+);
+
+router.post(
+  "/generatePayslips",
+  authenticate,
+  PayrollController.generatePayslips.bind(PayrollController)
+);
 module.exports = router;

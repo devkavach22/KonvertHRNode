@@ -1519,6 +1519,7 @@ class PayrollController {
                 });
             }
 
+            // --- Logic for Unique Code Generation ---
             let baseCode = name
                 .toUpperCase()
                 .replace(/[^A-Z0-9\s]/g, '')
@@ -1545,6 +1546,7 @@ class PayrollController {
                 counter++;
             }
 
+            // --- Check for Existing Name ---
             const existingByName = await odooService.searchRead(
                 "hr.payslip.input.type",
                 [
@@ -1563,24 +1565,26 @@ class PayrollController {
                 });
             }
 
+            // --- Country ID Logic (Defaulting to 104) ---
+            const finalCountryId = country_id || 104;
             let safeCountryId = false;
-            if (country_id) {
-                const countryExists = await odooService.searchRead(
-                    "res.country",
-                    [["id", "=", country_id]],
-                    ["id", "name"]
-                );
 
-                if (countryExists.length) {
-                    safeCountryId = country_id;
-                } else {
-                    return res.status(400).json({
-                        status: "error",
-                        message: `Invalid Country ID: ${country_id}`,
-                    });
-                }
+            const countryExists = await odooService.searchRead(
+                "res.country",
+                [["id", "=", finalCountryId]],
+                ["id", "name"]
+            );
+
+            if (countryExists.length) {
+                safeCountryId = finalCountryId;
+            } else {
+                return res.status(400).json({
+                    status: "error",
+                    message: `Invalid Country ID: ${finalCountryId}`,
+                });
             }
 
+            // --- Payroll Structure Validation ---
             let safeStructIds = [];
             if (struct_ids && Array.isArray(struct_ids) && struct_ids.length > 0) {
                 const structsExist = await odooService.searchRead(
@@ -1601,6 +1605,7 @@ class PayrollController {
                 safeStructIds = [[6, 0, struct_ids]];
             }
 
+            // --- Payload Construction ---
             const payload = {
                 name,
                 code: uniqueCode,
@@ -1618,6 +1623,7 @@ class PayrollController {
                 payload.default_no_end_date = !!default_no_end_date;
             }
 
+            // --- Odoo Create Call ---
             const inputTypeId = await odooService.create(
                 "hr.payslip.input.type",
                 payload
@@ -2290,6 +2296,180 @@ class PayrollController {
                 status: "error",
                 message: errorMessage || "Failed to mark payslip as paid",
             });
+        }
+    }
+
+    async createPayslipBatch(req, res) {
+        try {
+            const {
+                name,
+                date_start,
+                date_end,
+            } = req.body;
+
+            // 1. Get client_id from request
+            const { client_id } = await getClientFromRequest(req);
+
+            // 2. Basic Validation
+            if (!name) {
+                return res.status(400).json({ status: "error", message: "Name is required" });
+            }
+
+            if (!date_start) {
+                return res.status(400).json({ status: "error", message: "Date From (date_start) is required" });
+            }
+
+            // 3. Date Format & Logical Validation
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(date_start)) {
+                return res.status(400).json({ status: "error", message: "Invalid date_start format. Use YYYY-MM-DD" });
+            }
+
+            const dateStartObj = new Date(date_start);
+            if (isNaN(dateStartObj.getTime())) {
+                return res.status(400).json({ status: "error", message: "Invalid date_start value" });
+            }
+
+            if (date_end) {
+                if (!dateRegex.test(date_end)) {
+                    return res.status(400).json({ status: "error", message: "Invalid date_end format" });
+                }
+                const dateEndObj = new Date(date_end);
+                if (dateEndObj < dateStartObj) {
+                    return res.status(400).json({ status: "error", message: "date_end must be greater than or equal to date_start" });
+                }
+            }
+
+            // 4. Check for duplicate Name within the same Client
+            const existingBatch = await odooService.searchRead(
+                "hr.payslip.run",
+                [
+                    ["name", "=", name],
+                    ["client_id", "=", client_id]
+                ],
+                ["id", "name"]
+            );
+
+            if (existingBatch.length > 0) {
+                return res.status(409).json({
+                    status: "error",
+                    message: `A Payslip Batch with the name '${name}' already exists for this client.`,
+                    existing_id: existingBatch[0].id
+                });
+            }
+
+            // 5. Prepare Payload
+            const payload = {
+                name,
+                date_start,
+                date_end: date_end || date_start,
+                company_id: 12,
+                client_id: client_id
+            };
+
+            // 6. Create in Odoo
+            const payslipBatchId = await odooService.create("hr.payslip.run", payload);
+
+            const createdBatch = await odooService.searchRead(
+                "hr.payslip.run",
+                [["id", "=", payslipBatchId]],
+                ["name", "date_start", "date_end", "state"]
+            );
+
+            return res.status(201).json({
+                status: "success",
+                message: "Payslip batch created successfully",
+                data: createdBatch[0] || { id: payslipBatchId }
+            });
+
+        } catch (error) {
+            console.error("❌ Create Payslip Batch Error:", error);
+
+            const errorMessage = error.message || error.faultString || "";
+
+            // --- Handle specific 404 error for user identification ---
+            if (errorMessage.includes("user_id or unique_user_id is required")) {
+                return res.status(404).json({
+                    status: "error",
+                    message: errorMessage
+                });
+            }
+
+            if (errorMessage.includes("mandatory field")) {
+                return res.status(400).json({ status: "error", message: "A required Odoo field is missing" });
+            }
+
+            // Default to 500 if no other condition is met
+            return res.status(500).json({
+                status: "error",
+                message: error.message || "Failed to create payslip batch",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            });
+        }
+    }
+
+    async generatePayslips(req, res) {
+        try {
+            const {
+                payslip_run_id,
+                employee_ids,
+            } = req.body;
+
+            // 1. Backend se client_id fetch karke contact_id ke liye save karna
+            const { client_id } = await getClientFromRequest(req);
+
+            // Validation
+            if (!payslip_run_id || !employee_ids || employee_ids.length === 0) {
+                return res.status(400).json({ status: "error", message: "Batch ID and Employee IDs are required" });
+            }
+
+            // 2. Wizard Payload: Ab sirf 2 main values bhej rahe hain
+            const wizardPayload = {
+                employee_ids: [[6, 0, employee_ids]], // List of selected employees
+                contact_id: client_id                   // Field Technical Name: contact_id
+            };
+
+            console.log("Creating Wizard with Minimal Payload:", JSON.stringify(wizardPayload));
+
+            // 3. Create the Wizard record in hr.payslip.employees
+            const wizardId = await odooService.create("hr.payslip.employees", wizardPayload);
+
+            // 4. Call 'compute_sheet' method
+            // Odoo ko batana padta hai ki ye wizard kis Batch (hr.payslip.run) par apply karna hai
+            const result = await odooService.callCustomMethod(
+                "hr.payslip.employees",
+                "compute_sheet",
+                [[wizardId]],
+                {
+                    context: {
+                        active_id: Number(payslip_run_id),
+                        active_ids: [Number(payslip_run_id)],
+                        active_model: "hr.payslip.run"
+                    }
+                }
+            );
+
+            return res.status(200).json({
+                status: "success",
+                message: "Payslips generated successfully",
+                data: {
+                    wizard_id: wizardId,
+                    odoo_response: result
+                }
+            });
+
+        } catch (error) {
+            console.error("❌ Generate Error:", error);
+            const errorMessage = error.message || error.faultString || "";
+
+            if (errorMessage.includes("does not exist")) {
+                return res.status(404).json({
+                    status: "error",
+                    message: `Batch ID ${req.body.payslip_run_id} not found in Odoo.`
+                });
+            }
+
+            return res.status(500).json({ status: "error", message: errorMessage });
         }
     }
 }

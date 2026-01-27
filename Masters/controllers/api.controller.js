@@ -8091,7 +8091,7 @@ class ApiController {
       if (!approval_request_id || !user_id) {
         return res.status(400).json({
           status: "error",
-          message: "approval_request_id and user_id are required",
+          message: "request_id and user_id are required",
         });
       }
 
@@ -8120,7 +8120,7 @@ class ApiController {
       );
 
       if (!approvalRecords?.length) {
-        return res.status(404).json({ status: "error", message: "Approval record not found" });
+        return res.status(404).json({ status: "error", message: "Request record not found" });
       }
 
       const approvalRecord = approvalRecords[0];
