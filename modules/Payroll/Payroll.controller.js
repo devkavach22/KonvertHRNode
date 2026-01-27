@@ -2472,5 +2472,94 @@ class PayrollController {
             return res.status(500).json({ status: "error", message: errorMessage });
         }
     }
+
+   async downloadPayslipPDF(req, res) {
+  try {
+    const { payslip_id } = req.body;
+    
+    if (!payslip_id) {
+      return res.status(400).json({
+        success: false,
+        error: "payslip_id is required",
+      });
+    }
+
+    console.log("📄 Generating PDF for payslip ID:", payslip_id);
+
+    const payslipExists = await odooService.searchRead(
+      "hr.payslip",
+      [["id", "=", payslip_id]],
+      ["id", "name", "state", "number"]
+    );
+
+    if (!payslipExists || payslipExists.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Payslip not found",
+      });
+    }
+
+    const payslip = payslipExists[0];
+
+    if (payslip.state !== "done" && payslip.state !== "paid") {
+      return res.status(400).json({
+        success: false,
+        error: "Payslip must be confirmed to generate PDF",
+        current_state: payslip.state,
+      });
+    }
+
+    const axios = require("axios");
+
+    // Authenticate with Odoo
+    const loginResponse = await axios.post(
+      `${process.env.ODOO_URL}/web/session/authenticate`,
+      {
+        jsonrpc: "2.0",
+        params: {
+          db: process.env.ODOO_DB,
+          login: process.env.ODOO_ADMIN,
+          password: process.env.ODOO_ADMIN_PASSWORD,
+        },
+      },
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    const sessionId = loginResponse.headers["set-cookie"];
+
+    const printUrl = `${process.env.ODOO_URL}/print/payslips?list_ids=${payslip_id}`;
+    
+    console.log("Fetching PDF from:", printUrl);
+
+    const pdfResponse = await axios.get(printUrl, {
+      headers: {
+        Cookie: sessionId,
+      },
+      responseType: "arraybuffer",
+    });
+
+    const pdfBuffer = Buffer.from(pdfResponse.data);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="Payslip_${(payslip.number || payslip.name).replace(/\//g, "_")}.pdf"`
+    );
+    res.setHeader("Content-Length", pdfBuffer.length);
+
+    console.log("✅ Payslip PDF generated successfully");
+    return res.send(pdfBuffer);
+    
+  } catch (error) {
+    console.error("❌ Error generating payslip PDF:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to generate payslip PDF",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+}
 }
 module.exports = new PayrollController();

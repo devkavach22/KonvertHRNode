@@ -898,4 +898,11 @@ router.post(
   authenticate,
   PayrollController.generatePayslips.bind(PayrollController)
 );
+
+router.post(
+  "/printPayslip",
+  authenticate,
+  PayrollController.downloadPayslipPDF.bind(PayrollController)
+);
+
 module.exports = router;

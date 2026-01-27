@@ -3861,81 +3861,6 @@ class ApiController {
       });
     }
   }
-  // async createWorkingSchedule(req, res) {
-  //   try {
-  //     const {
-  //       name,
-  //       flexible_hours,
-  //       is_night_shift,
-  //       full_time_required_hours,
-  //       hours_per_day,
-  //       tz,
-  //       total_overtime_hours_allowed,
-  //     } = req.body;
-
-  //     if (!name) {
-  //       return res.status(400).json({
-  //         status: "error",
-  //         message: "Working Schedule name is required",
-  //       });
-  //     }
-
-  //     const { client_id } = await getClientFromRequest(req);
-
-  //     const existing = await odooService.searchRead(
-  //       "resource.calendar",
-  //       [
-  //         ["name", "=", name],
-  //         ["client_id", "=", client_id],
-  //       ],
-  //       ["id"],
-  //       1
-  //     );
-
-  //     if (existing && existing.length > 0) {
-  //       return res.status(409).json({
-  //         status: "error",
-  //         message: `A working schedule named "${name}" already exists for this client.`,
-  //       });
-  //     }
-
-  //     if (!flexible_hours && hours_per_day !== undefined) {
-  //       return res.status(400).json({
-  //         status: "error",
-  //         message: "Average Hour per Day is allowed only when Flexible Hours is true",
-  //       });
-  //     }
-
-  //     const vals = {
-  //       name,
-  //       client_id,
-  //       flexible_hours: !!flexible_hours,
-  //       is_night_shift: !!is_night_shift,
-  //       tz: tz || false,
-  //       full_time_required_hours: full_time_required_hours !== undefined ? full_time_required_hours : 0,
-  //       total_overtime_hours_allowed: total_overtime_hours_allowed !== undefined ? parseFloat(total_overtime_hours_allowed) : 0.0,
-  //     };
-
-  //     if (flexible_hours) {
-  //       vals.hours_per_day = hours_per_day || 0;
-  //     }
-
-  //     const calendarId = await odooService.create("resource.calendar", vals);
-
-  //     return res.status(201).json({
-  //       status: "success",
-  //       message: "Working schedule created successfully",
-  //       calendar_id: calendarId,
-  //     });
-  //   } catch (error) {
-  //     console.error("❌ Create Working Schedule Error:", error);
-  //     return res.status(500).json({
-  //       status: "error",
-  //       message: error.message || "Failed to create working schedule",
-  //     });
-  //   }
-  // }
-
   async createWorkingSchedule(req, res) {
     try {
       const {
@@ -3946,6 +3871,7 @@ class ApiController {
         hours_per_day,
         tz,
         total_overtime_hours_allowed,
+        attendance_ids,
       } = req.body;
 
       if (!name) {
@@ -4004,6 +3930,19 @@ class ApiController {
         vals.hours_per_day = hours_per_day || 0;
       }
 
+      if (attendance_ids && Array.isArray(attendance_ids) && attendance_ids.length > 0) {
+        vals.attendance_ids = attendance_ids.map(attendance => {
+          return [0, 0, {
+            name: attendance.name,
+            dayofweek: attendance.dayofweek, // '0' for Monday, '1' for Tuesday, etc.
+            day_period: attendance.day_period, // 'morning', 'lunch', 'afternoon'
+            hour_from: parseFloat(attendance.hour_from), // e.g., 8.0 for 08:00
+            hour_to: parseFloat(attendance.hour_to), // e.g., 12.0 for 12:00
+            work_entry_type_id: attendance.work_entry_type_id || false,
+          }];
+        });
+      }
+
       const calendarId = await odooService.create("resource.calendar", vals);
 
       return res.status(201).json({
@@ -4019,7 +3958,6 @@ class ApiController {
       });
     }
   }
-
   async getWorkingSchedules(req, res) {
     try {
       const { client_id } = await getClientFromRequest(req);
@@ -4044,18 +3982,19 @@ class ApiController {
         calendars.map(async (cal) => {
           let attendances = [];
 
-          if (cal.attendance_ids?.length) {
+          if (!cal.flexible_hours && cal.attendance_ids?.length) {
             attendances = await odooService.searchRead(
               "resource.calendar.attendance",
               [["id", "in", cal.attendance_ids]],
               [
                 "id",
-                "name",           // ADDED: Attendance ka name (Monday, Tuesday etc.)
+                "name",
                 "dayofweek",
                 "day_period",
                 "hour_from",
                 "hour_to",
-                "week_type"       // OPTIONAL: Agar bi-weekly shifts hain
+                "week_type",
+                "work_entry_type_id",
               ]
             );
           }
@@ -4066,11 +4005,11 @@ class ApiController {
             flexible_hours: cal.flexible_hours,
             is_night_shift: cal.is_night_shift,
             full_time_required_hours: cal.full_time_required_hours,
-            hours_per_day: cal.hours_per_day || 0, // Hamesha value return karein (0 agar null ho)
+            hours_per_day: cal.hours_per_day || 0,
             tz: cal.tz || "UTC",
-            total_overtime_hours_allowed: cal.total_overtime_hours_allowed || 0.0, // ADDED
-            client_id: cal.client_id, // ADDED
-            attendances: attendances, // Key ka naam simple rakha hai
+            total_overtime_hours_allowed: cal.total_overtime_hours_allowed || 0.0,
+            client_id: cal.client_id,
+            attendances: cal.flexible_hours ? [] : attendances,
           };
         })
       );
@@ -4088,63 +4027,6 @@ class ApiController {
       });
     }
   }
-  // async getWorkingSchedules(req, res) {
-  //   try {
-  //     const { client_id } = await getClientFromRequest(req);
-
-  //     const calendars = await odooService.searchRead(
-  //       "resource.calendar",
-  //       [["client_id", "=", client_id]],
-  //       [
-  //         "id",
-  //         "name",
-  //         "flexible_hours",
-  //         "is_night_shift",
-  //         "full_time_required_hours",
-  //         "hours_per_day",
-  //         "tz",
-  //         "attendance_ids",
-  //       ]
-  //     );
-
-  //     const calendarData = await Promise.all(
-  //       calendars.map(async (cal) => {
-  //         let attendances = [];
-
-  //         if (cal.attendance_ids?.length) {
-  //           attendances = await odooService.searchRead(
-  //             "resource.calendar.attendance",
-  //             [["id", "in", cal.attendance_ids]],
-  //             ["id", "dayofweek", "day_period", "hour_from", "hour_to"]
-  //           );
-  //         }
-
-  //         return {
-  //           id: cal.id,
-  //           name: cal.name,
-  //           flexible_hours: cal.flexible_hours,
-  //           is_night_shift: cal.is_night_shift,
-  //           full_time_required_hours: cal.full_time_required_hours,
-  //           hours_per_day: cal.flexible_hours ? cal.hours_per_day : null,
-  //           tz: cal.tz,
-  //           attendance_ids: attendances,
-  //         };
-  //       })
-  //     );
-
-  //     return res.status(200).json({
-  //       status: "success",
-  //       data: calendarData,
-  //     });
-  //   } catch (error) {
-  //     console.error("❌ Get Working Schedules Error:", error);
-  //     return res.status(error.status || 500).json({
-  //       status: "error",
-  //       message: error.message || "Failed to fetch working schedules",
-  //     });
-  //   }
-  // }
-  // UPDATE Working Schedule
   async updateWorkingSchedule(req, res) {
     try {
       const { calendar_id } = req.params;
@@ -4156,6 +4038,7 @@ class ApiController {
         hours_per_day,
         tz,
         total_overtime_hours_allowed,
+        attendance_ids, // New field for working hours
       } = req.body;
 
       if (!calendar_id) {
@@ -4221,7 +4104,6 @@ class ApiController {
       }
 
       const vals = {};
-
       if (name !== undefined) vals.name = name;
       if (flexible_hours !== undefined) vals.flexible_hours = !!flexible_hours;
       if (is_night_shift !== undefined) vals.is_night_shift = !!is_night_shift;
@@ -4233,6 +4115,50 @@ class ApiController {
         vals.hours_per_day = hours_per_day || 0;
       } else {
         vals.hours_per_day = false;
+      }
+
+      // Handle attendance_ids (working hours) update
+      if (attendance_ids !== undefined) {
+        if (Array.isArray(attendance_ids) && attendance_ids.length > 0) {
+          // First, get existing attendance IDs to delete them
+          const existingAttendances = await odooService.searchRead(
+            "resource.calendar.attendance",
+            [["calendar_id", "=", parseInt(calendar_id)]],
+            ["id"]
+          );
+
+          // Delete all existing attendances
+          const deleteCommands = existingAttendances.map(att => [2, att.id, 0]);
+
+          // Create new attendances
+          const createCommands = attendance_ids.map(attendance => {
+            const attendanceData = {
+              name: attendance.name,
+              dayofweek: attendance.dayofweek,
+              day_period: attendance.day_period,
+              hour_from: parseFloat(attendance.hour_from),
+              hour_to: parseFloat(attendance.hour_to),
+            };
+
+            // Add work_entry_type_id if provided
+            if (attendance.work_entry_type_id) {
+              attendanceData.work_entry_type_id = attendance.work_entry_type_id;
+            }
+
+            return [0, 0, attendanceData];
+          });
+
+          // Combine delete and create commands
+          vals.attendance_ids = [...deleteCommands, ...createCommands];
+        } else if (attendance_ids === null || (Array.isArray(attendance_ids) && attendance_ids.length === 0)) {
+          // If null or empty array, delete all attendances
+          const existingAttendances = await odooService.searchRead(
+            "resource.calendar.attendance",
+            [["calendar_id", "=", parseInt(calendar_id)]],
+            ["id"]
+          );
+          vals.attendance_ids = existingAttendances.map(att => [2, att.id, 0]);
+        }
       }
 
       await odooService.write("resource.calendar", [parseInt(calendar_id)], vals);
@@ -4250,7 +4176,6 @@ class ApiController {
       });
     }
   }
-
   async deleteWorkingSchedule(req, res) {
     try {
       const { calendar_id } = req.params;
