@@ -1112,6 +1112,142 @@ class ApiController {
   //     return res.status(500).json({ status: "error", message: "Internal Server Error" });
   //   }
   // }
+
+
+  // async loginUser(req, res) {
+  //   try {
+  //     const { email, password } = req.body;
+  //     if (!email || !password) {
+  //       return res.status(400).json({ status: "error", message: "Email and Password are required" });
+  //     }
+
+  //     const userRecord = await odooService.searchRead(
+  //       "res.users",
+  //       [["login", "=", email]],
+  //       ["id", "login", "name", "first_name", "last_name", "partner_id", "unique_user_id", "is_client_employee_user", "is_client_employee_admin"]
+  //     );
+
+  //     if (!userRecord || userRecord.length === 0) {
+  //       return res.status(404).json({ status: "error", message: "User not found. Please signup." });
+  //     }
+
+  //     let user = userRecord[0];
+  //     const userPartnerId = user.partner_id?.[0];
+
+  //     const commonClient = odooService.createClient("/xmlrpc/2/common");
+
+  //     let uid;
+  //     try {
+  //       uid = await new Promise((resolve, reject) => {
+  //         commonClient.methodCall("authenticate", [odooService.db, email, password, {}], (err, authUid) => {
+  //           if (err || !authUid) reject(new Error("Incorrect password"));
+  //           else resolve(authUid);
+  //         });
+  //       });
+  //     } catch (authError) {
+  //       return res.status(401).json({ status: "error", message: "Incorrect password" });
+  //     }
+
+  //     if (!uid) return;
+
+  //     let planCheckPartnerId = userPartnerId;
+  //     let employeeId = null;
+  //     let adminUserIdFromEmployee = null;
+
+  //     if (user.is_client_employee_user) {
+  //       const employeeRecord = await odooService.searchRead(
+  //         "hr.employee",
+  //         [["user_id", "=", user.id]],
+  //         ["id", "address_id"],
+  //         1
+  //       );
+
+  //       if (employeeRecord && employeeRecord.length > 0) {
+  //         employeeId = employeeRecord[0].id;
+  //         if (employeeRecord[0].address_id && employeeRecord[0].address_id[0]) {
+  //           planCheckPartnerId = employeeRecord[0].address_id[0];
+
+  //           const adminUser = await odooService.searchRead(
+  //             "res.users",
+  //             [["partner_id", "=", planCheckPartnerId], ["is_client_employee_admin", "=", true]],
+  //             ["id"],
+  //             1
+  //           );
+  //           if (adminUser && adminUser.length > 0) adminUserIdFromEmployee = adminUser[0].id;
+  //         }
+  //       }
+  //     }
+
+  //     const plan = await odooService.searchRead(
+  //       "client.plan.details",
+  //       [
+  //         ["partner_id", "=", planCheckPartnerId],
+  //         ["is_expier", "=", true]
+  //       ],
+  //       ["id", "product_id", "start_date", "end_date"],
+  //       1
+  //     );
+
+  //     let planData = (plan && plan.length > 0) ? plan[0] : null;
+
+  //     if (planData && userPartnerId === planCheckPartnerId && !user.is_client_employee_admin) {
+  //       await odooService.write("res.users", [user.id], { is_client_employee_admin: true });
+  //       user.is_client_employee_admin = true;
+  //     }
+
+  //     const isAdminUser = user.is_client_employee_admin === true;
+  //     const isEmployeeUser = user.is_client_employee_user === true;
+  //     const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+  //     const token = jwt.sign({ userId: uid, email }, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+
+  //     if (isAdminUser) {
+  //       if (!planData) {
+  //         return res.status(403).json({ status: "error", message: "Your plan has expired. Please renew." });
+  //       }
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Logged in as Admin. Plan is active.",
+  //         unique_user_id: user.unique_user_id,
+  //         user_id: uid,
+  //         email,
+  //         full_name,
+  //         user_role: "REGISTER_ADMIN",
+  //         plan_status: "ACTIVE",
+  //         plan_id: planData.id,
+  //         product_id: planData.product_id,
+  //         plan_start_date: planData.start_date,
+  //         plan_end_date: planData.end_date,
+  //       });
+  //     }
+  //     else if (isEmployeeUser) {
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: `Logged in as Employee. Plan is ${planData ? "Active" : "Expired"}`,
+  //         user_id: uid,
+  //         email,
+  //         full_name,
+  //         user_role: "EMPLOYEE_RELATED_OWN_USER",
+  //         plan_status: planData ? "ACTIVE" : "EXPIRED",
+  //         is_client_employee_user: true,
+  //         employee_id: employeeId,
+  //         admin_user_id: adminUserIdFromEmployee,
+  //         // plan_id: planData?.id || null,
+  //         // product_id: planData?.product_id || null,
+  //         // plan_start_date: planData?.start_date || null,
+  //         // plan_end_date: planData?.end_date || null,
+  //       });
+  //     }
+  //     else {
+  //       return res.status(403).json({ status: "error", message: "You are not authorized. Please signup first." });
+  //     }
+
+  //   } catch (error) {
+  //     console.error("Login error:", error);
+  //     return res.status(500).json({ status: "error", message: "Internal Server Error" });
+  //   }
+  // }
+
   async loginUser(req, res) {
     try {
       const { email, password } = req.body;
@@ -1176,6 +1312,23 @@ class ApiController {
         }
       }
 
+      // Check if user has ever bought any plan (active or expired)
+      const anyPlan = await odooService.searchRead(
+        "client.plan.details",
+        [["partner_id", "=", planCheckPartnerId]],
+        ["id"],
+        1
+      );
+
+      if (!anyPlan || anyPlan.length === 0) {
+        return res.status(403).json({
+          status: "error",
+          message: "Sorry, you didn't buy any plan. Please purchase a plan to continue.",
+          plan_status: "NOT_PURCHASED"
+        });
+      }
+
+      // Check for active plan
       const plan = await odooService.searchRead(
         "client.plan.details",
         [
@@ -1201,7 +1354,11 @@ class ApiController {
 
       if (isAdminUser) {
         if (!planData) {
-          return res.status(403).json({ status: "error", message: "Your plan has expired. Please renew." });
+          return res.status(403).json({
+            status: "error",
+            message: "Your plan has expired. Please renew.",
+            plan_status: "EXPIRED"
+          });
         }
         return res.status(200).json({
           status: "success",
@@ -1219,14 +1376,21 @@ class ApiController {
         });
       }
       else if (isEmployeeUser) {
+        if (!planData) {
+          return res.status(403).json({
+            status: "error",
+            message: "Sorry, you can't login because your plan is expired.",
+            plan_status: "EXPIRED"
+          });
+        }
         return res.status(200).json({
           status: "success",
-          message: `Logged in as Employee. Plan is ${planData ? "Active" : "Expired"}`,
+          message: "Logged in as Employee. Plan is Active",
           user_id: uid,
           email,
           full_name,
           user_role: "EMPLOYEE_RELATED_OWN_USER",
-          plan_status: planData ? "ACTIVE" : "EXPIRED",
+          plan_status: "ACTIVE",
           is_client_employee_user: true,
           employee_id: employeeId,
           admin_user_id: adminUserIdFromEmployee,
