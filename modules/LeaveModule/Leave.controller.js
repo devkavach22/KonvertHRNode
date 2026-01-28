@@ -2445,7 +2445,27 @@ class LeaveController {
       }
 
       // -----------------------------
-      // 4. Validate Work Entry Type (Global)
+      // 4. Check for Duplicate (client_id + name)
+      // -----------------------------
+      const existingHoliday = await odooService.searchRead(
+        "resource.calendar.leaves",
+        [
+          ["client_id", "=", client_id],
+          ["name", "=", name]
+        ],
+        ["id", "name"],
+        1
+      );
+
+      if (existingHoliday.length) {
+        return res.status(409).json({
+          status: "error",
+          message: "Public holiday with this name already exists for this client"
+        });
+      }
+
+      // -----------------------------
+      // 5. Validate Work Entry Type (Global)
       // -----------------------------
       let valid_work_entry_type_id = false;
       if (work_entry_type_id) {
@@ -2466,7 +2486,7 @@ class LeaveController {
       }
 
       // -----------------------------
-      // 5. Validate Calendar (Client Specific)
+      // 6. Validate Calendar (Client Specific)
       // -----------------------------
       let valid_calendar_id = false;
       if (calendar_id) {
@@ -2487,7 +2507,7 @@ class LeaveController {
       }
 
       // -----------------------------
-      // 6. Payload
+      // 7. Payload
       // -----------------------------
       const vals = {
         name,
@@ -2501,12 +2521,12 @@ class LeaveController {
       console.log("Payload sending to Odoo:", vals);
 
       // -----------------------------
-      // 7. Create Holiday
+      // 8. Create Holiday
       // -----------------------------
       const holidayId = await odooService.create("resource.calendar.leaves", vals);
 
       // -----------------------------
-      // 8. Fetch Created Holiday for proper response
+      // 9. Fetch Created Holiday for proper response
       // -----------------------------
       const createdHoliday = await odooService.searchRead(
         "resource.calendar.leaves",
@@ -2537,7 +2557,6 @@ class LeaveController {
       });
     }
   }
-
   async getPublicHoliday(req, res) {
     try {
       console.log("API called for fetching Public Holidays");
@@ -2612,14 +2631,31 @@ class LeaveController {
   async updatePublicHoliday(req, res) {
     try {
       console.log("API called for updatePublicHoliday");
-      // console.log(req.body);
-
       const { id } = req.params;
       const { name, date_from, date_to, work_entry_type_id, calendar_id } = req.body;
       console.log(req.body);
 
       /* -----------------------------
-       * 1. Check Existence
+       * 1. Validate Date Format (if provided)
+       * ----------------------------- */
+      const dateTimeRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+      if (date_from !== undefined && !dateTimeRegex.test(date_from)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date_from format. Expected format: YYYY-MM-DD HH:MM:SS (e.g., 2026-02-05 00:00:00)"
+        });
+      }
+
+      if (date_to !== undefined && !dateTimeRegex.test(date_to)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date_to format. Expected format: YYYY-MM-DD HH:MM:SS (e.g., 2026-02-05 23:59:59)"
+        });
+      }
+
+      /* -----------------------------
+       * 2. Check Existence
        * ----------------------------- */
       const existing = await odooService.searchRead(
         "resource.calendar.leaves",
@@ -2636,7 +2672,7 @@ class LeaveController {
       }
 
       /* -----------------------------
-       * 2. Validate Relations
+       * 3. Validate Relations
        * ----------------------------- */
       let valid_work_entry_type_id = false;
       if (work_entry_type_id) {
@@ -2646,6 +2682,7 @@ class LeaveController {
           ["id"],
           1
         );
+
         if (!workEntryType.length) {
           return res.status(400).json({
             status: "error",
@@ -2663,6 +2700,7 @@ class LeaveController {
           ["id"],
           1
         );
+
         if (!calendar.length) {
           return res.status(400).json({
             status: "error",
@@ -2673,7 +2711,7 @@ class LeaveController {
       }
 
       /* -----------------------------
-       * 3. Payload
+       * 4. Payload
        * ----------------------------- */
       const vals = {};
       if (name !== undefined) vals.name = name;
@@ -2687,7 +2725,7 @@ class LeaveController {
       console.log("Update Payload:", vals);
 
       /* -----------------------------
-       * 4. Update
+       * 5. Update
        * ----------------------------- */
       await odooService.write(
         "resource.calendar.leaves",
@@ -2696,7 +2734,7 @@ class LeaveController {
       );
 
       /* -----------------------------
-       * 5. Fetch Updated Record
+       * 6. Fetch Updated Record
        * ----------------------------- */
       const updatedHoliday = await odooService.searchRead(
         "resource.calendar.leaves",
@@ -2712,6 +2750,15 @@ class LeaveController {
 
     } catch (error) {
       console.error("❌ Update Public Holiday Error:", error);
+
+      // Check if it's a validation error from Odoo
+      if (error.message && error.message.includes("does not match format")) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date format. Expected format: YYYY-MM-DD HH:MM:SS"
+        });
+      }
+
       return res.status(500).json({
         status: "error",
         message: error.message || "Failed to update public holiday"
