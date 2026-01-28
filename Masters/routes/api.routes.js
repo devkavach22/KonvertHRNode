@@ -560,7 +560,7 @@ router.post(
 
 router.get(
   "/admin/requests",
-  authenticate ,
+  authenticate,
   apiController.getAllApprovalRequests.bind(apiController)
 );
 
@@ -602,11 +602,27 @@ router.put(
   authenticate,
   PayrollController.updateStructureType.bind(PayrollController)
 );
+router.delete(
+  "/structure-type/:struct_type_id",
+  authenticate,
+  PayrollController.deleteStructureType.bind(PayrollController)
+);
 router.post(
   "/create/Input-Type",
   authenticate,
   PayrollController.createInputType.bind(PayrollController)
 );
+router.put(
+  "/input-type/:input_type_id",
+  authenticate,
+  PayrollController.updateInputType.bind(PayrollController)
+);
+router.delete(
+  "/input-type/:input_type_id",
+  authenticate,
+  PayrollController.deleteInputType.bind(PayrollController)
+);
+
 router.get(
   "/Input-Type",
   authenticate,

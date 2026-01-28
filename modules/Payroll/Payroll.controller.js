@@ -216,7 +216,6 @@ class PayrollController {
             });
         }
     }
-
     async updateStructureType(req, res) {
         try {
             const { struct_type_id } = req.params;
@@ -401,6 +400,133 @@ class PayrollController {
                 status: "error",
                 message: error.message || "Failed to update payroll structure type",
                 error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            });
+        }
+    }
+    async deleteStructureType(req, res) {
+        try {
+            const { struct_type_id } = req.params;
+            console.log("🗑️ Delete Structure Type Request - ID:", struct_type_id);
+
+            if (!struct_type_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "struct_type_id is required",
+                });
+            }
+
+            const { client_id } = await getClientFromRequest(req);
+            console.log("🏢 Client ID:", client_id);
+
+            // 1️⃣ Check if Structure Type exists and belongs to client
+            const existingStructType = await odooService.searchRead(
+                "hr.payroll.structure.type",
+                [
+                    ["id", "=", parseInt(struct_type_id)],
+                    ["client_id", "=", client_id],
+                ],
+                ["id", "name"]
+            );
+
+            console.log("🔍 Existing Structure Type:", existingStructType);
+
+            if (!existingStructType.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Structure Type not found or does not belong to this client",
+                });
+            }
+
+            // 2️⃣ Check if Structure Type is being used by any employees or contracts
+            const usedByEmployees = await odooService.searchRead(
+                "hr.employee",
+                [["structure_type_id", "=", parseInt(struct_type_id)]],
+                ["id", "name"],
+                1
+            );
+
+            console.log("👥 Used by Employees:", usedByEmployees);
+
+            if (usedByEmployees.length) {
+                return res.status(409).json({
+                    status: "error",
+                    message: "Cannot delete Structure Type. It is currently being used by employees.",
+                });
+            }
+
+            // 3️⃣ Check if used by contracts
+            const usedByContracts = await odooService.searchRead(
+                "hr.contract",
+                [["structure_type_id", "=", parseInt(struct_type_id)]],
+                ["id", "name"],
+                1
+            );
+
+            console.log("📄 Used by Contracts:", usedByContracts);
+
+            if (usedByContracts.length) {
+                return res.status(409).json({
+                    status: "error",
+                    message: "Cannot delete Structure Type. It is currently being used by contracts.",
+                });
+            }
+
+            // 4️⃣ Check if used by Salary Structures
+            const usedBySalaryStructures = await odooService.searchRead(
+                "hr.payroll.structure",
+                [["type_id", "=", parseInt(struct_type_id)]],
+                ["id", "name"],
+                1
+            );
+
+            console.log("💰 Used by Salary Structures:", usedBySalaryStructures);
+
+            if (usedBySalaryStructures.length) {
+                return res.status(409).json({
+                    status: "error",
+                    message: "Cannot delete Structure Type. It is currently being used by Salary Structure.",
+                });
+            }
+
+            // 5️⃣ Delete the Structure Type
+            await odooService.unlink(
+                "hr.payroll.structure.type",
+                [parseInt(struct_type_id)]
+            );
+
+            console.log("✅ Structure Type Deleted - ID:", struct_type_id);
+
+            return res.status(200).json({
+                status: "success",
+                message: "Payroll Structure Type deleted successfully",
+                deleted_id: parseInt(struct_type_id),
+            });
+
+        } catch (error) {
+            console.error("❌ Delete Structure Type Error:", error);
+            console.error("🔥 Error Stack:", error.stack);
+
+            // ✅ Extract and format error message
+            let errorMessage = "Failed to delete payroll structure type";
+
+            if (error.message) {
+                // Check if it's a foreign key constraint error
+                if (error.message.includes("another model requires the record")) {
+                    // Extract model name from error message
+                    const modelMatch = error.message.match(/Model:\s*(.+?)\s*\(/);
+                    const modelName = modelMatch ? modelMatch[1] : "another model";
+
+                    errorMessage = `Sorry, you can't delete this because it is related to ${modelName}.`;
+                } else if (error.message.includes("Constraint")) {
+                    errorMessage = "Sorry, you can't delete this because it is related to another module.";
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+
+            return res.status(400).json({
+                status: "error",
+                message: errorMessage,
             });
         }
     }
@@ -1683,7 +1809,6 @@ class PayrollController {
         try {
             const {
                 name,
-                country_id,
                 available_in_attachments,
                 struct_ids,
                 is_quantity,
@@ -1699,12 +1824,19 @@ class PayrollController {
                 });
             }
 
-            // --- Logic for Unique Code Generation ---
+            // ✅ Generate shorter, cleaner code
             let baseCode = name
                 .toUpperCase()
                 .replace(/[^A-Z0-9\s]/g, '')
                 .trim()
-                .replace(/\s+/g, '_');
+                .split(/\s+/)           // Split by spaces
+                .slice(0, 3)            // Take only first 3 words
+                .join('_');             // Join with underscore
+
+            // Maximum length check
+            if (baseCode.length > 20) {
+                baseCode = baseCode.substring(0, 20);
+            }
 
             const checkCodeExists = async (code) => {
                 const existing = await odooService.searchRead(
@@ -1713,7 +1845,7 @@ class PayrollController {
                         ["code", "=", code],
                         ["client_id", "=", client_id]
                     ],
-                    ["id", "name", "code"]
+                    ["id"]
                 );
                 return existing.length > 0;
             };
@@ -1733,7 +1865,7 @@ class PayrollController {
                     ["name", "=", name],
                     ["client_id", "=", client_id]
                 ],
-                ["id", "name", "code"]
+                ["id", "code"]
             );
 
             if (existingByName.length) {
@@ -1745,24 +1877,8 @@ class PayrollController {
                 });
             }
 
-            // --- Country ID Logic (Defaulting to 104) ---
-            const finalCountryId = country_id || 104;
-            let safeCountryId = false;
-
-            const countryExists = await odooService.searchRead(
-                "res.country",
-                [["id", "=", finalCountryId]],
-                ["id", "name"]
-            );
-
-            if (countryExists.length) {
-                safeCountryId = finalCountryId;
-            } else {
-                return res.status(400).json({
-                    status: "error",
-                    message: `Invalid Country ID: ${finalCountryId}`,
-                });
-            }
+            // ✅ Set default country_id to 104 (India)
+            const defaultCountryId = 104;
 
             // --- Payroll Structure Validation ---
             let safeStructIds = [];
@@ -1770,7 +1886,7 @@ class PayrollController {
                 const structsExist = await odooService.searchRead(
                     "hr.payroll.structure",
                     [["id", "in", struct_ids]],
-                    ["id", "name"]
+                    ["id"]
                 );
 
                 if (structsExist.length !== struct_ids.length) {
@@ -1789,7 +1905,7 @@ class PayrollController {
             const payload = {
                 name,
                 code: uniqueCode,
-                country_id: safeCountryId,
+                country_id: defaultCountryId,
                 available_in_attachments: !!available_in_attachments,
                 client_id
             };
@@ -1802,6 +1918,8 @@ class PayrollController {
                 payload.is_quantity = !!is_quantity;
                 payload.default_no_end_date = !!default_no_end_date;
             }
+
+            console.log("📦 Final Payload:", JSON.stringify(payload, null, 2));
 
             // --- Odoo Create Call ---
             const inputTypeId = await odooService.create(
@@ -1830,7 +1948,7 @@ class PayrollController {
             });
 
         } catch (error) {
-            console.error("Create Input Type Error:", error);
+            console.error("❌ Create Input Type Error:", error);
             return res.status(error.status || 500).json({
                 status: "error",
                 message: error.message || "Failed to create payroll input type",
@@ -1838,7 +1956,196 @@ class PayrollController {
             });
         }
     }
+    async updateInputType(req, res) {
+        try {
+            const { input_type_id } = req.params;
+            const {
+                name,
+                available_in_attachments,
+                struct_ids,
+                is_quantity,
+                default_no_end_date,
+            } = req.body;
 
+            if (!input_type_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "input_type_id is required",
+                });
+            }
+
+            const { client_id } = await getClientFromRequest(req);
+
+            // 1️⃣ Check if Input Type exists and belongs to client
+            const existingInputType = await odooService.searchRead(
+                "hr.payslip.input.type",
+                [
+                    ["id", "=", parseInt(input_type_id)],
+                    ["client_id", "=", client_id],
+                ],
+                ["id", "name", "code"]
+            );
+
+            console.log("🔍 Existing Input Type:", existingInputType);
+
+            if (!existingInputType.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Input Type not found or does not belong to this client",
+                });
+            }
+
+            // 2️⃣ Check for duplicate name (if name is being updated)
+            if (name && name !== existingInputType[0].name) {
+                const duplicate = await odooService.searchRead(
+                    "hr.payslip.input.type",
+                    [
+                        ["name", "=", name],
+                        ["client_id", "=", client_id],
+                        ["id", "!=", parseInt(input_type_id)],
+                    ],
+                    ["id", "code"]
+                );
+
+                console.log("🔍 Duplicate Name Check:", duplicate);
+
+                if (duplicate.length) {
+                    return res.status(409).json({
+                        status: "error",
+                        message: `Input Type with name '${name}' already exists`,
+                        existing_id: duplicate[0].id,
+                        existing_code: duplicate[0].code,
+                    });
+                }
+            }
+
+            // 3️⃣ Build update payload
+            const payload = {};
+
+            // Update name and regenerate code if name changes
+            if (name !== undefined && name !== existingInputType[0].name) {
+                payload.name = name;
+
+                // Generate new code based on new name
+                let baseCode = name
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9\s]/g, '')
+                    .trim()
+                    .split(/\s+/)
+                    .slice(0, 3)
+                    .join('_');
+
+                if (baseCode.length > 20) {
+                    baseCode = baseCode.substring(0, 20);
+                }
+
+                const checkCodeExists = async (code) => {
+                    const existing = await odooService.searchRead(
+                        "hr.payslip.input.type",
+                        [
+                            ["code", "=", code],
+                            ["client_id", "=", client_id],
+                            ["id", "!=", parseInt(input_type_id)]
+                        ],
+                        ["id"]
+                    );
+                    return existing.length > 0;
+                };
+
+                let uniqueCode = baseCode;
+                let counter = 1;
+
+                while (await checkCodeExists(uniqueCode)) {
+                    uniqueCode = `${baseCode}_${counter}`;
+                    counter++;
+                }
+
+                payload.code = uniqueCode;
+            }
+
+            if (available_in_attachments !== undefined) {
+                payload.available_in_attachments = !!available_in_attachments;
+            }
+
+            // 4️⃣ Validate and set struct_ids
+            if (struct_ids !== undefined) {
+                if (Array.isArray(struct_ids) && struct_ids.length > 0) {
+                    const structsExist = await odooService.searchRead(
+                        "hr.payroll.structure",
+                        [["id", "in", struct_ids]],
+                        ["id"]
+                    );
+
+                    if (structsExist.length !== struct_ids.length) {
+                        const foundIds = structsExist.map(s => s.id);
+                        const invalidIds = struct_ids.filter(id => !foundIds.includes(id));
+                        return res.status(400).json({
+                            status: "error",
+                            message: `Invalid Payroll Structure IDs: ${invalidIds.join(', ')}`,
+                        });
+                    }
+
+                    payload.struct_ids = [[6, 0, struct_ids]];
+                } else {
+                    // Clear struct_ids if empty array or null
+                    payload.struct_ids = [[5, 0, 0]];
+                }
+            }
+
+            // 5️⃣ Update is_quantity and default_no_end_date only if available_in_attachments
+            if (payload.available_in_attachments || (available_in_attachments === undefined && existingInputType[0].available_in_attachments)) {
+                if (is_quantity !== undefined) {
+                    payload.is_quantity = !!is_quantity;
+                }
+                if (default_no_end_date !== undefined) {
+                    payload.default_no_end_date = !!default_no_end_date;
+                }
+            }
+
+            console.log("📦 Update Payload:", JSON.stringify(payload, null, 2));
+
+            // 6️⃣ Update the Input Type
+            await odooService.write(
+                "hr.payslip.input.type",
+                [parseInt(input_type_id)],
+                payload
+            );
+
+            console.log("✅ Input Type Updated - ID:", input_type_id);
+
+            // 7️⃣ Fetch updated data
+            const updatedInputType = await odooService.searchRead(
+                "hr.payslip.input.type",
+                [["id", "=", parseInt(input_type_id)]],
+                [
+                    "id",
+                    "name",
+                    "code",
+                    "country_id",
+                    "available_in_attachments",
+                    "struct_ids",
+                    "is_quantity",
+                    "default_no_end_date",
+                ]
+            );
+
+            console.log("📋 Updated Input Type Details:", JSON.stringify(updatedInputType, null, 2));
+
+            return res.status(200).json({
+                status: "success",
+                message: "Payroll Input Type updated successfully",
+                data: updatedInputType[0],
+            });
+
+        } catch (error) {
+            console.error("❌ Update Input Type Error:", error);
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to update payroll input type",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            });
+        }
+    }
     async getInputTypes(req, res) {
         try {
             const {
@@ -1895,6 +2202,95 @@ class PayrollController {
                 status: "error",
                 message: error.message || "Failed to fetch input types",
                 error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            });
+        }
+    }
+    async deleteInputType(req, res) {
+        try {
+            const { input_type_id } = req.params;
+
+            console.log("🗑️ Delete Input Type Request - ID:", input_type_id);
+
+            if (!input_type_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "input_type_id is required",
+                });
+            }
+
+            const { client_id } = await getClientFromRequest(req);
+            console.log("🏢 Client ID:", client_id);
+
+            // 1️⃣ Check if Input Type exists and belongs to client
+            const existingInputType = await odooService.searchRead(
+                "hr.payslip.input.type",
+                [
+                    ["id", "=", parseInt(input_type_id)],
+                    ["client_id", "=", client_id],
+                ],
+                ["id", "name", "code"]
+            );
+
+            console.log("🔍 Existing Input Type:", existingInputType);
+
+            if (!existingInputType.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Input Type not found or does not belong to this client",
+                });
+            }
+
+            // 2️⃣ Check if Input Type is being used in payslips
+            const usedInPayslips = await odooService.searchRead(
+                "hr.payslip.input",
+                [["input_type_id", "=", parseInt(input_type_id)]],
+                ["id", "payslip_id"],
+                1
+            );
+
+            console.log("💰 Used in Payslips:", usedInPayslips);
+
+            if (usedInPayslips.length) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Cannot delete Input Type. It is currently being used in payslips.",
+                });
+            }
+
+            // 3️⃣ Delete the Input Type
+            await odooService.unlink(
+                "hr.payslip.input.type",
+                [parseInt(input_type_id)]
+            );
+
+            console.log("✅ Input Type Deleted - ID:", input_type_id);
+
+            return res.status(200).json({
+                status: "success",
+                message: "Payroll Input Type deleted successfully",
+                deleted_id: parseInt(input_type_id),
+            });
+
+        } catch (error) {
+            console.error("❌ Delete Input Type Error:", error);
+            console.error("🔥 Error Stack:", error.stack);
+
+            // ✅ Handle foreign key constraint errors
+            let errorMessage = "Failed to delete payroll input type";
+
+            if (error.message) {
+                if (error.message.includes("another model requires the record") ||
+                    error.message.includes("Constraint") ||
+                    error.message.includes("foreign key")) {
+                    errorMessage = "Sorry, you can't delete this because it is related to another module.";
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+
+            return res.status(400).json({
+                status: "error",
+                message: errorMessage,
             });
         }
     }
