@@ -8,7 +8,6 @@ module.exports = {
       const {
         user_id,
         product_id,
-        // plan_id removed - will be fetched automatically from product
         price_unit,
         transection_number,
       } = req.body;
