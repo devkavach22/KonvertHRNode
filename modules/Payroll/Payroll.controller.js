@@ -3129,6 +3129,135 @@ class PayrollController {
         }
     }
 
+    // async downloadPayslipPDFMobile(req, res) {
+    //     try {
+    //         const { employee_id, month, year } = req.body;
+
+    //         console.log("📥 Download Payslip Request:", { employee_id, month, year });
+
+    //         if (!employee_id) {
+    //             return res.status(400).json({
+    //                 success: false,
+    //                 error: "employee_id is required",
+    //             });
+    //         }
+
+    //         if (!month || !year) {
+    //             return res.status(400).json({
+    //                 success: false,
+    //                 error: "month and year are required",
+    //             });
+    //         }
+
+    //         // Build domain for filtering
+    //         const domain = [["employee_id", "=", parseInt(employee_id)]];
+
+    //         // Format: YYYY-MM (e.g., "2024-01")
+    //         const monthStr = String(month).padStart(2, '0');
+    //         const dateFrom = `${year}-${monthStr}-01`;
+
+    //         // Calculate last day of month
+    //         const lastDay = new Date(year, month, 0).getDate();
+    //         const dateTo = `${year}-${monthStr}-${lastDay}`;
+
+    //         domain.push(["date_from", ">=", dateFrom]);
+    //         domain.push(["date_to", "<=", dateTo]);
+
+    //         console.log("🔍 Search Domain:", domain);
+
+    //         // Search for payslip(s)
+    //         const payslips = await odooService.searchRead(
+    //             "hr.payslip",
+    //             domain,
+    //             ["id", "name", "state", "number", "employee_id", "date_from", "date_to"]
+    //         );
+
+    //         console.log("📋 Found Payslips:", payslips);
+
+    //         if (!payslips || payslips.length === 0) {
+    //             return res.status(404).json({
+    //                 success: false,
+    //                 error: "No payslip found for this employee in the specified month",
+    //             });
+    //         }
+
+    //         // ✅ If multiple payslips found, return error with custom message
+    //         if (payslips.length > 1) {
+    //             return res.status(400).json({
+    //                 success: false,
+    //                 error: "Your employee has multiple payslips for this month, so you cannot download.",
+    //             });
+    //         }
+
+    //         const payslip = payslips[0];
+
+    //         // Check payslip state
+    //         if (payslip.state !== "done" && payslip.state !== "paid") {
+    //             return res.status(400).json({
+    //                 success: false,
+    //                 error: "Payslip is not yet confirmed. Please contact your HR department.",
+    //                 current_state: payslip.state,
+    //             });
+    //         }
+
+    //         const axios = require("axios");
+
+    //         // Authenticate with Odoo
+    //         const loginResponse = await axios.post(
+    //             `${process.env.ODOO_URL}/web/session/authenticate`,
+    //             {
+    //                 jsonrpc: "2.0",
+    //                 params: {
+    //                     db: process.env.ODOO_DB,
+    //                     login: process.env.ODOO_ADMIN,
+    //                     password: process.env.ODOO_ADMIN_PASSWORD,
+    //                 },
+    //             },
+    //             {
+    //                 headers: { "Content-Type": "application/json" },
+    //             }
+    //         );
+
+    //         const sessionId = loginResponse.headers["set-cookie"];
+    //         const printUrl = `${process.env.ODOO_URL}/print/payslips?list_ids=${payslip.id}`;
+
+    //         console.log("📄 Fetching PDF from:", printUrl);
+
+    //         const pdfResponse = await axios.get(printUrl, {
+    //             headers: {
+    //                 Cookie: sessionId,
+    //             },
+    //             responseType: "arraybuffer",
+    //         });
+
+    //         const pdfBuffer = Buffer.from(pdfResponse.data);
+
+    //         res.setHeader("Content-Type", "application/pdf");
+    //         res.setHeader(
+    //             "Content-Disposition",
+    //             `attachment; filename="Payslip_${(payslip.number || payslip.name).replace(/\//g, "_")}.pdf"`
+    //         );
+    //         res.setHeader("Content-Length", pdfBuffer.length);
+
+    //         console.log("✅ Payslip PDF generated successfully for:", {
+    //             payslip_id: payslip.id,
+    //             employee: payslip.employee_id[1],
+    //             number: payslip.number,
+    //             period: `${payslip.date_from} to ${payslip.date_to}`
+    //         });
+
+    //         return res.send(pdfBuffer);
+
+    //     } catch (error) {
+    //         console.error("❌ Error generating payslip PDF:", error);
+    //         return res.status(500).json({
+    //             success: false,
+    //             error: "Failed to generate payslip PDF",
+    //             details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    //         });
+    //     }
+    // }
+
     async downloadPayslipPDFMobile(req, res) {
         try {
             const { employee_id, month, year } = req.body;
@@ -3231,13 +3360,7 @@ class PayrollController {
             });
 
             const pdfBuffer = Buffer.from(pdfResponse.data);
-
-            res.setHeader("Content-Type", "application/pdf");
-            res.setHeader(
-                "Content-Disposition",
-                `attachment; filename="Payslip_${(payslip.number || payslip.name).replace(/\//g, "_")}.pdf"`
-            );
-            res.setHeader("Content-Length", pdfBuffer.length);
+            const pdfBase64 = pdfBuffer.toString('base64');
 
             console.log("✅ Payslip PDF generated successfully for:", {
                 payslip_id: payslip.id,
@@ -3246,7 +3369,18 @@ class PayrollController {
                 period: `${payslip.date_from} to ${payslip.date_to}`
             });
 
-            return res.send(pdfBuffer);
+            return res.status(200).json({
+                success: true,
+                message: "Payslip PDF generated successfully",
+                data: {
+                    pdf_base64: pdfBase64,
+                    filename: `Payslip_${(payslip.number || payslip.name).replace(/\//g, "_")}.pdf`,
+                    payslip_id: payslip.id,
+                    employee_name: payslip.employee_id[1],
+                    number: payslip.number,
+                    period: `${payslip.date_from} to ${payslip.date_to}`
+                }
+            });
 
         } catch (error) {
             console.error("❌ Error generating payslip PDF:", error);
