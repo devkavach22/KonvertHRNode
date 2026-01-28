@@ -596,6 +596,12 @@ router.get(
   authenticate,
   PayrollController.getStructureTypes.bind(PayrollController)
 );
+
+router.put(
+  "/structure-type/:struct_type_id",
+  authenticate,
+  PayrollController.updateStructureType.bind(PayrollController)
+);
 router.post(
   "/create/Input-Type",
   authenticate,
@@ -903,6 +909,12 @@ router.post(
   "/printPayslip",
   authenticate,
   PayrollController.downloadPayslipPDF.bind(PayrollController)
+);
+
+router.post(
+  "/printPayslipMobile",
+  authenticate,
+  PayrollController.downloadPayslipPDFMobile.bind(PayrollController)
 );
 
 module.exports = router;

@@ -7264,10 +7264,8 @@ class ApiController {
     try {
       console.log("--------------------------------------------------");
       console.log("🚀 START: approveAttendanceRegularization");
-
       const { approval_request_id, user_id } = req.body;
       console.log("📥 Incoming Payload:", { approval_request_id, user_id });
-
       if (!approval_request_id || !user_id) {
         console.warn("⚠️ Validation Failed: Missing required fields");
         return res.status(400).json({
@@ -7275,7 +7273,6 @@ class ApiController {
           message: "approval_request_id and user_id are required",
         });
       }
-
       // --- STEP 1: Fetch Password from hr.employee ---
       console.log(`🔍 Step 1: Searching hr.employee for user_id: ${user_id}`);
       const employeeData = await odooService.searchRead(
@@ -7284,9 +7281,7 @@ class ApiController {
         ["id", "name", "employee_password"],
         1
       );
-
       console.log("📄 Odoo Employee Result:", JSON.stringify(employeeData, null, 2));
-
       if (!employeeData || employeeData.length === 0) {
         console.error(`❌ Error: No employee found linked to user_id ${user_id}`);
         return res.status(404).json({
@@ -7294,10 +7289,8 @@ class ApiController {
           message: "Employee record not found for this user",
         });
       }
-
       const fetchedPassword = employeeData[0].employee_password;
       console.log(`🔐 Password Status: ${fetchedPassword ? "Found (HIDDEN)" : "NOT FOUND/EMPTY"}`);
-
       if (!fetchedPassword || fetchedPassword === "") {
         console.error("❌ Error: employee_password field is empty in Odoo");
         return res.status(400).json({
@@ -7305,7 +7298,6 @@ class ApiController {
           message: "Password not found in Odoo for this employee. Please check hr.employee record.",
         });
       }
-
       // --- STEP 2: Check Approval Record ---
       console.log(`🔍 Step 2: Checking approval.request ID: ${approval_request_id}`);
       const approvalRecords = await odooService.searchRead(
@@ -7314,25 +7306,19 @@ class ApiController {
         ["id", "state", "name"],
         1
       );
-
       console.log("📄 Odoo Approval Result:", JSON.stringify(approvalRecords, null, 2));
-
       if (!approvalRecords || approvalRecords.length === 0) {
         console.error("❌ Error: Approval record not found in Odoo");
         return res.status(404).json({ status: "error", message: "Approval record not found" });
       }
-
       console.log(`Current state of request: ${approvalRecords[0].state}`);
-
       if (approvalRecords[0].state === "approved") {
         console.warn("⚠️ Request already approved. Skipping...");
         return res.status(400).json({ status: "error", message: "This request is already approved" });
       }
-
       // --- STEP 3: Execute Approve Method ---
       try {
         console.log(`⚡ Step 3: Executing Odoo method 'approve_request' as User ${user_id}`);
-
         const result = await odooService.callMethod(
           "approval.request",
           "approve_request",
@@ -7341,21 +7327,25 @@ class ApiController {
           parseInt(user_id),
           fetchedPassword
         );
-
         console.log("✅ Odoo Execution Successful:", result);
         console.log("--------------------------------------------------");
-
         return res.status(200).json({
           status: "success",
           message: "Request approved successfully",
           data: { approval_id: approval_request_id }
         });
-
       } catch (odooError) {
         console.error("❌ Odoo Execution Error:", odooError.message);
+
+        let userMessage = odooError.message || "Approval failed. Check permissions or sequence.";
+
+        if (odooError.message && odooError.message.includes("Check Out") && odooError.message.includes("Check In")) {
+          userMessage = "Cannot approve: Check Out time is earlier than Check In time";
+        }
+
         return res.status(400).json({
           status: "error",
-          message: odooError.message || "Approval failed. Check permissions or sequence."
+          message: userMessage
         });
       }
     } catch (error) {
@@ -7363,6 +7353,109 @@ class ApiController {
       return res.status(500).json({ status: "error", message: error.message });
     }
   }
+  // async approveAttendanceRegularization(req, res) {
+  //   try {
+  //     console.log("--------------------------------------------------");
+  //     console.log("🚀 START: approveAttendanceRegularization");
+
+  //     const { approval_request_id, user_id } = req.body;
+  //     console.log("📥 Incoming Payload:", { approval_request_id, user_id });
+
+  //     if (!approval_request_id || !user_id) {
+  //       console.warn("⚠️ Validation Failed: Missing required fields");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "approval_request_id and user_id are required",
+  //       });
+  //     }
+
+  //     // --- STEP 1: Fetch Password from hr.employee ---
+  //     console.log(`🔍 Step 1: Searching hr.employee for user_id: ${user_id}`);
+  //     const employeeData = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", parseInt(user_id)]],
+  //       ["id", "name", "employee_password"],
+  //       1
+  //     );
+
+  //     console.log("📄 Odoo Employee Result:", JSON.stringify(employeeData, null, 2));
+
+  //     if (!employeeData || employeeData.length === 0) {
+  //       console.error(`❌ Error: No employee found linked to user_id ${user_id}`);
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Employee record not found for this user",
+  //       });
+  //     }
+
+  //     const fetchedPassword = employeeData[0].employee_password;
+  //     console.log(`🔐 Password Status: ${fetchedPassword ? "Found (HIDDEN)" : "NOT FOUND/EMPTY"}`);
+
+  //     if (!fetchedPassword || fetchedPassword === "") {
+  //       console.error("❌ Error: employee_password field is empty in Odoo");
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Password not found in Odoo for this employee. Please check hr.employee record.",
+  //       });
+  //     }
+
+  //     // --- STEP 2: Check Approval Record ---
+  //     console.log(`🔍 Step 2: Checking approval.request ID: ${approval_request_id}`);
+  //     const approvalRecords = await odooService.searchRead(
+  //       "approval.request",
+  //       [["id", "=", parseInt(approval_request_id)]],
+  //       ["id", "state", "name"],
+  //       1
+  //     );
+
+  //     console.log("📄 Odoo Approval Result:", JSON.stringify(approvalRecords, null, 2));
+
+  //     if (!approvalRecords || approvalRecords.length === 0) {
+  //       console.error("❌ Error: Approval record not found in Odoo");
+  //       return res.status(404).json({ status: "error", message: "Approval record not found" });
+  //     }
+
+  //     console.log(`Current state of request: ${approvalRecords[0].state}`);
+
+  //     if (approvalRecords[0].state === "approved") {
+  //       console.warn("⚠️ Request already approved. Skipping...");
+  //       return res.status(400).json({ status: "error", message: "This request is already approved" });
+  //     }
+
+  //     // --- STEP 3: Execute Approve Method ---
+  //     try {
+  //       console.log(`⚡ Step 3: Executing Odoo method 'approve_request' as User ${user_id}`);
+
+  //       const result = await odooService.callMethod(
+  //         "approval.request",
+  //         "approve_request",
+  //         [parseInt(approval_request_id)],
+  //         {},
+  //         parseInt(user_id),
+  //         fetchedPassword
+  //       );
+
+  //       console.log("✅ Odoo Execution Successful:", result);
+  //       console.log("--------------------------------------------------");
+
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Request approved successfully",
+  //         data: { approval_id: approval_request_id }
+  //       });
+
+  //     } catch (odooError) {
+  //       console.error("❌ Odoo Execution Error:", odooError.message);
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: odooError.message || "Approval failed. Check permissions or sequence."
+  //       });
+  //     }
+  //   } catch (error) {
+  //     console.error("🔥 Critical Server Error:", error.message);
+  //     return res.status(500).json({ status: "error", message: error.message });
+  //   }
+  // }
   // async rejectAttendanceRegularization(req, res) {
   //   try {
   //     const { approval_request_id, remarks, user_id } = req.body;

@@ -10,7 +10,6 @@ class PayrollController {
                 name,
                 default_schedule_pay,
                 wage_type,
-                country_id,
                 default_work_entry_type_id,
                 default_resource_calendar_id,
                 default_struct_id,
@@ -39,6 +38,7 @@ class PayrollController {
 
             const { client_id } = await getClientFromRequest(req);
             console.log("🏢 Client ID:", client_id);
+
             const workEntryExists = await odooService.searchRead(
                 "hr.work.entry.type",
                 [["id", "=", default_work_entry_type_id]],
@@ -54,20 +54,9 @@ class PayrollController {
                 });
             }
 
-            let safeCountryId = false;
-            if (country_id) {
-                const countryExists = await odooService.searchRead(
-                    "res.country",
-                    [["id", "=", country_id]],
-                    ["id", "name"]
-                );
-                console.log("🌍 Country Validation:", countryExists);
-                if (countryExists.length) {
-                    safeCountryId = country_id;
-                } else {
-                    console.log("⚠️ Warning: Invalid country_id, setting to false");
-                }
-            }
+            // ✅ Set default country_id to 104 (India)
+            const defaultCountryId = 104;
+            console.log("🌍 Setting default country_id:", defaultCountryId);
 
             let safeResourceCalendarId = false;
             if (default_resource_calendar_id) {
@@ -102,7 +91,7 @@ class PayrollController {
                 }
             }
 
-            // 5️⃣ Check if Structure Type already exists
+            // Check if Structure Type already exists
             const existing = await odooService.searchRead(
                 "hr.payroll.structure.type",
                 [
@@ -121,11 +110,12 @@ class PayrollController {
                     existing_id: existing[0].id,
                 });
             }
+
             const vals = {
                 name,
                 wage_type,
                 default_schedule_pay: default_schedule_pay || false,
-                country_id: safeCountryId,
+                country_id: defaultCountryId, // ✅ Always set to 104
                 default_work_entry_type_id,
                 default_resource_calendar_id: safeResourceCalendarId,
                 default_struct_id: safeStructId,
@@ -133,12 +123,14 @@ class PayrollController {
             };
 
             console.log("📦 Final Payload:", JSON.stringify(vals, null, 2));
+
             const structTypeId = await odooService.create(
                 "hr.payroll.structure.type",
                 vals
             );
 
             console.log("✅ Structure Type Created - ID:", structTypeId);
+
             const createdStructType = await odooService.searchRead(
                 "hr.payroll.structure.type",
                 [["id", "=", structTypeId]],
@@ -221,6 +213,194 @@ class PayrollController {
             return res.status(500).json({
                 status: "error",
                 message: error.message || "Failed to fetch payroll structure types",
+            });
+        }
+    }
+
+    async updateStructureType(req, res) {
+        try {
+            const { struct_type_id } = req.params;
+            const {
+                name,
+                default_schedule_pay,
+                wage_type,
+                default_work_entry_type_id,
+                default_resource_calendar_id,
+                default_struct_id,
+            } = req.body;
+
+            console.log("📥 Update Structure Type Request Body:", JSON.stringify(req.body, null, 2));
+
+            if (!struct_type_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "struct_type_id is required",
+                });
+            }
+
+            const { client_id } = await getClientFromRequest(req);
+            console.log("🏢 Client ID:", client_id);
+
+            // 1️⃣ Check if Structure Type exists and belongs to client
+            const existingStructType = await odooService.searchRead(
+                "hr.payroll.structure.type",
+                [
+                    ["id", "=", parseInt(struct_type_id)],
+                    ["client_id", "=", client_id],
+                ],
+                ["id", "name"]
+            );
+
+            console.log("🔍 Existing Structure Type:", existingStructType);
+
+            if (!existingStructType.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Structure Type not found or does not belong to this client",
+                });
+            }
+
+            // 2️⃣ Check for duplicate name (if name is being updated)
+            if (name && name !== existingStructType[0].name) {
+                const duplicate = await odooService.searchRead(
+                    "hr.payroll.structure.type",
+                    [
+                        ["name", "=", name],
+                        ["client_id", "=", client_id],
+                        ["id", "!=", parseInt(struct_type_id)],
+                    ],
+                    ["id", "name"]
+                );
+
+                console.log("🔍 Duplicate Name Check:", duplicate);
+
+                if (duplicate.length) {
+                    return res.status(409).json({
+                        status: "error",
+                        message: `Structure Type '${name}' already exists for this organization`,
+                    });
+                }
+            }
+
+            // 3️⃣ Validate Work Entry Type (if provided)
+            if (default_work_entry_type_id !== undefined) {
+                const workEntryExists = await odooService.searchRead(
+                    "hr.work.entry.type",
+                    [["id", "=", default_work_entry_type_id]],
+                    ["id", "name"]
+                );
+
+                console.log("🔍 Work Entry Type Validation:", workEntryExists);
+
+                if (!workEntryExists.length) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: `Invalid Work Entry Type ID: ${default_work_entry_type_id}`,
+                    });
+                }
+            }
+
+            // 4️⃣ Build update values object
+            const vals = {};
+
+            if (name !== undefined) vals.name = name;
+            if (wage_type !== undefined) vals.wage_type = wage_type;
+            if (default_schedule_pay !== undefined) vals.default_schedule_pay = default_schedule_pay || false;
+            if (default_work_entry_type_id !== undefined) vals.default_work_entry_type_id = default_work_entry_type_id;
+
+            // ✅ Country ID is always 104, no need to update it from frontend
+            // If you want to ensure it stays 104, you can set it explicitly:
+            // vals.country_id = 104;
+
+            // 5️⃣ Validate and set resource_calendar_id
+            if (default_resource_calendar_id !== undefined) {
+                if (default_resource_calendar_id) {
+                    const calendarExists = await odooService.searchRead(
+                        "resource.calendar",
+                        [["id", "=", default_resource_calendar_id]],
+                        ["id", "name"]
+                    );
+                    console.log("📅 Resource Calendar Validation:", calendarExists);
+
+                    if (calendarExists.length) {
+                        vals.default_resource_calendar_id = default_resource_calendar_id;
+                    } else {
+                        console.log("⚠️ Warning: Invalid resource_calendar_id, setting to false");
+                        vals.default_resource_calendar_id = false;
+                    }
+                } else {
+                    vals.default_resource_calendar_id = false;
+                }
+            }
+
+            // 6️⃣ Validate and set struct_id
+            if (default_struct_id !== undefined) {
+                if (default_struct_id) {
+                    const structExists = await odooService.searchRead(
+                        "hr.payroll.structure",
+                        [
+                            ["id", "=", default_struct_id],
+                            ["client_id", "=", client_id]
+                        ],
+                        ["id", "name"]
+                    );
+                    console.log("💰 Salary Structure Validation:", structExists);
+
+                    if (structExists.length) {
+                        vals.default_struct_id = default_struct_id;
+                    } else {
+                        console.log("⚠️ Warning: Invalid or unauthorized struct_id, setting to false");
+                        vals.default_struct_id = false;
+                    }
+                } else {
+                    vals.default_struct_id = false;
+                }
+            }
+
+            console.log("📦 Update Payload:", JSON.stringify(vals, null, 2));
+
+            // 7️⃣ Update the Structure Type
+            await odooService.write(
+                "hr.payroll.structure.type",
+                [parseInt(struct_type_id)],
+                vals
+            );
+
+            console.log("✅ Structure Type Updated - ID:", struct_type_id);
+
+            // 8️⃣ Fetch updated data
+            const updatedStructType = await odooService.searchRead(
+                "hr.payroll.structure.type",
+                [["id", "=", parseInt(struct_type_id)]],
+                [
+                    "id",
+                    "name",
+                    "wage_type",
+                    "default_schedule_pay",
+                    "country_id",
+                    "default_work_entry_type_id",
+                    "default_resource_calendar_id",
+                    "default_struct_id",
+                ]
+            );
+
+            console.log("📋 Updated Structure Type Details:", JSON.stringify(updatedStructType, null, 2));
+
+            return res.status(200).json({
+                status: "success",
+                message: "Payroll Structure Type updated successfully",
+                data: updatedStructType[0],
+            });
+
+        } catch (error) {
+            console.error("❌ Update Structure Type Error:", error);
+            console.error("🔥 Error Stack:", error.stack);
+            console.error("🔥 Error Details:", JSON.stringify(error, null, 2));
+
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to update payroll structure type",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }
@@ -2473,93 +2653,222 @@ class PayrollController {
         }
     }
 
-   async downloadPayslipPDF(req, res) {
-  try {
-    const { payslip_id } = req.body;
-    
-    if (!payslip_id) {
-      return res.status(400).json({
-        success: false,
-        error: "payslip_id is required",
-      });
+    async downloadPayslipPDF(req, res) {
+        try {
+            const { payslip_id } = req.body;
+
+            if (!payslip_id) {
+                return res.status(400).json({
+                    success: false,
+                    error: "payslip_id is required",
+                });
+            }
+
+            console.log("📄 Generating PDF for payslip ID:", payslip_id);
+
+            const payslipExists = await odooService.searchRead(
+                "hr.payslip",
+                [["id", "=", payslip_id]],
+                ["id", "name", "state", "number"]
+            );
+
+            if (!payslipExists || payslipExists.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Payslip not found",
+                });
+            }
+
+            const payslip = payslipExists[0];
+
+            if (payslip.state !== "done" && payslip.state !== "paid") {
+                return res.status(400).json({
+                    success: false,
+                    error: "Payslip must be confirmed to generate PDF",
+                    current_state: payslip.state,
+                });
+            }
+
+            const axios = require("axios");
+
+            // Authenticate with Odoo
+            const loginResponse = await axios.post(
+                `${process.env.ODOO_URL}/web/session/authenticate`,
+                {
+                    jsonrpc: "2.0",
+                    params: {
+                        db: process.env.ODOO_DB,
+                        login: process.env.ODOO_ADMIN,
+                        password: process.env.ODOO_ADMIN_PASSWORD,
+                    },
+                },
+                {
+                    headers: { "Content-Type": "application/json" },
+                }
+            );
+
+            const sessionId = loginResponse.headers["set-cookie"];
+
+            const printUrl = `${process.env.ODOO_URL}/print/payslips?list_ids=${payslip_id}`;
+
+            console.log("Fetching PDF from:", printUrl);
+
+            const pdfResponse = await axios.get(printUrl, {
+                headers: {
+                    Cookie: sessionId,
+                },
+                responseType: "arraybuffer",
+            });
+
+            const pdfBuffer = Buffer.from(pdfResponse.data);
+
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="Payslip_${(payslip.number || payslip.name).replace(/\//g, "_")}.pdf"`
+            );
+            res.setHeader("Content-Length", pdfBuffer.length);
+
+            console.log("✅ Payslip PDF generated successfully");
+            return res.send(pdfBuffer);
+
+        } catch (error) {
+            console.error("❌ Error generating payslip PDF:", error);
+            return res.status(500).json({
+                success: false,
+                error: "Failed to generate payslip PDF",
+                details: process.env.NODE_ENV === "development" ? error.message : undefined,
+            });
+        }
     }
 
-    console.log("📄 Generating PDF for payslip ID:", payslip_id);
+    async downloadPayslipPDFMobile(req, res) {
+        try {
+            const { employee_id, month, year } = req.body;
 
-    const payslipExists = await odooService.searchRead(
-      "hr.payslip",
-      [["id", "=", payslip_id]],
-      ["id", "name", "state", "number"]
-    );
+            console.log("📥 Download Payslip Request:", { employee_id, month, year });
 
-    if (!payslipExists || payslipExists.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Payslip not found",
-      });
+            if (!employee_id) {
+                return res.status(400).json({
+                    success: false,
+                    error: "employee_id is required",
+                });
+            }
+
+            if (!month || !year) {
+                return res.status(400).json({
+                    success: false,
+                    error: "month and year are required",
+                });
+            }
+
+            // Build domain for filtering
+            const domain = [["employee_id", "=", parseInt(employee_id)]];
+
+            // Format: YYYY-MM (e.g., "2024-01")
+            const monthStr = String(month).padStart(2, '0');
+            const dateFrom = `${year}-${monthStr}-01`;
+
+            // Calculate last day of month
+            const lastDay = new Date(year, month, 0).getDate();
+            const dateTo = `${year}-${monthStr}-${lastDay}`;
+
+            domain.push(["date_from", ">=", dateFrom]);
+            domain.push(["date_to", "<=", dateTo]);
+
+            console.log("🔍 Search Domain:", domain);
+
+            // Search for payslip(s)
+            const payslips = await odooService.searchRead(
+                "hr.payslip",
+                domain,
+                ["id", "name", "state", "number", "employee_id", "date_from", "date_to"]
+            );
+
+            console.log("📋 Found Payslips:", payslips);
+
+            if (!payslips || payslips.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: "No payslip found for this employee in the specified month",
+                });
+            }
+
+            // ✅ If multiple payslips found, return error with custom message
+            if (payslips.length > 1) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Your employee has multiple payslips for this month, so you cannot download.",
+                });
+            }
+
+            const payslip = payslips[0];
+
+            // Check payslip state
+            if (payslip.state !== "done" && payslip.state !== "paid") {
+                return res.status(400).json({
+                    success: false,
+                    error: "Payslip is not yet confirmed. Please contact your HR department.",
+                    current_state: payslip.state,
+                });
+            }
+
+            const axios = require("axios");
+
+            // Authenticate with Odoo
+            const loginResponse = await axios.post(
+                `${process.env.ODOO_URL}/web/session/authenticate`,
+                {
+                    jsonrpc: "2.0",
+                    params: {
+                        db: process.env.ODOO_DB,
+                        login: process.env.ODOO_ADMIN,
+                        password: process.env.ODOO_ADMIN_PASSWORD,
+                    },
+                },
+                {
+                    headers: { "Content-Type": "application/json" },
+                }
+            );
+
+            const sessionId = loginResponse.headers["set-cookie"];
+            const printUrl = `${process.env.ODOO_URL}/print/payslips?list_ids=${payslip.id}`;
+
+            console.log("📄 Fetching PDF from:", printUrl);
+
+            const pdfResponse = await axios.get(printUrl, {
+                headers: {
+                    Cookie: sessionId,
+                },
+                responseType: "arraybuffer",
+            });
+
+            const pdfBuffer = Buffer.from(pdfResponse.data);
+
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="Payslip_${(payslip.number || payslip.name).replace(/\//g, "_")}.pdf"`
+            );
+            res.setHeader("Content-Length", pdfBuffer.length);
+
+            console.log("✅ Payslip PDF generated successfully for:", {
+                payslip_id: payslip.id,
+                employee: payslip.employee_id[1],
+                number: payslip.number,
+                period: `${payslip.date_from} to ${payslip.date_to}`
+            });
+
+            return res.send(pdfBuffer);
+
+        } catch (error) {
+            console.error("❌ Error generating payslip PDF:", error);
+            return res.status(500).json({
+                success: false,
+                error: "Failed to generate payslip PDF",
+                details: process.env.NODE_ENV === "development" ? error.message : undefined,
+            });
+        }
     }
-
-    const payslip = payslipExists[0];
-
-    if (payslip.state !== "done" && payslip.state !== "paid") {
-      return res.status(400).json({
-        success: false,
-        error: "Payslip must be confirmed to generate PDF",
-        current_state: payslip.state,
-      });
-    }
-
-    const axios = require("axios");
-
-    // Authenticate with Odoo
-    const loginResponse = await axios.post(
-      `${process.env.ODOO_URL}/web/session/authenticate`,
-      {
-        jsonrpc: "2.0",
-        params: {
-          db: process.env.ODOO_DB,
-          login: process.env.ODOO_ADMIN,
-          password: process.env.ODOO_ADMIN_PASSWORD,
-        },
-      },
-      {
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-
-    const sessionId = loginResponse.headers["set-cookie"];
-
-    const printUrl = `${process.env.ODOO_URL}/print/payslips?list_ids=${payslip_id}`;
-    
-    console.log("Fetching PDF from:", printUrl);
-
-    const pdfResponse = await axios.get(printUrl, {
-      headers: {
-        Cookie: sessionId,
-      },
-      responseType: "arraybuffer",
-    });
-
-    const pdfBuffer = Buffer.from(pdfResponse.data);
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="Payslip_${(payslip.number || payslip.name).replace(/\//g, "_")}.pdf"`
-    );
-    res.setHeader("Content-Length", pdfBuffer.length);
-
-    console.log("✅ Payslip PDF generated successfully");
-    return res.send(pdfBuffer);
-    
-  } catch (error) {
-    console.error("❌ Error generating payslip PDF:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to generate payslip PDF",
-      details: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
-  }
-}
 }
 module.exports = new PayrollController();
