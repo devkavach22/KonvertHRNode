@@ -231,175 +231,99 @@ class PayrollController {
             console.log("📥 Update Structure Type Request Body:", JSON.stringify(req.body, null, 2));
 
             if (!struct_type_id) {
-                return res.status(400).json({
-                    status: "error",
-                    message: "struct_type_id is required",
-                });
+                return res.status(400).json({ status: "error", message: "struct_type_id is required" });
             }
 
             const { client_id } = await getClientFromRequest(req);
-            console.log("🏢 Client ID:", client_id);
+            const targetId = parseInt(struct_type_id);
 
-            // 1️⃣ Check if Structure Type exists and belongs to client
+            // 1️⃣ Check if Structure Type exists
             const existingStructType = await odooService.searchRead(
                 "hr.payroll.structure.type",
-                [
-                    ["id", "=", parseInt(struct_type_id)],
-                    ["client_id", "=", client_id],
-                ],
+                [["id", "=", targetId], ["client_id", "=", client_id]],
                 ["id", "name"]
             );
-
-            console.log("🔍 Existing Structure Type:", existingStructType);
 
             if (!existingStructType.length) {
                 return res.status(404).json({
                     status: "error",
-                    message: "Structure Type not found or does not belong to this client",
+                    message: "Structure Type not found or unauthorized",
                 });
             }
 
-            // 2️⃣ Check for duplicate name (if name is being updated)
+            // 2️⃣ Duplicate Name Check
             if (name && name !== existingStructType[0].name) {
                 const duplicate = await odooService.searchRead(
                     "hr.payroll.structure.type",
-                    [
-                        ["name", "=", name],
-                        ["client_id", "=", client_id],
-                        ["id", "!=", parseInt(struct_type_id)],
-                    ],
-                    ["id", "name"]
+                    [["name", "=", name], ["client_id", "=", client_id], ["id", "!=", targetId]],
+                    ["id"]
                 );
-
-                console.log("🔍 Duplicate Name Check:", duplicate);
-
                 if (duplicate.length) {
-                    return res.status(409).json({
-                        status: "error",
-                        message: `Structure Type '${name}' already exists for this organization`,
-                    });
+                    return res.status(409).json({ status: "error", message: `Name '${name}' already exists` });
                 }
             }
 
-            // 3️⃣ Validate Work Entry Type (if provided)
-            if (default_work_entry_type_id !== undefined) {
-                const workEntryExists = await odooService.searchRead(
-                    "hr.work.entry.type",
-                    [["id", "=", default_work_entry_type_id]],
-                    ["id", "name"]
-                );
-
-                console.log("🔍 Work Entry Type Validation:", workEntryExists);
-
-                if (!workEntryExists.length) {
-                    return res.status(400).json({
-                        status: "error",
-                        message: `Invalid Work Entry Type ID: ${default_work_entry_type_id}`,
-                    });
-                }
-            }
-
-            // 4️⃣ Build update values object
+            // 3️⃣ Build update values object (Ensuring Integers for Odoo)
             const vals = {};
 
             if (name !== undefined) vals.name = name;
             if (wage_type !== undefined) vals.wage_type = wage_type;
             if (default_schedule_pay !== undefined) vals.default_schedule_pay = default_schedule_pay || false;
-            if (default_work_entry_type_id !== undefined) vals.default_work_entry_type_id = default_work_entry_type_id;
 
-            // ✅ Country ID is always 104, no need to update it from frontend
-            // If you want to ensure it stays 104, you can set it explicitly:
-            // vals.country_id = 104;
+            // ✅ FIX: Ensure IDs are Integers, not Strings
+            if (default_work_entry_type_id !== undefined) {
+                vals.default_work_entry_type_id = Number(default_work_entry_type_id);
+            }
 
-            // 5️⃣ Validate and set resource_calendar_id
+            // 4️⃣ Validate & Convert Resource Calendar ID
             if (default_resource_calendar_id !== undefined) {
                 if (default_resource_calendar_id) {
-                    const calendarExists = await odooService.searchRead(
-                        "resource.calendar",
-                        [["id", "=", default_resource_calendar_id]],
-                        ["id", "name"]
-                    );
-                    console.log("📅 Resource Calendar Validation:", calendarExists);
-
-                    if (calendarExists.length) {
-                        vals.default_resource_calendar_id = default_resource_calendar_id;
-                    } else {
-                        console.log("⚠️ Warning: Invalid resource_calendar_id, setting to false");
-                        vals.default_resource_calendar_id = false;
-                    }
+                    const calId = Number(default_resource_calendar_id);
+                    const calendarExists = await odooService.searchRead("resource.calendar", [["id", "=", calId]], ["id"]);
+                    vals.default_resource_calendar_id = calendarExists.length ? calId : false;
                 } else {
                     vals.default_resource_calendar_id = false;
                 }
             }
 
-            // 6️⃣ Validate and set struct_id
+            // 5️⃣ Validate & Convert Salary Structure ID
             if (default_struct_id !== undefined) {
                 if (default_struct_id) {
+                    const structId = Number(default_struct_id);
                     const structExists = await odooService.searchRead(
                         "hr.payroll.structure",
-                        [
-                            ["id", "=", default_struct_id],
-                            ["client_id", "=", client_id]
-                        ],
-                        ["id", "name"]
+                        [["id", "=", structId], ["client_id", "=", client_id]],
+                        ["id"]
                     );
-                    console.log("💰 Salary Structure Validation:", structExists);
-
-                    if (structExists.length) {
-                        vals.default_struct_id = default_struct_id;
-                    } else {
-                        console.log("⚠️ Warning: Invalid or unauthorized struct_id, setting to false");
-                        vals.default_struct_id = false;
-                    }
+                    vals.default_struct_id = structExists.length ? structId : false;
                 } else {
                     vals.default_struct_id = false;
                 }
             }
 
-            console.log("📦 Update Payload:", JSON.stringify(vals, null, 2));
+            console.log("📦 Cleaned Update Payload:", JSON.stringify(vals, null, 2));
 
-            // 7️⃣ Update the Structure Type
-            await odooService.write(
+            // 6️⃣ Update the Structure Type
+            await odooService.write("hr.payroll.structure.type", [targetId], vals);
+
+            // 7️⃣ Fetch updated data for response
+            const [updatedData] = await odooService.searchRead(
                 "hr.payroll.structure.type",
-                [parseInt(struct_type_id)],
-                vals
+                [["id", "=", targetId]],
+                ["id", "name", "wage_type", "default_schedule_pay", "default_work_entry_type_id", "default_resource_calendar_id", "default_struct_id"]
             );
-
-            console.log("✅ Structure Type Updated - ID:", struct_type_id);
-
-            // 8️⃣ Fetch updated data
-            const updatedStructType = await odooService.searchRead(
-                "hr.payroll.structure.type",
-                [["id", "=", parseInt(struct_type_id)]],
-                [
-                    "id",
-                    "name",
-                    "wage_type",
-                    "default_schedule_pay",
-                    "country_id",
-                    "default_work_entry_type_id",
-                    "default_resource_calendar_id",
-                    "default_struct_id",
-                ]
-            );
-
-            console.log("📋 Updated Structure Type Details:", JSON.stringify(updatedStructType, null, 2));
 
             return res.status(200).json({
                 status: "success",
                 message: "Payroll Structure Type updated successfully",
-                data: updatedStructType[0],
+                data: updatedData,
             });
 
         } catch (error) {
-            console.error("❌ Update Structure Type Error:", error);
-            console.error("🔥 Error Stack:", error.stack);
-            console.error("🔥 Error Details:", JSON.stringify(error, null, 2));
-
-            return res.status(error.status || 500).json({
+            console.error("❌ Update Error:", error);
+            return res.status(500).json({
                 status: "error",
-                message: error.message || "Failed to update payroll structure type",
-                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+                message: error.message || "Failed to update",
             });
         }
     }
