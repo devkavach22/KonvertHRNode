@@ -638,6 +638,11 @@ router.get(
   authenticate,
   PayrollController.getSalaryRuleCategories.bind(PayrollController)
 );
+router.put(
+  "/salary-rule-category/:category_id",
+  authenticate,
+  PayrollController.updateSalaryRuleCategory.bind(PayrollController)
+);
 
 router.post(
   "/create/salary-rule",

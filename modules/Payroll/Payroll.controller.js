@@ -610,6 +610,73 @@ class PayrollController {
             }
         }
     }
+    async updateSalaryRuleCategory(req, res) {
+        try {
+            const { category_id } = req.params;
+            const { name, parent_id, note } = req.body;
+
+            // 1. Get client_id (Assuming this throws { status: 400, message: '...' } if IDs are missing)
+            const { client_id } = await getClientFromRequest(req);
+
+            const targetId = parseInt(category_id);
+
+            if (!targetId) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "A valid category_id is required",
+                });
+            }
+
+            // 2. Verify existence and ownership
+            const existingCategory = await odooService.searchRead(
+                "hr.salary.rule.category",
+                [["id", "=", targetId], ["client_id", "=", client_id]],
+                ["id", "name"]
+            );
+
+            if (!existingCategory.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Salary Rule Category not found or unauthorized",
+                });
+            }
+
+            // 3. Build update values
+            const vals = {};
+            if (name !== undefined) vals.name = name;
+            if (note !== undefined) vals.note = note || false;
+            if (parent_id !== undefined) {
+                vals.parent_id = parent_id ? parseInt(parent_id) : false;
+            }
+
+            // 4. Update the record
+            await odooService.write("hr.salary.rule.category", [targetId], vals);
+
+            const [updatedRecord] = await odooService.searchRead(
+                "hr.salary.rule.category",
+                [["id", "=", targetId]],
+                ["id", "name", "code", "parent_id", "note"]
+            );
+
+            return res.status(200).json({
+                status: "success",
+                message: "Salary Rule Category updated successfully",
+                data: updatedRecord,
+            });
+
+        } catch (error) {
+            console.error("❌ Update Salary Rule Category Error:", error);
+
+            // FIX: Prioritize the error status from the thrown error (e.g., 400), default to 500
+            const statusCode = error.status || 500;
+
+            return res.status(statusCode).json({
+                status: "error",
+                message: error.message || "Failed to update salary rule category",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            });
+        }
+    }
     async createSalaryRule(req, res) {
         try {
             const {
