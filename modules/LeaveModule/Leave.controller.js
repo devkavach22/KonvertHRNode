@@ -1594,13 +1594,12 @@ class LeaveController {
         leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
 
       /* ───────── 6. CREATE LEAVE REQUEST ───────── */
-      // ✅ CORRECTED: Using request_date_from and request_date_to
       const vals = {
         employee_id: empIdInt,
         holiday_status_id: leaveTypeIdInt,
-        request_date_from: date_from, // ✅ Changed from date_from
-        request_date_to: date_to, // ✅ Changed from date_to
-        name: reason || false, // ✅ Changed from null to false (as per Odoo vals)
+        request_date_from: date_from,
+        request_date_to: date_to,
+        name: reason || false,
         create_uid: user_id
       };
 
@@ -1621,7 +1620,15 @@ class LeaveController {
       } catch (submitError) {
         const msg = (submitError?.message || "").toLowerCase();
 
-        // ✅ ODOO KNOWN BEHAVIOR (TYPO SAFE)
+        // Check for allocation error
+        if (msg.includes("allocation") || msg.includes("you do not have any allocation")) {
+          return res.status(400).json({
+            status: "error",
+            message: "You don't have any allocation for this time off type"
+          });
+        }
+
+        // ODOO KNOWN BEHAVIOR (TYPO SAFE)
         if (
           msg.includes("already") &&
           (msg.includes("generated") || msg.includes("genrated"))
@@ -1660,6 +1667,15 @@ class LeaveController {
 
       const rawError = error?.message || "";
 
+      // Check for allocation error
+      if (rawError.includes("allocation") || rawError.includes("You do not have any allocation")) {
+        return res.status(400).json({
+          status: "error",
+          message: "You don't have any allocation for this time off type"
+        });
+      }
+
+      // Check for overlap error
       if (rawError.includes("overlaps with this period")) {
         return res.status(409).json({
           status: "error",
@@ -1674,7 +1690,6 @@ class LeaveController {
       });
     }
   }
-
 
 
   async getLeaveRequest(req, res) {
