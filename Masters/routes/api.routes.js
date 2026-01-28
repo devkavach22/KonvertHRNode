@@ -933,7 +933,7 @@ router.post(
 );
 
 router.post(
-  "/printPayslipMobile",
+  "/print/Payslip",
   authenticate,
   PayrollController.downloadPayslipPDFMobile.bind(PayrollController)
 );
