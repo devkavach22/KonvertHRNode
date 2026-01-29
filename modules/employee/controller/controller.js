@@ -977,7 +977,7 @@ const createEmployee = async (req, res) => {
         }
       } catch (currencyError) {
         console.error("Error resolving currency:", currencyError);
-        return res.status(500).json({
+        return res.status(400).json({
           status: "error",
           message: "Failed to resolve currency",
         });
@@ -1125,6 +1125,11 @@ const createEmployee = async (req, res) => {
     let userId = null;
     let employeeId = null;
     let createdBankAccountId = null;
+    
+    // ROLLBACK TRACKING
+    let userCreated = false;
+    let bankAccountCreated = false;
+    let employeeCreated = false;
 
     try {
       console.log("Checking if user already exists with email:", trimmedEmail);
@@ -1178,6 +1183,7 @@ const createEmployee = async (req, res) => {
               "res.partner.bank",
               bankAccountData
             );
+            bankAccountCreated = true; // TRACK BANK ACCOUNT CREATION
 
             console.log("✓ Bank account created successfully!");
             console.log("✓ Bank account ID:", createdBankAccountId);
@@ -1300,7 +1306,6 @@ const createEmployee = async (req, res) => {
           voter_id,
           passport_id,
           esi_number,
-          category,
           is_uan_number_applicable,
           uan_number,
           cd_employee_num,
@@ -1348,17 +1353,39 @@ const createEmployee = async (req, res) => {
           device_platform: device_platform || null,
         };
 
+        // REMOVE category field to avoid the error
+        if (category) {
+          delete data.category;
+        }
+
         const create_uid_value =
           userIdFromParams || (client_id ? parseInt(client_id) : undefined);
         console.log("create_uid will be set to:", create_uid_value);
 
-        employeeId = await odooHelpers.createWithCustomUid(
-          "hr.employee",
-          data,
-          create_uid_value
-        );
-
-        console.log("Employee created with ID:", employeeId);
+        try {
+          employeeId = await odooHelpers.createWithCustomUid(
+            "hr.employee",
+            data,
+            create_uid_value
+          );
+          employeeCreated = true; // TRACK EMPLOYEE CREATION
+          console.log("Employee created with ID:", employeeId);
+        } catch (employeeCreateError) {
+          console.error("ERROR CREATING EMPLOYEE:", employeeCreateError);
+          
+          // ROLLBACK: Delete bank account if it was created
+          if (bankAccountCreated && createdBankAccountId) {
+            try {
+              console.log("ROLLING BACK: Deleting bank account ID:", createdBankAccountId);
+              await odooHelpers.unlink("res.partner.bank", [createdBankAccountId]);
+              console.log("✓ Bank account deleted successfully");
+            } catch (rollbackError) {
+              console.error("✗ ERROR rolling back bank account:", rollbackError);
+            }
+          }
+          
+          throw employeeCreateError; // Re-throw to be caught by outer catch
+        }
 
         await odooHelpers.write("res.users", userId, {
           employee_ids: [[4, employeeId]],
@@ -1378,8 +1405,14 @@ const createEmployee = async (req, res) => {
 
         console.log("Creating user with data:", userData);
 
-        userId = await odooHelpers.create("res.users", userData);
-        console.log("User created with ID:", userId);
+        try {
+          userId = await odooHelpers.create("res.users", userData);
+          userCreated = true; // TRACK USER CREATION
+          console.log("User created with ID:", userId);
+        } catch (userCreateError) {
+          console.error("ERROR CREATING USER:", userCreateError);
+          throw userCreateError;
+        }
 
         // Get the partner_id of the newly created user
         const newUser = await odooHelpers.searchRead(
@@ -1426,6 +1459,7 @@ const createEmployee = async (req, res) => {
               "res.partner.bank",
               bankAccountData
             );
+            bankAccountCreated = true; // TRACK BANK ACCOUNT CREATION
 
             console.log("✓ Bank account created successfully!");
             console.log("✓ Bank account ID:", createdBankAccountId);
@@ -1435,6 +1469,17 @@ const createEmployee = async (req, res) => {
             console.error("✗ ERROR creating bank account:", bankCreateError);
             console.error("Error details:", bankCreateError.message);
             console.error("==========================================");
+
+            // ROLLBACK: Delete user if it was created
+            if (userCreated && userId) {
+              try {
+                console.log("ROLLING BACK: Deleting user ID:", userId);
+                await odooHelpers.unlink("res.users", [userId]);
+                console.log("✓ User deleted successfully");
+              } catch (rollbackError) {
+                console.error("✗ ERROR rolling back user:", rollbackError);
+              }
+            }
 
             return res.status(500).json({
               status: "error",
@@ -1458,6 +1503,7 @@ const createEmployee = async (req, res) => {
 
         if (autoCreatedEmployee.length > 0) {
           employeeId = autoCreatedEmployee[0].id;
+          employeeCreated = true; // TRACK EMPLOYEE CREATION
           console.log("Found auto-created employee with ID:", employeeId);
 
           const updateData = {
@@ -1508,7 +1554,6 @@ const createEmployee = async (req, res) => {
             voter_id,
             passport_id,
             esi_number,
-            category,
             is_uan_number_applicable,
             uan_number,
             cd_employee_num,
@@ -1555,11 +1600,65 @@ const createEmployee = async (req, res) => {
             device_platform: device_platform || null,
           };
 
-          await odooHelpers.write("hr.employee", employeeId, updateData);
-          console.log("Updated employee with all data");
+          // REMOVE category field to avoid the error
+          if (category) {
+            delete updateData.category;
+          }
+
+          try {
+            await odooHelpers.write("hr.employee", employeeId, updateData);
+            console.log("Updated employee with all data");
+          } catch (employeeUpdateError) {
+            console.error("ERROR UPDATING EMPLOYEE:", employeeUpdateError);
+            
+            // ROLLBACK: Delete everything created
+            if (bankAccountCreated && createdBankAccountId) {
+              try {
+                console.log("ROLLING BACK: Deleting bank account ID:", createdBankAccountId);
+                await odooHelpers.unlink("res.partner.bank", [createdBankAccountId]);
+                console.log("✓ Bank account deleted successfully");
+              } catch (rollbackError) {
+                console.error("✗ ERROR rolling back bank account:", rollbackError);
+              }
+            }
+            
+            if (userCreated && userId) {
+              try {
+                console.log("ROLLING BACK: Deleting user ID:", userId);
+                await odooHelpers.unlink("res.users", [userId]);
+                console.log("✓ User deleted successfully");
+              } catch (rollbackError) {
+                console.error("✗ ERROR rolling back user:", rollbackError);
+              }
+            }
+            
+            throw employeeUpdateError; // Re-throw to be caught by outer catch
+          }
         } else {
           console.error("Auto-created employee not found!");
-          return res.status(500).json({
+          
+          // ROLLBACK: Delete everything created
+          if (bankAccountCreated && createdBankAccountId) {
+            try {
+              console.log("ROLLING BACK: Deleting bank account ID:", createdBankAccountId);
+              await odooHelpers.unlink("res.partner.bank", [createdBankAccountId]);
+              console.log("✓ Bank account deleted successfully");
+            } catch (rollbackError) {
+              console.error("✗ ERROR rolling back bank account:", rollbackError);
+            }
+          }
+          
+          if (userCreated && userId) {
+            try {
+              console.log("ROLLING BACK: Deleting user ID:", userId);
+              await odooHelpers.unlink("res.users", [userId]);
+              console.log("✓ User deleted successfully");
+            } catch (rollbackError) {
+              console.error("✗ ERROR rolling back user:", rollbackError);
+            }
+          }
+          
+          return res.status(400).json({
             status: "error",
             message: "Employee auto-creation failed",
           });
@@ -1636,7 +1735,7 @@ const createEmployee = async (req, res) => {
     } catch (userError) {
       console.error("Error in user/employee creation:", userError);
 
-      return res.status(500).json({
+      return res.status(400).json({
         status: "error",
         message: userError.message || "Failed to create employee and user",
         error_details: userError,
@@ -1650,6 +1749,864 @@ const createEmployee = async (req, res) => {
     });
   }
 };
+// const createEmployee = async (req, res) => {
+//   try {
+//     console.log("createEmployee API Called .........");
+//     const {
+//       name,
+//       father_name,
+//       gender,
+//       birthday,
+//       blood_group,
+//       private_email,
+//       present_address,
+//       permanent_address,
+//       emergency_contact_name,
+//       emergency_contact_relation,
+//       emergency_contact_mobile,
+//       emergency_contact_address,
+//       mobile_phone,
+//       pin_code,
+//       attendance_policy_id,
+//       employee_category,
+//       shift_roster_id,
+//       resource_calendar_id,
+//       district_id,
+//       state_id,
+//       bussiness_type_id,
+//       business_location_id,
+//       job_id,
+//       department_id,
+//       work_location_id,
+//       country_id,
+//       is_geo_tracking,
+//       aadhaar_number,
+//       pan_number,
+//       voter_id,
+//       passport_id,
+//       esi_number,
+//       category,
+//       is_uan_number_applicable,
+//       uan_number,
+//       cd_employee_num,
+//       name_of_post_graduation,
+//       name_of_any_other_education,
+//       total_experiance,
+//       religion,
+//       date_of_marriage,
+//       probation_period,
+//       confirmation_date,
+//       hold_remarks,
+//       is_lapse_allocation,
+//       group_company_joining_date,
+//       week_off,
+//       grade_band,
+//       status,
+//       employee_password,
+//       hold_status,
+//       bank_account_id,
+//       attendance_capture_mode,
+//       reporting_manager_id,
+//       head_of_department_id,
+//       pin,
+//       type_of_sepration,
+//       resignation_date,
+//       notice_period_days,
+//       joining_date,
+//       employment_type,
+//       work_phone,
+//       marital,
+//       name_of_site,
+//       spouse_name,
+//       driving_license,
+//       upload_passbook,
+//       image_1920,
+//       approvals,
+//       longitude,
+//       device_id,
+//       device_unique_id,
+//       latitude,
+//       device_name,
+//       system_version,
+//       ip_address,
+//       device_platform,
+//       account_number,
+//       bank_id,
+//       bank_swift_code,
+//       bank_iafc_code,
+//       currency_id,
+//     } = req.body;
+
+//     const cleanedDrivingLicense = cleanBase64(driving_license);
+//     const cleanedPassbook = cleanBase64(upload_passbook);
+//     const cleanedImage = cleanBase64(image_1920);
+
+//     const requiredFields = {
+//       name,
+//       father_name,
+//       gender,
+//       birthday,
+//       blood_group,
+//       private_email,
+//       present_address,
+//       permanent_address,
+//       emergency_contact_name,
+//       emergency_contact_relation,
+//       emergency_contact_mobile,
+//       is_uan_number_applicable,
+//       work_phone,
+//     };
+
+//     for (const [field, val] of Object.entries(requiredFields)) {
+//       if (val === undefined || val === null || val.toString().trim() === "") {
+//         return res.status(400).json({
+//           status: "error",
+//           message: `${field.replace(/_/g, " ")} is required`,
+//         });
+//       }
+//     }
+
+//     if (birthday) {
+//       const birthDate = new Date(birthday);
+//       const today = new Date();
+//       let age = today.getFullYear() - birthDate.getFullYear();
+//       const monthDiff = today.getMonth() - birthDate.getMonth();
+
+//       if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+//         age--;
+//       }
+
+//       if (age < 18) {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "Employee must be at least 18 years old",
+//         });
+//       }
+//     }
+
+//     if (is_uan_number_applicable) {
+//       if (!uan_number)
+//         return res
+//           .status(400)
+//           .json({ status: "error", message: "UAN Number is required" });
+//       if (!esi_number)
+//         return res
+//           .status(400)
+//           .json({ status: "error", message: "ESI Number is required" });
+//     }
+
+//     if (marital && marital.toLowerCase() === "married") {
+//       if (!spouse_name || spouse_name.toString().trim() === "") {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "Spouse name is required for married employees",
+//         });
+//       }
+//     }
+
+//     // --- CURRENCY CODE TO ID CONVERSION ---
+//     let resolvedCurrencyId = null;
+//     if (currency_id) {
+//       const currencyCode = currency_id.toString().toUpperCase();
+      
+//       if (currencyCode !== "INR" && currencyCode !== "USD") {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "Currency must be either INR or USD",
+//         });
+//       }
+
+//       try {
+//         const currencyRecords = await odooHelpers.searchRead(
+//           "res.currency",
+//           [["name", "=", currencyCode]],
+//           ["id", "name"]
+//         );
+
+//         if (currencyRecords.length > 0) {
+//           resolvedCurrencyId = currencyRecords[0].id;
+//           console.log(`Currency ${currencyCode} resolved to ID: ${resolvedCurrencyId}`);
+//         } else {
+//           return res.status(400).json({
+//             status: "error",
+//             message: `Currency ${currencyCode} not found in system`,
+//           });
+//         }
+//       } catch (currencyError) {
+//         console.error("Error resolving currency:", currencyError);
+//         return res.status(500).json({
+//           status: "error",
+//           message: "Failed to resolve currency",
+//         });
+//       }
+//     }
+
+//     // --- BANK ACCOUNT NUMBER VALIDATION ---
+//     if (account_number) {
+//       const trimmedAccountNumber = account_number.toString().trim();
+
+//       // Check if only numeric
+//       if (!/^\d+$/.test(trimmedAccountNumber)) {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "Account number should contain only numeric values",
+//         });
+//       }
+
+//       // Check length (minimum 9, maximum 18)
+//       if (trimmedAccountNumber.length < 9 || trimmedAccountNumber.length > 18) {
+//         return res.status(400).json({
+//           status: "error",
+//           message: "Account number must be between 9 and 18 digits",
+//         });
+//       }
+
+//       // Check for duplicate account number
+//       const existingAccount = await odooHelpers.searchRead(
+//         "res.partner.bank",
+//         [["acc_number", "=", trimmedAccountNumber]],
+//         ["id", "acc_number"]
+//       );
+
+//       if (existingAccount.length > 0) {
+//         console.log("DUPLICATE ACCOUNT NUMBER FOUND");
+//         console.log("Account number:", trimmedAccountNumber);
+//         console.log("Existing bank account:", existingAccount[0]);
+
+//         return res.status(409).json({
+//           status: "error",
+//           message: `Account number already exists: ${trimmedAccountNumber}`,
+//         });
+//       }
+//     }
+
+//     const trimmedName = name.trim();
+//     const trimmedEmail = private_email.trim();
+
+//     const existing = await odooHelpers.searchRead(
+//       "hr.employee",
+//       [["private_email", "=", trimmedEmail]],
+//       ["id", "name", "private_email"]
+//     );
+
+//     if (existing.length > 0) {
+//       console.log("DUPLICATE EMAIL FOUND");
+//       console.log("Attempting to create with email:", trimmedEmail);
+//       console.log("Existing employee:", existing[0]);
+
+//       return res.status(409).json({
+//         status: "error",
+//         message: `Employee already exists with this email: ${trimmedEmail}`,
+//       });
+//     }
+
+//     // NEW: Unique identification number validation
+//     const uniqueChecks = [];
+
+//     if (aadhaar_number && aadhaar_number.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "aadhaar_number",
+//         value: aadhaar_number.trim(),
+//         label: "Aadhaar Card"
+//       });
+//     }
+
+//     if (pan_number && pan_number.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "pan_number",
+//         value: pan_number.trim(),
+//         label: "PAN Number"
+//       });
+//     }
+
+//     if (voter_id && voter_id.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "voter_id",
+//         value: voter_id.trim(),
+//         label: "Voter ID"
+//       });
+//     }
+
+//     if (passport_id && passport_id.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "passport_id",
+//         value: passport_id.trim(),
+//         label: "Passport Number"
+//       });
+//     }
+
+//     if (esi_number && esi_number.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "esi_number",
+//         value: esi_number.trim(),
+//         label: "ESI Number"
+//       });
+//     }
+
+//     if (uan_number && uan_number.trim() !== "") {
+//       uniqueChecks.push({
+//         field: "uan_number",
+//         value: uan_number.trim(),
+//         label: "UAN Number"
+//       });
+//     }
+
+//     // Check for duplicates
+//     for (const check of uniqueChecks) {
+//       const duplicate = await odooHelpers.searchRead(
+//         "hr.employee",
+//         [[check.field, "=", check.value]],
+//         ["id", "name"]
+//       );
+
+//       if (duplicate.length > 0) {
+//         console.log(`DUPLICATE ${check.label.toUpperCase()} FOUND`);
+//         console.log(`${check.label}:`, check.value);
+//         console.log("Existing employee:", duplicate[0]);
+
+//         return res.status(409).json({
+//           status: "error",
+//           message: `${check.label} already exists for another employee`,
+//         });
+//       }
+//     }
+
+//     const { client_id } = await getClientFromRequest(req);
+//     const userIdFromParams = req.query.user_id
+//       ? parseInt(req.query.user_id)
+//       : null;
+
+//     console.log("user_id from params:", userIdFromParams);
+//     console.log("client_id:", client_id);
+
+//     let userId = null;
+//     let employeeId = null;
+//     let createdBankAccountId = null;
+
+//     try {
+//       console.log("Checking if user already exists with email:", trimmedEmail);
+//       const existingUser = await odooHelpers.searchRead(
+//         "res.users",
+//         [["login", "=", trimmedEmail]],
+//         ["id", "employee_ids", "partner_id"]
+//       );
+
+//       if (existingUser.length > 0) {
+//         console.log("User already exists with this email:", existingUser[0]);
+//         userId = existingUser[0].id;
+//         const partnerId = existingUser[0].partner_id;
+//         const partnerIdValue = Array.isArray(partnerId) ? partnerId[0] : partnerId;
+
+//         await odooHelpers.write("res.users", userId, {
+//           is_client_employee_user: true,
+//         });
+
+//         // --- CREATE BANK ACCOUNT IF account_number IS PROVIDED ---
+//         if (account_number) {
+//           try {
+//             console.log("==========================================");
+//             console.log("CREATING BANK ACCOUNT FOR EXISTING USER");
+//             console.log("Account number:", account_number);
+//             console.log("Partner ID (Holder):", partnerIdValue);
+//             console.log("==========================================");
+
+//             const bankAccountData = {
+//               acc_number: account_number.toString().trim(),
+//               partner_id: partnerIdValue,
+//               company_id: 12,
+//               client_id: client_id ? parseInt(client_id) : undefined,
+//             };
+
+//             // Add optional fields if provided
+//             if (bank_id) {
+//               bankAccountData.bank_id = parseInt(bank_id);
+//             }
+//             if (bank_swift_code) {
+//               bankAccountData.bank_swift_code = bank_swift_code;
+//             }
+//             if (bank_iafc_code) {
+//               bankAccountData.bank_iafc_code = bank_iafc_code;
+//             }
+//             if (resolvedCurrencyId) {
+//               bankAccountData.currency_id = resolvedCurrencyId;
+//             }
+
+//             createdBankAccountId = await odooHelpers.create(
+//               "res.partner.bank",
+//               bankAccountData
+//             );
+
+//             console.log("✓ Bank account created successfully!");
+//             console.log("✓ Bank account ID:", createdBankAccountId);
+//             console.log("==========================================");
+//           } catch (bankCreateError) {
+//             console.error("==========================================");
+//             console.error("✗ ERROR creating bank account:", bankCreateError);
+//             console.error("Error details:", bankCreateError.message);
+//             console.error("==========================================");
+
+//             return res.status(500).json({
+//               status: "error",
+//               message: "Failed to create bank account",
+//               error_details: bankCreateError.message,
+//             });
+//           }
+//         }
+
+//         // Update bank account partner_id if bank_account_id is provided
+//         if (bank_account_id && partnerId) {
+//           try {
+//             console.log("BANK ACCOUNT UPDATE PROCESS STARTED");
+//             console.log("Bank account ID received:", bank_account_id);
+//             console.log("User's partner_id:", partnerId);
+
+//             const bankAccounts = await odooHelpers.searchRead(
+//               "res.partner.bank",
+//               [["id", "=", parseInt(bank_account_id)]],
+//               ["id", "partner_id", "acc_number"]
+//             );
+
+//             console.log("Bank accounts found:", bankAccounts);
+//             console.log("Number of bank accounts found:", bankAccounts.length);
+
+//             if (bankAccounts.length > 0) {
+//               const bankAccountId = bankAccounts[0].id;
+//               const oldPartnerId = bankAccounts[0].partner_id;
+//               const userPartnerId = Array.isArray(partnerId)
+//                 ? partnerId[0]
+//                 : partnerId;
+
+//               console.log("Bank account ID to update:", bankAccountId);
+//               console.log("Old partner_id:", oldPartnerId);
+//               console.log("New partner_id (user's partner):", userPartnerId);
+
+//               await odooHelpers.write("res.partner.bank", bankAccountId, {
+//                 partner_id: userPartnerId,
+//               });
+
+//               console.log("✓ Bank account partner_id SUCCESSFULLY updated!");
+//               console.log(
+//                 `✓ Bank account ${bankAccountId} partner_id updated from ${oldPartnerId} to ${userPartnerId}`
+//               );
+//             } else {
+//               console.log(
+//                 "✗ ERROR: Bank account with ID",
+//                 bank_account_id,
+//                 "NOT FOUND"
+//               );
+//             }
+//           } catch (bankError) {
+//             console.error(
+//               "✗ ERROR updating bank account partner_id:",
+//               bankError
+//             );
+//             console.error("Error details:", bankError.message);
+//           }
+//         } else {
+//           console.log("BANK ACCOUNT UPDATE SKIPPED");
+//           console.log("bank_account_id provided:", !!bank_account_id);
+//           console.log("partnerId available:", !!partnerId);
+//         }
+
+//         const data = {
+//           name: trimmedName,
+//           father_name,
+//           gender,
+//           birthday,
+//           blood_group,
+//           private_email: trimmedEmail,
+//           present_address,
+//           permanent_address,
+//           emergency_contact_name,
+//           emergency_contact_relation,
+//           emergency_contact_address,
+//           emergency_contact_mobile,
+//           mobile_phone,
+//           pin_code,
+//           address_id: client_id ? parseInt(client_id) : undefined,
+//           work_phone,
+//           marital,
+//           spouse_name,
+//           attendance_policy_id: attendance_policy_id
+//             ? parseInt(attendance_policy_id)
+//             : undefined,
+//           employee_category,
+//           shift_roster_id: shift_roster_id
+//             ? parseInt(shift_roster_id)
+//             : undefined,
+//           resource_calendar_id: resource_calendar_id
+//             ? parseInt(resource_calendar_id)
+//             : undefined,
+//           district_id: district_id ? parseInt(district_id) : undefined,
+//           state_id: state_id ? parseInt(state_id) : undefined,
+//           bussiness_type_id: bussiness_type_id
+//             ? parseInt(bussiness_type_id)
+//             : undefined,
+//           business_location_id: business_location_id
+//             ? parseInt(business_location_id)
+//             : undefined,
+//           job_id: job_id ? parseInt(job_id) : undefined,
+//           department_id: department_id ? parseInt(department_id) : undefined,
+//           work_location_id: work_location_id
+//             ? parseInt(work_location_id)
+//             : undefined,
+//           country_id: country_id ? parseInt(country_id) : undefined,
+//           is_geo_tracking: is_geo_tracking ?? false,
+//           aadhaar_number,
+//           pan_number,
+//           voter_id,
+//           passport_id,
+//           esi_number,
+//           category,
+//           is_uan_number_applicable,
+//           uan_number,
+//           cd_employee_num,
+//           name_of_post_graduation,
+//           name_of_any_other_education,
+//           total_experiance,
+//           religion,
+//           date_of_marriage,
+//           probation_period,
+//           confirmation_date,
+//           hold_remarks,
+//           is_lapse_allocation,
+//           group_company_joining_date,
+//           week_off,
+//           grade_band,
+//           status,
+//           employee_password,
+//           hold_status,
+//           bank_account_id: createdBankAccountId || bank_account_id,
+//           attendance_capture_mode,
+//           reporting_manager_id: reporting_manager_id
+//             ? parseInt(reporting_manager_id)
+//             : undefined,
+//           head_of_department_id: head_of_department_id
+//             ? parseInt(head_of_department_id)
+//             : undefined,
+//           pin,
+//           type_of_sepration,
+//           resignation_date,
+//           notice_period_days,
+//           joining_date,
+//           employment_type,
+//           driving_license: cleanedDrivingLicense,
+//           upload_passbook: cleanedPassbook,
+//           image_1920: cleanedImage,
+//           name_of_site: name_of_site ? parseInt(name_of_site) : undefined,
+//           user_id: userId,
+//           longitude: longitude || null,
+//           device_id: device_id || null,
+//           device_unique_id: device_unique_id || null,
+//           latitude: latitude || null,
+//           device_name: device_name || null,
+//           system_version: system_version || null,
+//           ip_address: ip_address || null,
+//           device_platform: device_platform || null,
+//         };
+
+//         const create_uid_value =
+//           userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+//         console.log("create_uid will be set to:", create_uid_value);
+
+//         employeeId = await odooHelpers.createWithCustomUid(
+//           "hr.employee",
+//           data,
+//           create_uid_value
+//         );
+
+//         console.log("Employee created with ID:", employeeId);
+
+//         await odooHelpers.write("res.users", userId, {
+//           employee_ids: [[4, employeeId]],
+//         });
+
+//         console.log("Linked existing user to new employee");
+//       } else {
+//         const userData = {
+//           name: trimmedName,
+//           login: trimmedEmail,
+//           email: trimmedEmail,
+//           phone: work_phone || "",
+//           mobile: work_phone || "",
+//           password: employee_password,
+//           is_client_employee_user: true,
+//         };
+
+//         console.log("Creating user with data:", userData);
+
+//         userId = await odooHelpers.create("res.users", userData);
+//         console.log("User created with ID:", userId);
+
+//         // Get the partner_id of the newly created user
+//         const newUser = await odooHelpers.searchRead(
+//           "res.users",
+//           [["id", "=", userId]],
+//           ["partner_id"]
+//         );
+
+//         const partnerId = newUser.length > 0 ? newUser[0].partner_id : null;
+//         const partnerIdValue = Array.isArray(partnerId) ? partnerId[0] : partnerId;
+//         console.log("User's partner ID:", partnerId);
+
+//         // --- CREATE BANK ACCOUNT IF account_number IS PROVIDED ---
+//         if (account_number && partnerId) {
+//           try {
+//             console.log("==========================================");
+//             console.log("CREATING BANK ACCOUNT FOR NEW USER");
+//             console.log("Account number:", account_number);
+//             console.log("Partner ID (Holder):", partnerIdValue);
+//             console.log("==========================================");
+
+//             const bankAccountData = {
+//               acc_number: account_number.toString().trim(),
+//               partner_id: partnerIdValue,
+//               company_id: 12,
+//               client_id: client_id ? parseInt(client_id) : undefined,
+//             };
+
+//             // Add optional fields if provided
+//             if (bank_id) {
+//               bankAccountData.bank_id = parseInt(bank_id);
+//             }
+//             if (bank_swift_code) {
+//               bankAccountData.bank_swift_code = bank_swift_code;
+//             }
+//             if (bank_iafc_code) {
+//               bankAccountData.bank_iafc_code = bank_iafc_code;
+//             }
+//             if (resolvedCurrencyId) {
+//               bankAccountData.currency_id = resolvedCurrencyId;
+//             }
+
+//             createdBankAccountId = await odooHelpers.create(
+//               "res.partner.bank",
+//               bankAccountData
+//             );
+
+//             console.log("✓ Bank account created successfully!");
+//             console.log("✓ Bank account ID:", createdBankAccountId);
+//             console.log("==========================================");
+//           } catch (bankCreateError) {
+//             console.error("==========================================");
+//             console.error("✗ ERROR creating bank account:", bankCreateError);
+//             console.error("Error details:", bankCreateError.message);
+//             console.error("==========================================");
+
+//             return res.status(500).json({
+//               status: "error",
+//               message: "Failed to create bank account",
+//               error_details: bankCreateError.message,
+//             });
+//           }
+//         } else {
+//           console.log("==========================================");
+//           console.log("BANK ACCOUNT CREATION SKIPPED");
+//           console.log("account_number provided:", !!account_number);
+//           console.log("partnerId available:", !!partnerId);
+//           console.log("==========================================");
+//         }
+
+//         const autoCreatedEmployee = await odooHelpers.searchRead(
+//           "hr.employee",
+//           [["user_id", "=", userId]],
+//           ["id"]
+//         );
+
+//         if (autoCreatedEmployee.length > 0) {
+//           employeeId = autoCreatedEmployee[0].id;
+//           console.log("Found auto-created employee with ID:", employeeId);
+
+//           const updateData = {
+//             father_name,
+//             gender,
+//             birthday,
+//             blood_group,
+//             private_email: trimmedEmail,
+//             present_address,
+//             permanent_address,
+//             emergency_contact_name,
+//             emergency_contact_relation,
+//             emergency_contact_address,
+//             emergency_contact_mobile,
+//             mobile_phone,
+//             pin_code,
+//             address_id: client_id ? parseInt(client_id) : undefined,
+//             work_phone,
+//             marital,
+//             spouse_name,
+//             attendance_policy_id: attendance_policy_id
+//               ? parseInt(attendance_policy_id)
+//               : undefined,
+//             employee_category,
+//             shift_roster_id: shift_roster_id
+//               ? parseInt(shift_roster_id)
+//               : undefined,
+//             resource_calendar_id: resource_calendar_id
+//               ? parseInt(resource_calendar_id)
+//               : undefined,
+//             district_id: district_id ? parseInt(district_id) : undefined,
+//             state_id: state_id ? parseInt(state_id) : undefined,
+//             bussiness_type_id: bussiness_type_id
+//               ? parseInt(bussiness_type_id)
+//               : undefined,
+//             business_location_id: business_location_id
+//               ? parseInt(business_location_id)
+//               : undefined,
+//             job_id: job_id ? parseInt(job_id) : undefined,
+//             department_id: department_id ? parseInt(department_id) : undefined,
+//             work_location_id: work_location_id
+//               ? parseInt(work_location_id)
+//               : undefined,
+//             country_id: country_id ? parseInt(country_id) : undefined,
+//             is_geo_tracking: is_geo_tracking ?? false,
+//             aadhaar_number,
+//             pan_number,
+//             voter_id,
+//             passport_id,
+//             esi_number,
+//             category,
+//             is_uan_number_applicable,
+//             uan_number,
+//             cd_employee_num,
+//             name_of_post_graduation,
+//             name_of_any_other_education,
+//             total_experiance,
+//             religion,
+//             date_of_marriage,
+//             probation_period,
+//             confirmation_date,
+//             hold_remarks,
+//             is_lapse_allocation,
+//             group_company_joining_date,
+//             week_off,
+//             grade_band,
+//             status,
+//             employee_password,
+//             hold_status,
+//             bank_account_id: createdBankAccountId || bank_account_id,
+//             attendance_capture_mode,
+//             reporting_manager_id: reporting_manager_id
+//               ? parseInt(reporting_manager_id)
+//               : undefined,
+//             head_of_department_id: head_of_department_id
+//               ? parseInt(head_of_department_id)
+//               : undefined,
+//             pin,
+//             type_of_sepration,
+//             resignation_date,
+//             notice_period_days,
+//             joining_date,
+//             employment_type,
+//             driving_license: cleanedDrivingLicense,
+//             upload_passbook: cleanedPassbook,
+//             image_1920: cleanedImage,
+//             name_of_site: name_of_site ? parseInt(name_of_site) : undefined,
+//             longitude: longitude || null,
+//             device_id: device_id || null,
+//             device_unique_id: device_unique_id || null,
+//             latitude: latitude || null,
+//             device_name: device_name || null,
+//             system_version: system_version || null,
+//             ip_address: ip_address || null,
+//             device_platform: device_platform || null,
+//           };
+
+//           await odooHelpers.write("hr.employee", employeeId, updateData);
+//           console.log("Updated employee with all data");
+//         } else {
+//           console.error("Auto-created employee not found!");
+//           return res.status(500).json({
+//             status: "error",
+//             message: "Employee auto-creation failed",
+//           });
+//         }
+//       }
+
+//       // UPDATED: Handle approvals array of objects
+//       if (approvals && Array.isArray(approvals) && approvals.length > 0) {
+//         try {
+//           console.log("Creating employee approval user details...");
+
+//           // Create approval records from the approvals array
+//           for (let i = 0; i < approvals.length; i++) {
+//             const approval = approvals[i];
+
+//             const approvalData = {
+//               group_id: parseInt(approval.group_id),
+//               user_id: parseInt(approval.approval_user_id),
+//               approval_sequance: parseInt(approval.approval_sequance),
+//               employee_id: employeeId,
+//             };
+
+//             if (approval.model) {
+//               approvalData.model = approval.model;
+//             }
+
+//             const approvalId = await odooHelpers.create(
+//               "employee.approval.user.details",
+//               approvalData
+//             );
+
+//             console.log(
+//               `Employee approval user details created with ID: ${approvalId} (Index: ${i})`
+//             );
+//           }
+//         } catch (approvalError) {
+//           console.error("Error creating approval details:", approvalError);
+//         }
+//       }
+
+//       try {
+//         console.log("==========================================");
+//         console.log("SENDING REGISTRATION CODE EMAIL");
+//         console.log("Employee ID:", employeeId);
+//         console.log("==========================================");
+
+//         await odooHelpers.callMethod(
+//           "hr.employee",
+//           "send_registration_code_email",
+//           [employeeId]
+//         );
+
+//         console.log("✓ Registration code email sent successfully!");
+//         console.log("==========================================");
+//       } catch (emailError) {
+//         console.error("==========================================");
+//         console.error("✗ ERROR sending registration code email:", emailError);
+//         console.error("Error details:", emailError.message);
+//         console.error("==========================================");
+//       }
+
+//       const create_uid_value =
+//         userIdFromParams || (client_id ? parseInt(client_id) : undefined);
+
+//       return res.status(201).json({
+//         status: "success",
+//         message: "Employee and user created successfully",
+//         id: employeeId,
+//         user_id: userId,
+//         bank_account_id: createdBankAccountId || bank_account_id || null,
+//         created_by: create_uid_value,
+//         created_date: new Date().toISOString(),
+//       });
+//     } catch (userError) {
+//       console.error("Error in user/employee creation:", userError);
+
+//       return res.status(500).json({
+//         status: "error",
+//         message: userError.message || "Failed to create employee and user",
+//         error_details: userError,
+//       });
+//     }
+//   } catch (error) {
+//     console.error("Error creating employee:", error);
+//     return res.status(error.status || 500).json({
+//       status: "error",
+//       message: error.message || "Failed to create employee",
+//     });
+//   }
+// };
 const getEmployees = async (req, res) => {
   try {
     const { client_id, currentUser } = await getClientFromRequest(req);
