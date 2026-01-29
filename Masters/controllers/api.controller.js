@@ -2209,9 +2209,10 @@ class ApiController {
       const { email } = req.body;
 
       if (!email) {
-        return res
-          .status(200)
-          .json({ status: "error", message: "Email is required" });
+        return res.status(400).json({
+          status: "error",
+          message: "Email is required"
+        });
       }
 
       const user = await odooService.searchRead(
@@ -2221,15 +2222,53 @@ class ApiController {
       );
 
       if (!user || user.length === 0) {
-        return res
-          .status(200)
-          .json({ status: "error", message: "Email not found" });
+        return res.status(404).json({
+          status: "error",
+          message: "Email not found"
+        });
       }
 
+      const userId = user[0].id;
       const userName = user[0].name || "User";
 
+      // Generate random temporary password
       const randomTempPass = Math.random().toString(36).slice(-10) + "A1!";
 
+      // --- DISABLE PASSWORD IN res.users (Set to random unusable value) ---
+      try {
+        const disabledPassword = `DISABLED_${Date.now()}_${Math.random().toString(36)}`;
+        await odooService.write("res.users", [userId], {
+          password: disabledPassword
+        });
+        console.log(`✓ Password disabled in res.users for user ${userId}`);
+      } catch (odooError) {
+        console.error("✗ Failed to disable password in Odoo:", odooError);
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to disable password"
+        });
+      }
+
+      // --- DISABLE PASSWORD IN hr.employee ---
+      try {
+        const employee = await odooService.searchRead(
+          "hr.employee",
+          [["user_id", "=", userId]],
+          ["id"]
+        );
+
+        if (employee && employee.length > 0) {
+          const employeeId = employee[0].id;
+          await odooService.write("hr.employee", [employeeId], {
+            employee_password: ""  // Clear employee password
+          });
+          console.log(`✓ Password cleared in hr.employee for employee ${employeeId}`);
+        }
+      } catch (empError) {
+        console.error("✗ Failed to clear employee password:", empError);
+      }
+
+      // Store temp password in Redis with 5-minute expiry
       await redisClient.set(`tempPass:${email}`, randomTempPass, { EX: 300 });
 
       const emailHTML = `<!DOCTYPE html>
@@ -2249,10 +2288,13 @@ class ApiController {
               <h1 style="margin: 0 0 30px 0; font-size: 32px; font-weight: 600; color: #1a1a1a;">Reset Your Password</h1>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">Hi ${userName},</p>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
-                We have received your request to change your password.
+                We have received your request to reset your password.
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #ff6b6b;">
+                <strong>Important:</strong> Your old password has been disabled and will no longer work.
               </p>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
-                Your temporary password is:
+                Your temporary password for verification is:
               </p>
               <div style="background-color: #f8f8f8; border-left: 4px solid #5f5cc4; padding: 20px; margin: 25px 0;">
                 <p style="margin: 0; font-size: 24px; font-weight: bold; color: #5f5cc4; letter-spacing: 2px; font-family: 'Courier New', monospace;">
@@ -2260,7 +2302,10 @@ class ApiController {
                 </p>
               </div>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
-                This password will expire in <strong>5 minutes</strong>.
+                This temporary password will expire in <strong>5 minutes</strong>.
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #333333;">
+                Please use this code to verify your identity and set a new password.
               </p>
               <p style="margin: 30px 0 0 0; font-size: 16px; line-height: 1.6; color: #333333;">Thank you.</p>
               <p style="margin: 40px 0 0 0; font-size: 16px; line-height: 1.6; color: #333333;">
@@ -2284,87 +2329,27 @@ class ApiController {
       });
     } catch (error) {
       console.error("Send temp password error:", error);
-      return res
-        .status(500)
-        .json({ status: "error", message: "Something went wrong" });
+      return res.status(500).json({
+        status: "error",
+        message: "Something went wrong"
+      });
     }
   }
-  // async resetPassword(req, res) {
-  //   try {
-  //     const { email, temp_password, new_password, confirm_password } = req.body;
 
-  //     if (!email || !temp_password || !new_password || !confirm_password) {
-  //       return res
-  //         .status(200)
-  //         .json({ status: "error", message: "All fields are required" });
-  //     }
 
-  //     if (new_password !== confirm_password) {
-  //       return res
-  //         .status(200)
-  //         .json({ status: "error", message: "Passwords do not match" });
-  //     }
-
-  //     const user = await odooService.searchRead(
-  //       "res.users",
-  //       [["login", "=", email]],
-  //       ["id"]
-  //     );
-
-  //     if (!user || user.length === 0) {
-  //       return res
-  //         .status(200)
-  //         .json({ status: "error", message: "Email not found" });
-  //     }
-
-  //     const userId = user[0].id;
-
-  //     const savedTempPass = await redisClient.get(`tempPass:${email}`);
-
-  //     if (!savedTempPass) {
-  //       return res
-
-  //         .status(200)
-  //         .json({ status: "error", message: "Temporary password expired" });
-  //     }
-
-  //     if (savedTempPass !== temp_password) {
-  //       return res.status(200).json({
-  //         status: "error",
-  //         message: "Temporary password is incorrect",
-  //       });
-  //     }
-
-  //     await odooService.write("res.users", [userId], {
-  //       password: new_password,
-  //     });
-
-  //     await redisClient.del(`tempPass:${email}`);
-
-  //     return res.status(200).json({
-  //       status: "success",
-  //       message: "Password updated successfully",
-  //     });
-  //   } catch (error) {
-  //     console.error("Reset password error:", error);
-  //     return res
-  //       .status(500)
-  //       .json({ status: "error", message: "Something went wrong" });
-  //   }
-  // }
   async resetPassword(req, res) {
     try {
       const { email, temp_password, new_password, confirm_password } = req.body;
 
       if (!email || !temp_password || !new_password || !confirm_password) {
         return res
-          .status(200)
+          .status(400)
           .json({ status: "error", message: "All fields are required" });
       }
 
       if (new_password !== confirm_password) {
         return res
-          .status(200)
+          .status(400)
           .json({ status: "error", message: "Passwords do not match" });
       }
 
@@ -2376,7 +2361,7 @@ class ApiController {
 
       if (!user || user.length === 0) {
         return res
-          .status(200)
+          .status(400)
           .json({ status: "error", message: "Email not found" });
       }
 
@@ -2385,14 +2370,14 @@ class ApiController {
       const savedTempPass = await redisClient.get(`tempPass:${email}`);
 
       if (!savedTempPass) {
-        return res.status(200).json({
+        return res.status(400).json({
           status: "error",
           message: "Temporary password expired",
         });
       }
 
       if (savedTempPass !== temp_password) {
-        return res.status(200).json({
+        return res.status(400).json({
           status: "error",
           message: "Temporary password is incorrect",
         });
