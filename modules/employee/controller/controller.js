@@ -951,7 +951,7 @@ const createEmployee = async (req, res) => {
     let resolvedCurrencyId = null;
     if (currency_id) {
       const currencyCode = currency_id.toString().toUpperCase();
-      
+
       if (currencyCode !== "INR" && currencyCode !== "USD") {
         return res.status(400).json({
           status: "error",
@@ -1125,7 +1125,7 @@ const createEmployee = async (req, res) => {
     let userId = null;
     let employeeId = null;
     let createdBankAccountId = null;
-    
+
     // ROLLBACK TRACKING
     let userCreated = false;
     let bankAccountCreated = false;
@@ -1372,7 +1372,7 @@ const createEmployee = async (req, res) => {
           console.log("Employee created with ID:", employeeId);
         } catch (employeeCreateError) {
           console.error("ERROR CREATING EMPLOYEE:", employeeCreateError);
-          
+
           // ROLLBACK: Delete bank account if it was created
           if (bankAccountCreated && createdBankAccountId) {
             try {
@@ -1383,7 +1383,7 @@ const createEmployee = async (req, res) => {
               console.error("✗ ERROR rolling back bank account:", rollbackError);
             }
           }
-          
+
           throw employeeCreateError; // Re-throw to be caught by outer catch
         }
 
@@ -1610,7 +1610,7 @@ const createEmployee = async (req, res) => {
             console.log("Updated employee with all data");
           } catch (employeeUpdateError) {
             console.error("ERROR UPDATING EMPLOYEE:", employeeUpdateError);
-            
+
             // ROLLBACK: Delete everything created
             if (bankAccountCreated && createdBankAccountId) {
               try {
@@ -1621,7 +1621,7 @@ const createEmployee = async (req, res) => {
                 console.error("✗ ERROR rolling back bank account:", rollbackError);
               }
             }
-            
+
             if (userCreated && userId) {
               try {
                 console.log("ROLLING BACK: Deleting user ID:", userId);
@@ -1631,12 +1631,12 @@ const createEmployee = async (req, res) => {
                 console.error("✗ ERROR rolling back user:", rollbackError);
               }
             }
-            
+
             throw employeeUpdateError; // Re-throw to be caught by outer catch
           }
         } else {
           console.error("Auto-created employee not found!");
-          
+
           // ROLLBACK: Delete everything created
           if (bankAccountCreated && createdBankAccountId) {
             try {
@@ -1647,7 +1647,7 @@ const createEmployee = async (req, res) => {
               console.error("✗ ERROR rolling back bank account:", rollbackError);
             }
           }
-          
+
           if (userCreated && userId) {
             try {
               console.log("ROLLING BACK: Deleting user ID:", userId);
@@ -1657,7 +1657,7 @@ const createEmployee = async (req, res) => {
               console.error("✗ ERROR rolling back user:", rollbackError);
             }
           }
-          
+
           return res.status(400).json({
             status: "error",
             message: "Employee auto-creation failed",
@@ -1908,7 +1908,7 @@ const createEmployee = async (req, res) => {
 //     let resolvedCurrencyId = null;
 //     if (currency_id) {
 //       const currencyCode = currency_id.toString().toUpperCase();
-      
+
 //       if (currencyCode !== "INR" && currencyCode !== "USD") {
 //         return res.status(400).json({
 //           status: "error",
@@ -2661,7 +2661,7 @@ const getEmployees = async (req, res) => {
             "employment_type", "user_id", "driving_license", "upload_passbook",
             "image_1920", "name_of_site", "longitude", "device_id",
             "device_unique_id", "latitude", "device_name", "system_version",
-            "ip_address", "device_platform", "random_code_for_reg", // ADDED THIS FIELD
+            "ip_address", "device_platform", "random_code_for_reg",
           ]
         );
 
@@ -2692,6 +2692,41 @@ const getEmployees = async (req, res) => {
             }));
           } else {
             employee.approvals = [];
+          }
+
+          // --- FETCH BANK ACCOUNT DETAILS ---
+          if (employee.bank_account_id && Array.isArray(employee.bank_account_id) && employee.bank_account_id.length > 0) {
+            try {
+              const bankAccountId = employee.bank_account_id[0];
+              const bankAccountData = await odooHelpers.searchRead(
+                "res.partner.bank",
+                [["id", "=", bankAccountId]],
+                ["acc_number", "bank_id", "bank_swift_code", "bank_iafc_code", "currency_id", "partner_id", "company_id", "client_id"]
+              );
+
+              if (bankAccountData.length > 0) {
+                const bankAccount = bankAccountData[0];
+                employee.bank_account_details = {
+                  account_number: bankAccount.acc_number || "",
+                  bank_id: Array.isArray(bankAccount.bank_id) ? bankAccount.bank_id[0] : bankAccount.bank_id || "",
+                  bank_name: Array.isArray(bankAccount.bank_id) ? bankAccount.bank_id[1] : "",
+                  bank_swift_code: bankAccount.bank_swift_code || "",
+                  bank_iafc_code: bankAccount.bank_iafc_code || "",
+                  currency_id: Array.isArray(bankAccount.currency_id) ? bankAccount.currency_id[0] : bankAccount.currency_id || "",
+                  currency_name: Array.isArray(bankAccount.currency_id) ? bankAccount.currency_id[1] : "",
+                  partner_id: Array.isArray(bankAccount.partner_id) ? bankAccount.partner_id[0] : bankAccount.partner_id || "",
+                  company_id: Array.isArray(bankAccount.company_id) ? bankAccount.company_id[0] : bankAccount.company_id || "",
+                  client_id: Array.isArray(bankAccount.client_id) ? bankAccount.client_id[0] : bankAccount.client_id || "",
+                };
+              } else {
+                employee.bank_account_details = {};
+              }
+            } catch (bankError) {
+              console.error(`Error fetching bank account for employee ${employee.id}:`, bankError);
+              employee.bank_account_details = {};
+            }
+          } else {
+            employee.bank_account_details = {};
           }
 
           employees.push(employee);
