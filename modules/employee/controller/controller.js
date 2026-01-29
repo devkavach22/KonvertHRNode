@@ -874,6 +874,10 @@ const createEmployee = async (req, res) => {
       ip_address,
       device_platform,
       account_number,
+      bank_id,
+      bank_swift_code,
+      bank_iafc_code,
+      currency_id,
     } = req.body;
 
     const cleanedDrivingLicense = cleanBase64(driving_license);
@@ -939,6 +943,82 @@ const createEmployee = async (req, res) => {
         return res.status(400).json({
           status: "error",
           message: "Spouse name is required for married employees",
+        });
+      }
+    }
+
+    // --- CURRENCY CODE TO ID CONVERSION ---
+    let resolvedCurrencyId = null;
+    if (currency_id) {
+      const currencyCode = currency_id.toString().toUpperCase();
+      
+      if (currencyCode !== "INR" && currencyCode !== "USD") {
+        return res.status(400).json({
+          status: "error",
+          message: "Currency must be either INR or USD",
+        });
+      }
+
+      try {
+        const currencyRecords = await odooHelpers.searchRead(
+          "res.currency",
+          [["name", "=", currencyCode]],
+          ["id", "name"]
+        );
+
+        if (currencyRecords.length > 0) {
+          resolvedCurrencyId = currencyRecords[0].id;
+          console.log(`Currency ${currencyCode} resolved to ID: ${resolvedCurrencyId}`);
+        } else {
+          return res.status(400).json({
+            status: "error",
+            message: `Currency ${currencyCode} not found in system`,
+          });
+        }
+      } catch (currencyError) {
+        console.error("Error resolving currency:", currencyError);
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to resolve currency",
+        });
+      }
+    }
+
+    // --- BANK ACCOUNT NUMBER VALIDATION ---
+    if (account_number) {
+      const trimmedAccountNumber = account_number.toString().trim();
+
+      // Check if only numeric
+      if (!/^\d+$/.test(trimmedAccountNumber)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Account number should contain only numeric values",
+        });
+      }
+
+      // Check length (minimum 9, maximum 18)
+      if (trimmedAccountNumber.length < 9 || trimmedAccountNumber.length > 18) {
+        return res.status(400).json({
+          status: "error",
+          message: "Account number must be between 9 and 18 digits",
+        });
+      }
+
+      // Check for duplicate account number
+      const existingAccount = await odooHelpers.searchRead(
+        "res.partner.bank",
+        [["acc_number", "=", trimmedAccountNumber]],
+        ["id", "acc_number"]
+      );
+
+      if (existingAccount.length > 0) {
+        console.log("DUPLICATE ACCOUNT NUMBER FOUND");
+        console.log("Account number:", trimmedAccountNumber);
+        console.log("Existing bank account:", existingAccount[0]);
+
+        return res.status(409).json({
+          status: "error",
+          message: `Account number already exists: ${trimmedAccountNumber}`,
         });
       }
     }
@@ -1044,6 +1124,7 @@ const createEmployee = async (req, res) => {
 
     let userId = null;
     let employeeId = null;
+    let createdBankAccountId = null;
 
     try {
       console.log("Checking if user already exists with email:", trimmedEmail);
@@ -1057,10 +1138,63 @@ const createEmployee = async (req, res) => {
         console.log("User already exists with this email:", existingUser[0]);
         userId = existingUser[0].id;
         const partnerId = existingUser[0].partner_id;
+        const partnerIdValue = Array.isArray(partnerId) ? partnerId[0] : partnerId;
 
         await odooHelpers.write("res.users", userId, {
           is_client_employee_user: true,
         });
+
+        // --- CREATE BANK ACCOUNT IF account_number IS PROVIDED ---
+        if (account_number) {
+          try {
+            console.log("==========================================");
+            console.log("CREATING BANK ACCOUNT FOR EXISTING USER");
+            console.log("Account number:", account_number);
+            console.log("Partner ID (Holder):", partnerIdValue);
+            console.log("==========================================");
+
+            const bankAccountData = {
+              acc_number: account_number.toString().trim(),
+              partner_id: partnerIdValue,
+              company_id: 12,
+              client_id: client_id ? parseInt(client_id) : undefined,
+            };
+
+            // Add optional fields if provided
+            if (bank_id) {
+              bankAccountData.bank_id = parseInt(bank_id);
+            }
+            if (bank_swift_code) {
+              bankAccountData.bank_swift_code = bank_swift_code;
+            }
+            if (bank_iafc_code) {
+              bankAccountData.bank_iafc_code = bank_iafc_code;
+            }
+            if (resolvedCurrencyId) {
+              bankAccountData.currency_id = resolvedCurrencyId;
+            }
+
+            createdBankAccountId = await odooHelpers.create(
+              "res.partner.bank",
+              bankAccountData
+            );
+
+            console.log("✓ Bank account created successfully!");
+            console.log("✓ Bank account ID:", createdBankAccountId);
+            console.log("==========================================");
+          } catch (bankCreateError) {
+            console.error("==========================================");
+            console.error("✗ ERROR creating bank account:", bankCreateError);
+            console.error("Error details:", bankCreateError.message);
+            console.error("==========================================");
+
+            return res.status(500).json({
+              status: "error",
+              message: "Failed to create bank account",
+              error_details: bankCreateError.message,
+            });
+          }
+        }
 
         // Update bank account partner_id if bank_account_id is provided
         if (bank_account_id && partnerId) {
@@ -1185,7 +1319,7 @@ const createEmployee = async (req, res) => {
           status,
           employee_password,
           hold_status,
-          bank_account_id,
+          bank_account_id: createdBankAccountId || bank_account_id,
           attendance_capture_mode,
           reporting_manager_id: reporting_manager_id
             ? parseInt(reporting_manager_id)
@@ -1255,66 +1389,62 @@ const createEmployee = async (req, res) => {
         );
 
         const partnerId = newUser.length > 0 ? newUser[0].partner_id : null;
+        const partnerIdValue = Array.isArray(partnerId) ? partnerId[0] : partnerId;
         console.log("User's partner ID:", partnerId);
 
-        // Update bank account partner_id if account_number is provided
+        // --- CREATE BANK ACCOUNT IF account_number IS PROVIDED ---
         if (account_number && partnerId) {
           try {
             console.log("==========================================");
-            console.log("BANK ACCOUNT UPDATE PROCESS STARTED");
-            console.log("Account number received:", account_number);
-            console.log("User's partner_id:", partnerId);
+            console.log("CREATING BANK ACCOUNT FOR NEW USER");
+            console.log("Account number:", account_number);
+            console.log("Partner ID (Holder):", partnerIdValue);
             console.log("==========================================");
 
-            const bankAccounts = await odooHelpers.searchRead(
-              "res.partner.bank",
-              [["acc_number", "=", account_number]],
-              ["id", "partner_id", "acc_number"]
-            );
+            const bankAccountData = {
+              acc_number: account_number.toString().trim(),
+              partner_id: partnerIdValue,
+              company_id: 12,
+              client_id: client_id ? parseInt(client_id) : undefined,
+            };
 
-            console.log("Bank accounts found:", bankAccounts);
-            console.log("Number of bank accounts found:", bankAccounts.length);
-
-            if (bankAccounts.length > 0) {
-              const bankAccountId = bankAccounts[0].id;
-              const oldPartnerId = bankAccounts[0].partner_id;
-              const userPartnerId = Array.isArray(partnerId)
-                ? partnerId[0]
-                : partnerId;
-
-              console.log("Bank account ID to update:", bankAccountId);
-              console.log("Old partner_id:", oldPartnerId);
-              console.log("New partner_id (user's partner):", userPartnerId);
-
-              await odooHelpers.write("res.partner.bank", bankAccountId, {
-                partner_id: userPartnerId,
-              });
-
-              console.log("✓ Bank account partner_id SUCCESSFULLY updated!");
-              console.log(
-                `✓ Bank account ${bankAccountId} partner_id updated from ${oldPartnerId} to ${userPartnerId}`
-              );
-              console.log("==========================================");
-            } else {
-              console.log(
-                "✗ ERROR: Bank account with account number",
-                account_number,
-                "NOT FOUND"
-              );
-              console.log("==========================================");
+            // Add optional fields if provided
+            if (bank_id) {
+              bankAccountData.bank_id = parseInt(bank_id);
             }
-          } catch (bankError) {
-            console.error("==========================================");
-            console.error(
-              "✗ ERROR updating bank account partner_id:",
-              bankError
+            if (bank_swift_code) {
+              bankAccountData.bank_swift_code = bank_swift_code;
+            }
+            if (bank_iafc_code) {
+              bankAccountData.bank_iafc_code = bank_iafc_code;
+            }
+            if (resolvedCurrencyId) {
+              bankAccountData.currency_id = resolvedCurrencyId;
+            }
+
+            createdBankAccountId = await odooHelpers.create(
+              "res.partner.bank",
+              bankAccountData
             );
-            console.error("Error details:", bankError.message);
+
+            console.log("✓ Bank account created successfully!");
+            console.log("✓ Bank account ID:", createdBankAccountId);
+            console.log("==========================================");
+          } catch (bankCreateError) {
             console.error("==========================================");
+            console.error("✗ ERROR creating bank account:", bankCreateError);
+            console.error("Error details:", bankCreateError.message);
+            console.error("==========================================");
+
+            return res.status(500).json({
+              status: "error",
+              message: "Failed to create bank account",
+              error_details: bankCreateError.message,
+            });
           }
         } else {
           console.log("==========================================");
-          console.log("BANK ACCOUNT UPDATE SKIPPED");
+          console.log("BANK ACCOUNT CREATION SKIPPED");
           console.log("account_number provided:", !!account_number);
           console.log("partnerId available:", !!partnerId);
           console.log("==========================================");
@@ -1397,7 +1527,7 @@ const createEmployee = async (req, res) => {
             status,
             employee_password,
             hold_status,
-            bank_account_id,
+            bank_account_id: createdBankAccountId || bank_account_id,
             attendance_capture_mode,
             reporting_manager_id: reporting_manager_id
               ? parseInt(reporting_manager_id)
@@ -1499,6 +1629,7 @@ const createEmployee = async (req, res) => {
         message: "Employee and user created successfully",
         id: employeeId,
         user_id: userId,
+        bank_account_id: createdBankAccountId || bank_account_id || null,
         created_by: create_uid_value,
         created_date: new Date().toISOString(),
       });
@@ -2275,8 +2406,8 @@ const updateEmployee = async (req, res) => {
     const existingEmployee = await odooHelpers.searchRead(
       "hr.employee",
       [["id", "=", parseInt(id)]],
-      ["id", "name", "private_email", "user_id", "aadhaar_number", "pan_number", 
-       "voter_id", "passport_id", "esi_number", "uan_number"]
+      ["id", "name", "private_email", "user_id", "aadhaar_number", "pan_number",
+        "voter_id", "passport_id", "esi_number", "uan_number"]
     );
 
     if (existingEmployee.length === 0) {
@@ -2323,8 +2454,8 @@ const updateEmployee = async (req, res) => {
     const uniqueChecks = [];
 
     // Only check if aadhaar_number is provided AND different from current value
-    if (aadhaar_number !== undefined && aadhaar_number.trim() !== "" && 
-        aadhaar_number.trim() !== currentEmployee.aadhaar_number) {
+    if (aadhaar_number !== undefined && aadhaar_number.trim() !== "" &&
+      aadhaar_number.trim() !== currentEmployee.aadhaar_number) {
       uniqueChecks.push({
         field: "aadhaar_number",
         value: aadhaar_number.trim(),
@@ -2332,8 +2463,8 @@ const updateEmployee = async (req, res) => {
       });
     }
 
-    if (pan_number !== undefined && pan_number.trim() !== "" && 
-        pan_number.trim() !== currentEmployee.pan_number) {
+    if (pan_number !== undefined && pan_number.trim() !== "" &&
+      pan_number.trim() !== currentEmployee.pan_number) {
       uniqueChecks.push({
         field: "pan_number",
         value: pan_number.trim(),
@@ -2341,8 +2472,8 @@ const updateEmployee = async (req, res) => {
       });
     }
 
-    if (voter_id !== undefined && voter_id.trim() !== "" && 
-        voter_id.trim() !== currentEmployee.voter_id) {
+    if (voter_id !== undefined && voter_id.trim() !== "" &&
+      voter_id.trim() !== currentEmployee.voter_id) {
       uniqueChecks.push({
         field: "voter_id",
         value: voter_id.trim(),
@@ -2350,8 +2481,8 @@ const updateEmployee = async (req, res) => {
       });
     }
 
-    if (passport_id !== undefined && passport_id.trim() !== "" && 
-        passport_id.trim() !== currentEmployee.passport_id) {
+    if (passport_id !== undefined && passport_id.trim() !== "" &&
+      passport_id.trim() !== currentEmployee.passport_id) {
       uniqueChecks.push({
         field: "passport_id",
         value: passport_id.trim(),
@@ -2359,8 +2490,8 @@ const updateEmployee = async (req, res) => {
       });
     }
 
-    if (esi_number !== undefined && esi_number.trim() !== "" && 
-        esi_number.trim() !== currentEmployee.esi_number) {
+    if (esi_number !== undefined && esi_number.trim() !== "" &&
+      esi_number.trim() !== currentEmployee.esi_number) {
       uniqueChecks.push({
         field: "esi_number",
         value: esi_number.trim(),
@@ -2368,8 +2499,8 @@ const updateEmployee = async (req, res) => {
       });
     }
 
-    if (uan_number !== undefined && uan_number.trim() !== "" && 
-        uan_number.trim() !== currentEmployee.uan_number) {
+    if (uan_number !== undefined && uan_number.trim() !== "" &&
+      uan_number.trim() !== currentEmployee.uan_number) {
       uniqueChecks.push({
         field: "uan_number",
         value: uan_number.trim(),
@@ -2625,8 +2756,8 @@ const updateEmployee = async (req, res) => {
         if (mobile_phone) updateUserData.mobile = mobile_phone;
 
         // Extract user_id if it's an array [id] or use directly if it's a number
-        const userId = Array.isArray(currentEmployee.user_id) 
-          ? currentEmployee.user_id[0] 
+        const userId = Array.isArray(currentEmployee.user_id)
+          ? currentEmployee.user_id[0]
           : currentEmployee.user_id;
 
         if (userId) {

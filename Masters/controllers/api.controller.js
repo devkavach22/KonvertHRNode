@@ -429,9 +429,17 @@ class ApiController {
       const { gst_number } = req.body;
 
       if (!gst_number) {
-        return res.status(200).json({
+        return res.status(400).json({
           status: "error",
           message: "gst_number is required",
+        });
+      }
+
+      // --- GST NUMBER FORMAT VALIDATION ---
+      if (!/^[A-Z0-9]+$/.test(gst_number)) {
+        return res.status(400).json({
+          status: "error",
+          message: "GST number should contain only uppercase letters and numeric characters",
         });
       }
 
@@ -443,14 +451,13 @@ class ApiController {
       );
 
       if (!result || result.length === 0) {
-        return res.status(200).json({
+        return res.status(400).json({
           status: "error",
           message: "Not Valid Gst Number",
         });
       }
 
       const stateCode = gst_number.slice(0, 2);
-
       const stateRecords = await odooService.execute(
         "res.country.state",
         "search_read",
@@ -471,7 +478,7 @@ class ApiController {
       });
     } catch (error) {
       console.error("Check GST error:", error);
-      return res.status(200).json({
+      return res.status(400).json({
         status: "error",
         message: "Failed to validate GST number",
       });
@@ -500,7 +507,22 @@ class ApiController {
   //         last_name,
   //       } = req.body;
 
-  //       // --- 1. UNIQUE EMAIL CHECK ---
+  //       // --- 1. PASSWORD VALIDATION ---
+  //       if (!password || password.length < 8) {
+  //         return res.status(400).json({
+  //           status: "error",
+  //           message: "Password must be at least 8 characters long",
+  //         });
+  //       }
+
+  //       if (!/[A-Z]/.test(password)) {
+  //         return res.status(400).json({
+  //           status: "error",
+  //           message: "Password must contain at least one uppercase letter",
+  //         });
+  //       }
+
+  //       // --- 2. UNIQUE EMAIL CHECK ---
   //       const existingUsers = await odooService.searchRead(
   //         "res.users",
   //         [["login", "=", email]],
@@ -514,7 +536,7 @@ class ApiController {
   //         });
   //       }
 
-  //       // --- 2. UNIQUE GST (VAT) CHECK ---
+  //       // --- 3. UNIQUE GST (VAT) CHECK ---
   //       const existingGST = await odooService.searchRead(
   //         "res.partner",
   //         [["vat", "=", gst_number]],
@@ -528,7 +550,7 @@ class ApiController {
   //         });
   //       }
 
-  //       // --- 3. GST VALIDATION (Autocomplete Check) ---
+  //       // --- 4. GST VALIDATION (Autocomplete Check) ---
   //       const gstValidation = await odooService.execute(
   //         "res.partner",
   //         "autocomplete_by_vat",
@@ -543,13 +565,13 @@ class ApiController {
   //         });
   //       }
 
-  //       // --- 4. IMAGE CLEANING ---
+  //       // --- 5. IMAGE CLEANING ---
   //       let cleanImage = null;
   //       if (client_image) {
   //         cleanImage = client_image.replace(/^data:image\/\w+;base64,/, "");
   //       }
 
-  //       // --- 5. FETCH SUPERADMIN COMPANY ---
+  //       // --- 6. FETCH SUPERADMIN COMPANY ---
   //       const superadminUser = await odooService.searchRead(
   //         "res.users",
   //         [["id", "=", 2]],
@@ -562,7 +584,7 @@ class ApiController {
 
   //       const superadminCompanyId = superadminUser[0].company_id[0];
 
-  //       // --- 6. PREPARE USER VALUES ---
+  //       // --- 7. PREPARE USER VALUES ---
   //       const userVals = {
   //         name: company_name,
   //         company_name: company_name,
@@ -587,7 +609,7 @@ class ApiController {
   //         image_1920: cleanImage,
   //       };
 
-  //       // --- 7. CREATE USER AND UPDATE PARTNER ---
+  //       // --- 8. CREATE USER AND UPDATE PARTNER ---
   //       let userId;
   //       try {
   //         userId = await odooService.create("res.users", userVals);
@@ -651,7 +673,7 @@ class ApiController {
   //       };
   //       await odooService.create("res.partner", childContactVals);
 
-  //       // --- 8. SEND WELCOME MAIL ---
+  //       // --- 9. SEND WELCOME MAIL ---
   //       await mailService.sendMail(
   //         email,
   //         "Welcome to Kavach Global",
@@ -772,6 +794,14 @@ class ApiController {
         return res.status(400).json({
           status: "error",
           message: "Password must contain at least one uppercase letter",
+        });
+      }
+
+      // --- 1.5. GST NUMBER FORMAT VALIDATION ---
+      if (gst_number && !/^[A-Z0-9]+$/.test(gst_number)) {
+        return res.status(400).json({
+          status: "error",
+          message: "GST number should contain only uppercase letters and numeric characters",
         });
       }
 
@@ -923,6 +953,7 @@ class ApiController {
         phone: mobile,
         phone_res: mobile,
         mobile: mobile,
+        function: designation,
       };
       await odooService.create("res.partner", childContactVals);
 
@@ -6407,7 +6438,7 @@ class ApiController {
   }
   async getGroupList(req, res) {
     try {
-      const allowedGroupNames = ["Client  Admin", "Client Employee Own", "Reporting Manager (Client)"];
+      const allowedGroupNames = ["Client Admin", "Client Employee Own", "Reporting Manager (Client)"];
       const groups = await odooService.searchRead(
         "res.groups",
         [["name", "in", allowedGroupNames]],
@@ -7401,98 +7432,98 @@ class ApiController {
     }
   }
 
-  async updateUserContact(req, res) {
-    try {
-      console.log("✏️ Update User Contact API called");
+  // async updateUserContact(req, res) {
+  //   try {
+  //     console.log("✏️ Update User Contact API called");
 
-      // ✅ Flexible Extraction: Sabhi jagah se data nikalne ka try karega
-      const contact_id = req.params.contact_id || req.body.contact_id || req.query.contact_id;
-      const user_id = req.body.user_id || req.query.user_id || req.params.user_id;
+  //     // ✅ Flexible Extraction: Sabhi jagah se data nikalne ka try karega
+  //     const contact_id = req.params.contact_id || req.body.contact_id || req.query.contact_id;
+  //     const user_id = req.body.user_id || req.query.user_id || req.params.user_id;
 
-      const { name, email, mobile, phone, job_position } = req.body;
+  //     const { name, email, mobile, phone, job_position } = req.body;
 
-      // Validate IDs
-      if (!user_id || !contact_id) {
-        return res.status(400).json({
-          status: "error",
-          message: "User ID and Contact ID are required (Body, Params or Query)",
-        });
-      }
+  //     // Validate IDs
+  //     if (!user_id || !contact_id) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "User ID and Contact ID are required (Body, Params or Query)",
+  //       });
+  //     }
 
-      const userData = await odooService.searchRead(
-        "res.users",
-        [["id", "=", parseInt(user_id)]],
-        ["id", "login", "name", "partner_id"]
-      );
+  //     const userData = await odooService.searchRead(
+  //       "res.users",
+  //       [["id", "=", parseInt(user_id)]],
+  //       ["id", "login", "name", "partner_id"]
+  //     );
 
-      if (!userData || userData.length === 0) {
-        return res.status(404).json({
-          status: "error",
-          message: "User not found",
-        });
-      }
+  //     if (!userData || userData.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "User not found",
+  //       });
+  //     }
 
-      const companyPartnerId = userData[0].partner_id[0];
+  //     const companyPartnerId = userData[0].partner_id[0];
 
-      // Verify if contact belongs to the company
-      const contactData = await odooService.searchRead(
-        "res.partner",
-        [
-          ["id", "=", parseInt(contact_id)],
-          ["parent_id", "=", companyPartnerId],
-        ],
-        ["id"]
-      );
+  //     // Verify if contact belongs to the company
+  //     const contactData = await odooService.searchRead(
+  //       "res.partner",
+  //       [
+  //         ["id", "=", parseInt(contact_id)],
+  //         ["parent_id", "=", companyPartnerId],
+  //       ],
+  //       ["id"]
+  //     );
 
-      if (!contactData || contactData.length === 0) {
-        return res.status(403).json({
-          status: "error",
-          message: "Contact does not belong to this user/company",
-        });
-      }
+  //     if (!contactData || contactData.length === 0) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "Contact does not belong to this user/company",
+  //       });
+  //     }
 
-      const updateVals = {};
+  //     const updateVals = {};
 
-      if (name) updateVals.name = name;
-      if (email) updateVals.email = email;
-      if (mobile) {
-        updateVals.mobile = mobile;
-        updateVals.phone = mobile;
-      }
-      if (phone) updateVals.phone = phone;
+  //     if (name) updateVals.name = name;
+  //     if (email) updateVals.email = email;
+  //     if (mobile) {
+  //       updateVals.mobile = mobile;
+  //       updateVals.phone = mobile;
+  //     }
+  //     if (phone) updateVals.phone = phone;
 
-      // ✅ Job Position mapping to Odoo 'function' field
-      if (job_position !== undefined) {
-        updateVals.function = job_position;
-      }
+  //     // ✅ Job Position mapping to Odoo 'function' field
+  //     if (job_position !== undefined) {
+  //       updateVals.function = job_position;
+  //     }
 
-      if (Object.keys(updateVals).length === 0) {
-        return res.status(400).json({
-          status: "error",
-          message: "No fields provided for update",
-        });
-      }
+  //     if (Object.keys(updateVals).length === 0) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "No fields provided for update",
+  //       });
+  //     }
 
-      await odooService.write(
-        "res.partner",
-        [parseInt(contact_id)],
-        updateVals
-      );
+  //     await odooService.write(
+  //       "res.partner",
+  //       [parseInt(contact_id)],
+  //       updateVals
+  //     );
 
-      return res.status(200).json({
-        status: "OK",
-        message: "Contact updated successfully",
-        contact_id: parseInt(contact_id),
-        updated_fields: updateVals
-      });
-    } catch (error) {
-      console.error("Update contact error:", error);
-      return res.status(500).json({
-        status: "error",
-        message: "Failed to update contact",
-      });
-    }
-  }
+  //     return res.status(200).json({
+  //       status: "OK",
+  //       message: "Contact updated successfully",
+  //       contact_id: parseInt(contact_id),
+  //       updated_fields: updateVals
+  //     });
+  //   } catch (error) {
+  //     console.error("Update contact error:", error);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: "Failed to update contact",
+  //     });
+  //   }
+  // }
 
   async getAllApprovalRequests(req, res) {
     try {
