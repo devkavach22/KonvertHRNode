@@ -5525,7 +5525,10 @@ class ApiController {
       const categories = await odooService.searchRead(
         "reg.categories",
         [["client_id", "=", client_id]],
-        ["id", "type", "client_id"]
+        ["id", "type", "client_id"],
+        0,          // offset → number
+        0,          // limit → 0 means no limit
+        "id desc"   // order → correct position according to your service
       );
 
       return res.status(200).json({
@@ -5540,6 +5543,7 @@ class ApiController {
       });
     }
   }
+
   async updateRegCategory(req, res) {
     try {
       console.log("API Called updateRegCategory");
