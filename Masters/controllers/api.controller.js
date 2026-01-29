@@ -1481,9 +1481,9 @@ class ApiController {
     try {
       const { client_id } = await getClientFromRequest(req);
 
-      const jobs = await odooService.searchRead(
+      const jobs = await fetchOdooRecords(
         "hr.job",
-        [["client_id", "=", client_id]],
+        client_id,
         [
           "id",
           "name",
@@ -1805,9 +1805,10 @@ class ApiController {
   async getWorkLocations(req, res) {
     try {
       const { client_id } = await getClientFromRequest(req);
-      const locations = await odooService.searchRead(
+
+      const locations = await fetchOdooRecords(
         "hr.work.location",
-        [["client_id", "=", client_id]],
+        client_id,
         ["id", "name", "location_type"]
       );
 
@@ -1818,7 +1819,6 @@ class ApiController {
       });
     } catch (error) {
       console.error("Get Work Locations Error:", error);
-
       return res.status(error.status || 500).json({
         status: "error",
         message: error.message || "Failed to fetch work locations",
@@ -2064,41 +2064,41 @@ class ApiController {
       });
     }
   }
-async getDepartments(req, res) {
-  console.log("getDepartments API Called .........");
-  try {
-    const { client_id } = await getClientFromRequest(req);
-    
-    const departments = await fetchOdooRecords(
-      "hr.department",
-      client_id,
-      [
-        "id",
-        "name",
-        "parent_id",
-        "color",
-        "unit_code",
-        "range_start",
-        "range_end",
-        "is_no_range",
-        "is_lapse_allocation",
-        "wage",
-      ]
-    );
-    
-    return res.status(200).json({
-      status: "success",
-      message: "Your plan is active",
-      data: departments,
-    });
-  } catch (error) {
-    console.error("Get Departments Error:", error);
-    return res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "Failed to fetch departments",
-    });
+  async getDepartments(req, res) {
+    console.log("getDepartments API Called .........");
+    try {
+      const { client_id } = await getClientFromRequest(req);
+
+      const departments = await fetchOdooRecords(
+        "hr.department",
+        client_id,
+        [
+          "id",
+          "name",
+          "parent_id",
+          "color",
+          "unit_code",
+          "range_start",
+          "range_end",
+          "is_no_range",
+          "is_lapse_allocation",
+          "wage",
+        ]
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: "Your plan is active",
+        data: departments,
+      });
+    } catch (error) {
+      console.error("Get Departments Error:", error);
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to fetch departments",
+      });
+    }
   }
-}
   async updateDepartment(req, res) {
     try {
       const id = parseInt(req.params.id);
