@@ -2893,6 +2893,390 @@ class ApiController {
     }
   }
 
+  // async planActivation(req, res) {
+  //   try {
+  //     const { email, secret_key } = req.body;
+  //     if (!email || !secret_key) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Email and secret_key are required",
+  //       });
+  //     }
+  //     const users = await odooService.searchRead(
+  //       "res.users",
+  //       [["login", "=", email]],
+  //       ["id", "partner_id"],
+  //       1
+  //     );
+  //     if (!users || users.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "User not found with this email",
+  //       });
+  //     }
+  //     const partnerId = users[0].partner_id?.[0];
+  //     if (!partnerId) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Partner not linked with user",
+  //       });
+  //     }
+  //     const planDetails = await odooService.searchRead(
+  //       "client.plan.details",
+  //       [
+  //         ["partner_id", "=", partnerId],
+  //         ["secret_key", "=", secret_key],
+  //       ],
+  //       ["id", "is_expier", "product_id", "start_date", "end_date"],
+  //       1
+  //     );
+  //     if (!planDetails || planDetails.length === 0) {
+  //       return res.status(401).json({
+  //         status: "error",
+  //         message: "Invalid secret key or plan not found",
+  //       });
+  //     }
+
+  //     const plan = planDetails[0];
+
+  //     if (plan.is_expier) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "Plan has expired",
+  //       });
+  //     }
+  //     return res.status(200).json({
+  //       status: "OK",
+  //       message: "Plan verified successfully",
+  //       data: {
+  //         partner_id: partnerId,
+  //         plan_id: plan.id,
+  //         product_id: plan.product_id,
+  //         start_date: plan.start_date,
+  //         end_date: plan.end_date,
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("Plan Activation Error:", error);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: "Failed to verify plan activation",
+  //     });
+  //   }
+  // }
+  // async planActivation(req, res) {
+  //   try {
+  //     const { email, secret_key } = req.body;
+  //     if (!email || !secret_key) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Email and secret_key are required",
+  //       });
+  //     }
+
+  //     const users = await odooService.searchRead(
+  //       "res.users",
+  //       [["login", "=", email]],
+  //       ["id", "partner_id"],
+  //       0,
+  //       1
+  //     );
+
+  //     if (!users || users.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "User not found with this email",
+  //       });
+  //     }
+
+  //     const partnerId = users[0].partner_id?.[0];
+  //     if (!partnerId) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Partner not linked with user",
+  //       });
+  //     }
+
+  //     const planDetails = await odooService.searchRead(
+  //       "client.plan.details",
+  //       [
+  //         ["partner_id", "=", partnerId],
+  //         ["secret_key", "=", secret_key],
+  //       ],
+  //       ["id", "is_expier", "product_id", "start_date", "end_date"],
+  //       0,
+  //       1
+  //     );
+
+  //     if (!planDetails || planDetails.length === 0) {
+  //       return res.status(401).json({
+  //         status: "error",
+  //         message: "Invalid secret key or plan not found",
+  //       });
+  //     }
+
+  //     const plan = planDetails[0];
+  //     if (plan.is_expier) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "Plan has expired",
+  //       });
+  //     }
+
+  //     // --- AUTO CREATE 4 DEPARTMENTS ---
+  //     const defaultDepartments = [
+  //       "Human Resources (HR)",
+  //       "Information Technology (IT)",
+  //       "Finance & Accounting",
+  //       "Customer Support / Service"
+  //     ];
+
+  //     const createdDepartments = [];
+  //     const departmentMap = {};
+
+  //     for (const deptName of defaultDepartments) {
+  //       try {
+  //         const existingDept = await odooService.searchRead(
+  //           "hr.department",
+  //           [
+  //             ["name", "=", deptName],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         let deptId;
+  //         if (existingDept.length === 0) {
+  //           deptId = await odooService.create("hr.department", {
+  //             name: deptName,
+  //             client_id: partnerId
+  //           });
+
+  //           createdDepartments.push({
+  //             id: deptId,
+  //             name: deptName
+  //           });
+
+  //           console.log(`✓ Department created: ${deptName} (ID: ${deptId})`);
+  //         } else {
+  //           deptId = existingDept[0].id;
+  //           console.log(`✓ Department already exists: ${deptName}`);
+  //           createdDepartments.push({
+  //             id: deptId,
+  //             name: deptName,
+  //             already_existed: true
+  //           });
+  //         }
+
+  //         // Store mapping for job creation
+  //         departmentMap[deptName] = deptId;
+  //       } catch (deptError) {
+  //         console.error(`✗ Error creating department ${deptName}:`, deptError);
+  //       }
+  //     }
+
+  //     // --- AUTO CREATE 4 BANKS WITH COMPLETE DETAILS ---
+  //     const defaultBanks = [
+  //       {
+  //         name: "State Bank of India",
+  //         bic: "SBININBB",
+  //         swift_code: "SBININBB",
+  //         phone: "1800-425-3800",
+  //         street: "Corporate Centre",
+  //         city: "Mumbai",
+  //         zip: "400021",
+  //         email: "contact@sbi.co.in"
+  //       },
+  //       {
+  //         name: "HDFC Bank",
+  //         bic: "HDFCINBB",
+  //         swift_code: "HDFCINBB",
+  //         phone: "1800-202-6161",
+  //         street: "HDFC Bank House",
+  //         city: "Mumbai",
+  //         zip: "400013",
+  //         email: "support@hdfcbank.com"
+  //       },
+  //       {
+  //         name: "ICICI Bank",
+  //         bic: "ICICINBB",
+  //         swift_code: "ICICINBB",
+  //         phone: "1860-120-7777",
+  //         street: "ICICI Bank Towers",
+  //         city: "Mumbai",
+  //         zip: "400051",
+  //         email: "customer.care@icicibank.com"
+  //       },
+  //       {
+  //         name: "Punjab National Bank",
+  //         bic: "PUNBINBB",
+  //         swift_code: "PUNBINBB",
+  //         phone: "1800-180-2222",
+  //         street: "7 Bhikaji Cama Place",
+  //         city: "New Delhi",
+  //         zip: "110066",
+  //         email: "pnbho@pnb.co.in"
+  //       }
+  //     ];
+
+  //     const createdBanks = [];
+
+  //     for (const bankData of defaultBanks) {
+  //       try {
+  //         const existingBank = await odooService.searchRead(
+  //           "res.bank",
+  //           [
+  //             ["name", "=", bankData.name],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         if (existingBank.length === 0) {
+  //           const data = {
+  //             name: bankData.name,
+  //             bic: bankData.bic || "",
+  //             swift_code: bankData.swift_code || "",
+  //             micr_code: "",
+  //             phone: bankData.phone || "",
+  //             street: bankData.street || "",
+  //             street2: "",
+  //             city: bankData.city || "",
+  //             state: null,
+  //             zip: bankData.zip || "",
+  //             country: null,
+  //             email: bankData.email || "",
+  //             client_id: partnerId
+  //           };
+
+  //           const bankId = await odooService.create("res.bank", data);
+
+  //           createdBanks.push({
+  //             id: bankId,
+  //             name: bankData.name
+  //           });
+
+  //           console.log(`✓ Bank created: ${bankData.name} (ID: ${bankId})`);
+  //         } else {
+  //           console.log(`✓ Bank already exists: ${bankData.name}`);
+  //           createdBanks.push({
+  //             id: existingBank[0].id,
+  //             name: bankData.name,
+  //             already_existed: true
+  //           });
+  //         }
+  //       } catch (bankError) {
+  //         console.error(`✗ Error creating bank ${bankData.name}:`, bankError);
+  //       }
+  //     }
+
+  //     // --- AUTO CREATE 4 JOB POSITIONS ---
+  //     const defaultJobPositions = [
+  //       {
+  //         name: "HR Manager",
+  //         department: "Human Resources (HR)",
+  //         no_of_recruitment: 1
+  //       },
+  //       {
+  //         name: "Software Developer",
+  //         department: "Information Technology (IT)",
+  //         no_of_recruitment: 5
+  //       },
+  //       {
+  //         name: "Accountant",
+  //         department: "Finance & Accounting",
+  //         no_of_recruitment: 2
+  //       },
+  //       {
+  //         name: "Customer Support Executive",
+  //         department: "Customer Support / Service",
+  //         no_of_recruitment: 3
+  //       }
+  //     ];
+
+  //     const createdJobPositions = [];
+
+  //     for (const jobData of defaultJobPositions) {
+  //       try {
+  //         const department_id = departmentMap[jobData.department];
+
+  //         if (!department_id) {
+  //           console.log(`✗ Department not found for job: ${jobData.name}`);
+  //           continue;
+  //         }
+
+  //         const existingJob = await odooService.searchRead(
+  //           "hr.job",
+  //           [
+  //             ["name", "=", jobData.name],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         if (existingJob.length === 0) {
+  //           const vals = {
+  //             name: jobData.name,
+  //             client_id: partnerId,
+  //             department_id: department_id,
+  //             no_of_recruitment: jobData.no_of_recruitment || 0,
+  //             skill_ids: [[6, 0, []]],
+  //             industry_id: false,
+  //             contract_type_id: false,
+  //           };
+
+  //           const jobId = await odooService.create("hr.job", vals);
+
+  //           createdJobPositions.push({
+  //             id: jobId,
+  //             name: jobData.name,
+  //             department: jobData.department
+  //           });
+
+  //           console.log(`✓ Job Position created: ${jobData.name} (ID: ${jobId})`);
+  //         } else {
+  //           console.log(`✓ Job Position already exists: ${jobData.name}`);
+  //           createdJobPositions.push({
+  //             id: existingJob[0].id,
+  //             name: jobData.name,
+  //             department: jobData.department,
+  //             already_existed: true
+  //           });
+  //         }
+  //       } catch (jobError) {
+  //         console.error(`✗ Error creating job position ${jobData.name}:`, jobError);
+  //       }
+  //     }
+
+  //     return res.status(200).json({
+  //       status: "OK",
+  //       message: "Plan verified successfully",
+  //       data: {
+  //         partner_id: partnerId,
+  //         plan_id: plan.id,
+  //         product_id: plan.product_id,
+  //         start_date: plan.start_date,
+  //         end_date: plan.end_date,
+  //         departments_created: createdDepartments,
+  //         banks_created: createdBanks,
+  //         job_positions_created: createdJobPositions
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("Plan Activation Error:", error);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: "Failed to verify plan activation",
+  //     });
+  //   }
+  // }
+
   async planActivation(req, res) {
     try {
       const { email, secret_key } = req.body;
@@ -2902,18 +3286,22 @@ class ApiController {
           message: "Email and secret_key are required",
         });
       }
+
       const users = await odooService.searchRead(
         "res.users",
         [["login", "=", email]],
         ["id", "partner_id"],
+        0,
         1
       );
+
       if (!users || users.length === 0) {
         return res.status(404).json({
           status: "error",
           message: "User not found with this email",
         });
       }
+
       const partnerId = users[0].partner_id?.[0];
       if (!partnerId) {
         return res.status(404).json({
@@ -2921,6 +3309,7 @@ class ApiController {
           message: "Partner not linked with user",
         });
       }
+
       const planDetails = await odooService.searchRead(
         "client.plan.details",
         [
@@ -2928,8 +3317,10 @@ class ApiController {
           ["secret_key", "=", secret_key],
         ],
         ["id", "is_expier", "product_id", "start_date", "end_date"],
+        0,
         1
       );
+
       if (!planDetails || planDetails.length === 0) {
         return res.status(401).json({
           status: "error",
@@ -2938,13 +3329,373 @@ class ApiController {
       }
 
       const plan = planDetails[0];
-
       if (plan.is_expier) {
         return res.status(403).json({
           status: "error",
           message: "Plan has expired",
         });
       }
+
+      // --- AUTO CREATE 4 INDUSTRIES ---
+      const defaultIndustries = [
+        { name: "Human Resources & Recruitment", full_name: "Human Resources and Recruitment Services" },
+        { name: "Information Technology", full_name: "Information Technology and Software Services" },
+        { name: "Finance & Accounting", full_name: "Finance and Accounting Services" },
+        { name: "Customer Service", full_name: "Customer Service and Support" }
+      ];
+
+      const createdIndustries = [];
+      const industryMap = {}; // To store industry name -> id mapping
+
+      for (const industryData of defaultIndustries) {
+        try {
+          const existingIndustry = await odooService.searchRead(
+            "res.partner.industry",
+            [
+              ["name", "=", industryData.name],
+              ["client_id", "=", partnerId],
+              ["active", "=", true]
+            ],
+            ["id"],
+            0,
+            1
+          );
+
+          let industryId;
+          if (existingIndustry.length === 0) {
+            industryId = await odooService.create("res.partner.industry", {
+              name: industryData.name,
+              full_name: industryData.full_name,
+              client_id: partnerId,
+              active: true
+            });
+
+            createdIndustries.push({
+              id: industryId,
+              name: industryData.name
+            });
+
+            console.log(`✓ Industry created: ${industryData.name} (ID: ${industryId})`);
+          } else {
+            industryId = existingIndustry[0].id;
+            console.log(`✓ Industry already exists: ${industryData.name}`);
+            createdIndustries.push({
+              id: industryId,
+              name: industryData.name,
+              already_existed: true
+            });
+          }
+
+          // Store mapping for job creation
+          industryMap[industryData.name] = industryId;
+        } catch (industryError) {
+          console.error(`✗ Error creating industry ${industryData.name}:`, industryError);
+        }
+      }
+
+      // --- AUTO CREATE 4 HR CONTRACT TYPES ---
+      const defaultContractTypes = [
+        { name: "Permanent", code: "PERM" },
+        { name: "Contract", code: "CONTRACT" },
+        { name: "Temporary", code: "TEMP" },
+        { name: "Internship", code: "INTERN" }
+      ];
+
+      const createdContractTypes = [];
+      const contractTypeMap = {}; // To store contract type name -> id mapping
+
+      for (const contractData of defaultContractTypes) {
+        try {
+          const existingContract = await odooService.searchRead(
+            "hr.contract.type",
+            [
+              ["name", "=", contractData.name],
+              ["client_id", "=", partnerId]
+            ],
+            ["id"],
+            0,
+            1
+          );
+
+          let contractTypeId;
+          if (existingContract.length === 0) {
+            contractTypeId = await odooService.create("hr.contract.type", {
+              name: contractData.name,
+              code: contractData.code,
+              client_id: partnerId,
+              country_id: null
+            });
+
+            createdContractTypes.push({
+              id: contractTypeId,
+              name: contractData.name,
+              code: contractData.code
+            });
+
+            console.log(`✓ Contract Type created: ${contractData.name} (ID: ${contractTypeId})`);
+          } else {
+            contractTypeId = existingContract[0].id;
+            console.log(`✓ Contract Type already exists: ${contractData.name}`);
+            createdContractTypes.push({
+              id: contractTypeId,
+              name: contractData.name,
+              already_existed: true
+            });
+          }
+
+          // Store mapping for job creation
+          contractTypeMap[contractData.name] = contractTypeId;
+        } catch (contractError) {
+          console.error(`✗ Error creating contract type ${contractData.name}:`, contractError);
+        }
+      }
+
+      // --- AUTO CREATE 4 DEPARTMENTS ---
+      const defaultDepartments = [
+        "Human Resources (HR)",
+        "Information Technology (IT)",
+        "Finance & Accounting",
+        "Customer Support / Service"
+      ];
+
+      const createdDepartments = [];
+      const departmentMap = {}; // To store department name -> id mapping
+
+      for (const deptName of defaultDepartments) {
+        try {
+          const existingDept = await odooService.searchRead(
+            "hr.department",
+            [
+              ["name", "=", deptName],
+              ["client_id", "=", partnerId]
+            ],
+            ["id"],
+            0,
+            1
+          );
+
+          let deptId;
+          if (existingDept.length === 0) {
+            deptId = await odooService.create("hr.department", {
+              name: deptName,
+              client_id: partnerId
+            });
+
+            createdDepartments.push({
+              id: deptId,
+              name: deptName
+            });
+
+            console.log(`✓ Department created: ${deptName} (ID: ${deptId})`);
+          } else {
+            deptId = existingDept[0].id;
+            console.log(`✓ Department already exists: ${deptName}`);
+            createdDepartments.push({
+              id: deptId,
+              name: deptName,
+              already_existed: true
+            });
+          }
+
+          // Store mapping for job creation
+          departmentMap[deptName] = deptId;
+        } catch (deptError) {
+          console.error(`✗ Error creating department ${deptName}:`, deptError);
+        }
+      }
+
+      // --- AUTO CREATE 4 BANKS WITH COMPLETE DETAILS ---
+      const defaultBanks = [
+        {
+          name: "State Bank of India",
+          bic: "SBININBB",
+          swift_code: "SBININBB",
+          micr_code: "400002002",
+          phone: "1800-425-3800",
+          street: "Corporate Centre",
+          city: "Mumbai",
+          zip: "400021",
+          email: "contact@sbi.co.in"
+        },
+        {
+          name: "HDFC Bank",
+          bic: "HDFCINBB",
+          swift_code: "HDFCINBB",
+          micr_code: "400240002",
+          phone: "1800-202-6161",
+          street: "HDFC Bank House",
+          city: "Mumbai",
+          zip: "400013",
+          email: "support@hdfcbank.com"
+        },
+        {
+          name: "ICICI Bank",
+          bic: "ICICINBB",
+          swift_code: "ICICINBB",
+          micr_code: "400229002",
+          phone: "1860-120-7777",
+          street: "ICICI Bank Towers",
+          city: "Mumbai",
+          zip: "400051",
+          email: "customer.care@icicibank.com"
+        },
+        {
+          name: "Punjab National Bank",
+          bic: "PUNBINBB",
+          swift_code: "PUNBINBB",
+          micr_code: "110024046",
+          phone: "1800-180-2222",
+          street: "7 Bhikaji Cama Place",
+          city: "New Delhi",
+          zip: "110066",
+          email: "pnbho@pnb.co.in"
+        }
+      ];
+
+      const createdBanks = [];
+
+      for (const bankData of defaultBanks) {
+        try {
+          const existingBank = await odooService.searchRead(
+            "res.bank",
+            [
+              ["name", "=", bankData.name],
+              ["client_id", "=", partnerId]
+            ],
+            ["id"],
+            0,
+            1
+          );
+
+          if (existingBank.length === 0) {
+            const data = {
+              name: bankData.name,
+              bic: bankData.bic || "",
+              swift_code: bankData.swift_code || "",
+              micr_code: bankData.micr_code || "",
+              phone: bankData.phone || "",
+              street: bankData.street || "",
+              street2: "",
+              city: bankData.city || "",
+              state: null,
+              zip: bankData.zip || "",
+              country: null,
+              email: bankData.email || "",
+              client_id: partnerId
+            };
+
+            const bankId = await odooService.create("res.bank", data);
+
+            createdBanks.push({
+              id: bankId,
+              name: bankData.name
+            });
+
+            console.log(`✓ Bank created: ${bankData.name} (ID: ${bankId})`);
+          } else {
+            console.log(`✓ Bank already exists: ${bankData.name}`);
+            createdBanks.push({
+              id: existingBank[0].id,
+              name: bankData.name,
+              already_existed: true
+            });
+          }
+        } catch (bankError) {
+          console.error(`✗ Error creating bank ${bankData.name}:`, bankError);
+        }
+      }
+
+      // --- AUTO CREATE 4 JOB POSITIONS ---
+      const defaultJobPositions = [
+        {
+          name: "HR Manager",
+          department: "Human Resources (HR)",
+          industry: "Human Resources & Recruitment",
+          contract_type: "Permanent",
+          no_of_recruitment: 1
+        },
+        {
+          name: "Software Developer",
+          department: "Information Technology (IT)",
+          industry: "Information Technology",
+          contract_type: "Permanent",
+          no_of_recruitment: 5
+        },
+        {
+          name: "Accountant",
+          department: "Finance & Accounting",
+          industry: "Finance & Accounting",
+          contract_type: "Permanent",
+          no_of_recruitment: 2
+        },
+        {
+          name: "Customer Support Executive",
+          department: "Customer Support / Service",
+          industry: "Customer Service",
+          contract_type: "Contract",
+          no_of_recruitment: 3
+        }
+      ];
+
+      const createdJobPositions = [];
+
+      for (const jobData of defaultJobPositions) {
+        try {
+          const department_id = departmentMap[jobData.department];
+          const industry_id = industryMap[jobData.industry];
+          const contract_type_id = contractTypeMap[jobData.contract_type];
+
+          if (!department_id) {
+            console.log(`✗ Department not found for job: ${jobData.name}`);
+            continue;
+          }
+
+          // Check if job position already exists with same name and client_id
+          const existingJob = await odooService.searchRead(
+            "hr.job",
+            [
+              ["name", "=", jobData.name],
+              ["client_id", "=", partnerId]
+            ],
+            ["id"],
+            0,
+            1
+          );
+
+          if (existingJob.length === 0) {
+            const vals = {
+              name: jobData.name,
+              client_id: partnerId,
+              department_id: department_id,
+              no_of_recruitment: jobData.no_of_recruitment || 0,
+              skill_ids: [[6, 0, []]],
+              industry_id: industry_id || false,
+              contract_type_id: contract_type_id || false,
+            };
+
+            const jobId = await odooService.create("hr.job", vals);
+
+            createdJobPositions.push({
+              id: jobId,
+              name: jobData.name,
+              department: jobData.department
+            });
+
+            console.log(`✓ Job Position created: ${jobData.name} (ID: ${jobId})`);
+          } else {
+            console.log(`✓ Job Position already exists: ${jobData.name}`);
+            createdJobPositions.push({
+              id: existingJob[0].id,
+              name: jobData.name,
+              department: jobData.department,
+              already_existed: true
+            });
+          }
+        } catch (jobError) {
+          console.error(`✗ Error creating job position ${jobData.name}:`, jobError);
+        }
+      }
+
       return res.status(200).json({
         status: "OK",
         message: "Plan verified successfully",
@@ -2964,6 +3715,7 @@ class ApiController {
       });
     }
   }
+
   async getTimezones(req, res) {
     try {
       const fields = await odooService.execute(
