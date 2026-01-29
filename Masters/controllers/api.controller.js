@@ -4,7 +4,7 @@ const redisClient = require("../services/redisClient");
 const moment = require("moment-timezone");
 const otpStore = new Map();
 
-const { getClientFromRequest } = require("../services/plan.helper");
+const { getClientFromRequest, fetchOdooRecords } = require("../services/plan.helper");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const ATTENDANCE_FIELDS = [
@@ -2064,41 +2064,41 @@ class ApiController {
       });
     }
   }
-  async getDepartments(req, res) {
-    console.log("getDepartments API Called .........");
-    try {
-      const { client_id } = await getClientFromRequest(req);
-      const departments = await odooService.searchRead(
-        "hr.department",
-        [["client_id", "=", client_id]],
-        [
-          "id",
-          "name",
-          "parent_id",
-          "color",
-          "unit_code",
-          "range_start",
-          "range_end",
-          "is_no_range",
-          "is_lapse_allocation",
-          "wage",
-        ]
-      );
-
-      return res.status(200).json({
-        status: "success",
-        message: "Your plan is active",
-        data: departments,
-      });
-    } catch (error) {
-      console.error("Get Departments Error:", error);
-
-      return res.status(error.status || 500).json({
-        status: "error",
-        message: error.message || "Failed to fetch departments",
-      });
-    }
+async getDepartments(req, res) {
+  console.log("getDepartments API Called .........");
+  try {
+    const { client_id } = await getClientFromRequest(req);
+    
+    const departments = await fetchOdooRecords(
+      "hr.department",
+      client_id,
+      [
+        "id",
+        "name",
+        "parent_id",
+        "color",
+        "unit_code",
+        "range_start",
+        "range_end",
+        "is_no_range",
+        "is_lapse_allocation",
+        "wage",
+      ]
+    );
+    
+    return res.status(200).json({
+      status: "success",
+      message: "Your plan is active",
+      data: departments,
+    });
+  } catch (error) {
+    console.error("Get Departments Error:", error);
+    return res.status(error.status || 500).json({
+      status: "error",
+      message: error.message || "Failed to fetch departments",
+    });
   }
+}
   async updateDepartment(req, res) {
     try {
       const id = parseInt(req.params.id);
@@ -5504,16 +5504,12 @@ class ApiController {
   async getRegCategories(req, res) {
     try {
       console.log("API Called getRegCategories");
-
       const { client_id } = await getClientFromRequest(req);
 
-      const categories = await odooService.searchRead(
+      const categories = await fetchOdooRecords(
         "reg.categories",
-        [["client_id", "=", client_id]],
-        ["id", "type", "client_id"],
-        0,          // offset → number
-        0,          // limit → 0 means no limit
-        "id desc"   // order → correct position according to your service
+        client_id,
+        ["id", "type", "client_id"]
       );
 
       return res.status(200).json({
