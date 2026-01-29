@@ -1258,6 +1258,7 @@ class ApiController {
           "name",
           "first_name",
           "last_name",
+          "partner_id", // Added to get partner_id
         ]
       );
 
@@ -1269,6 +1270,7 @@ class ApiController {
       }
 
       const user = userRecord[0];
+      const userPartnerId = user.partner_id?.[0];
       const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
 
       // Authenticate with Odoo
@@ -1290,6 +1292,27 @@ class ApiController {
       });
 
       if (!uid) return;
+
+      // Fetch partner details with state and city
+      let state_name = null;
+      let city_name = null;
+
+      if (userPartnerId) {
+        const partnerDetails = await odooService.searchRead(
+          "res.partner",
+          [["id", "=", userPartnerId]],
+          ["state_id", "city"],
+          0,
+          1
+        );
+
+        if (partnerDetails && partnerDetails.length > 0) {
+          // state_id is a many2one field, returns [id, name]
+          state_name = partnerDetails[0].state_id ? partnerDetails[0].state_id[1] : null;
+          // city is a char field, returns directly
+          city_name = partnerDetails[0].city || null;
+        }
+      }
 
       // Generate JWT token
       const token = jwt.sign(
@@ -1313,6 +1336,8 @@ class ApiController {
         email,
         name: user.name,
         full_name,
+        state: state_name,
+        city: city_name,
       });
     } catch (error) {
       console.error("Login error:", error);

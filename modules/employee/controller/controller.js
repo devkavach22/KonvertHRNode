@@ -1381,6 +1381,10 @@ const createEmployee = async (req, res) => {
           mobile: work_phone || "",
           password: employee_password,
           is_client_employee_user: true,
+          first_name: trimmedName, // Employee ka name as first_name
+          state_id: state_id ? parseInt(state_id) : undefined,
+          city: district_id ? parseInt(district_id) : undefined, // district_id ko city field mein
+          country_id: country_id ? parseInt(country_id) : undefined,
         };
 
         console.log("Creating user with data:", userData);
