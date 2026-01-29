@@ -14,11 +14,11 @@ services:
     build:
       context: .
     env_file:
-      - C:\Users\B A P S\Downloads\konvertHRNode_env\.env
+      - /etc/node-env/server/.env
     environment:
       ENV_FILE: /app/.env
     volumes:
-      - C:\Users\B A P S\Downloads\konvertHRNode_env\.env:/app/.env
+      - /etc/node-env/server/.env:/app/.env
     ports:
       - 4002:4002
 
