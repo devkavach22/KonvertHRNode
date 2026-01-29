@@ -927,6 +927,25 @@ const createEmployee = async (req, res) => {
       }
     }
 
+    // --- PROBATION PERIOD VALIDATION ---
+    if (probation_period !== undefined && probation_period !== null && probation_period !== "") {
+      const probationValue = parseInt(probation_period);
+
+      if (isNaN(probationValue)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Probation period must be a valid number",
+        });
+      }
+
+      if (probationValue < 6) {
+        return res.status(400).json({
+          status: "error",
+          message: "Probation period must be minimum 6 months",
+        });
+      }
+    }
+
     if (is_uan_number_applicable) {
       if (!uan_number)
         return res
@@ -943,43 +962,6 @@ const createEmployee = async (req, res) => {
         return res.status(400).json({
           status: "error",
           message: "Spouse name is required for married employees",
-        });
-      }
-    }
-
-    // --- CURRENCY CODE TO ID CONVERSION ---
-    let resolvedCurrencyId = null;
-    if (currency_id) {
-      const currencyCode = currency_id.toString().toUpperCase();
-
-      if (currencyCode !== "INR" && currencyCode !== "USD") {
-        return res.status(400).json({
-          status: "error",
-          message: "Currency must be either INR or USD",
-        });
-      }
-
-      try {
-        const currencyRecords = await odooHelpers.searchRead(
-          "res.currency",
-          [["name", "=", currencyCode]],
-          ["id", "name"]
-        );
-
-        if (currencyRecords.length > 0) {
-          resolvedCurrencyId = currencyRecords[0].id;
-          console.log(`Currency ${currencyCode} resolved to ID: ${resolvedCurrencyId}`);
-        } else {
-          return res.status(400).json({
-            status: "error",
-            message: `Currency ${currencyCode} not found in system`,
-          });
-        }
-      } catch (currencyError) {
-        console.error("Error resolving currency:", currencyError);
-        return res.status(400).json({
-          status: "error",
-          message: "Failed to resolve currency",
         });
       }
     }
@@ -1004,22 +986,47 @@ const createEmployee = async (req, res) => {
         });
       }
 
-      // Check for duplicate account number
-      const existingAccount = await odooHelpers.searchRead(
-        "res.partner.bank",
-        [["acc_number", "=", trimmedAccountNumber]],
-        ["id", "acc_number"]
-      );
+      // Check for duplicate account number with bank_id combination
+      if (bank_id) {
+        // If bank_id is provided, check for account number + bank_id combination
+        const existingAccountWithBank = await odooHelpers.searchRead(
+          "res.partner.bank",
+          [
+            ["acc_number", "=", trimmedAccountNumber],
+            ["bank_id", "=", parseInt(bank_id)]
+          ],
+          ["id", "acc_number", "bank_id"]
+        );
 
-      if (existingAccount.length > 0) {
-        console.log("DUPLICATE ACCOUNT NUMBER FOUND");
-        console.log("Account number:", trimmedAccountNumber);
-        console.log("Existing bank account:", existingAccount[0]);
+        if (existingAccountWithBank.length > 0) {
+          console.log("DUPLICATE ACCOUNT NUMBER IN THIS BANK FOUND");
+          console.log("Account number:", trimmedAccountNumber);
+          console.log("Bank ID:", bank_id);
+          console.log("Existing bank account:", existingAccountWithBank[0]);
 
-        return res.status(409).json({
-          status: "error",
-          message: `Account number already exists: ${trimmedAccountNumber}`,
-        });
+          return res.status(409).json({
+            status: "error",
+            message: `Account number in this bank already exists: ${trimmedAccountNumber}`,
+          });
+        }
+      } else {
+        // If no bank_id, just check account number alone
+        const existingAccount = await odooHelpers.searchRead(
+          "res.partner.bank",
+          [["acc_number", "=", trimmedAccountNumber]],
+          ["id", "acc_number"]
+        );
+
+        if (existingAccount.length > 0) {
+          console.log("DUPLICATE ACCOUNT NUMBER FOUND");
+          console.log("Account number:", trimmedAccountNumber);
+          console.log("Existing bank account:", existingAccount[0]);
+
+          return res.status(409).json({
+            status: "error",
+            message: `Account number already exists: ${trimmedAccountNumber}`,
+          });
+        }
       }
     }
 
@@ -1126,11 +1133,6 @@ const createEmployee = async (req, res) => {
     let employeeId = null;
     let createdBankAccountId = null;
 
-    // ROLLBACK TRACKING
-    let userCreated = false;
-    let bankAccountCreated = false;
-    let employeeCreated = false;
-
     try {
       console.log("Checking if user already exists with email:", trimmedEmail);
       const existingUser = await odooHelpers.searchRead(
@@ -1175,15 +1177,14 @@ const createEmployee = async (req, res) => {
             if (bank_iafc_code) {
               bankAccountData.bank_iafc_code = bank_iafc_code;
             }
-            if (resolvedCurrencyId) {
-              bankAccountData.currency_id = resolvedCurrencyId;
+            if (currency_id) {
+              bankAccountData.currency_id = parseInt(currency_id);
             }
 
             createdBankAccountId = await odooHelpers.create(
               "res.partner.bank",
               bankAccountData
             );
-            bankAccountCreated = true; // TRACK BANK ACCOUNT CREATION
 
             console.log("✓ Bank account created successfully!");
             console.log("✓ Bank account ID:", createdBankAccountId);
@@ -1306,6 +1307,7 @@ const createEmployee = async (req, res) => {
           voter_id,
           passport_id,
           esi_number,
+          category,
           is_uan_number_applicable,
           uan_number,
           cd_employee_num,
@@ -1353,39 +1355,17 @@ const createEmployee = async (req, res) => {
           device_platform: device_platform || null,
         };
 
-        // REMOVE category field to avoid the error
-        if (category) {
-          delete data.category;
-        }
-
         const create_uid_value =
           userIdFromParams || (client_id ? parseInt(client_id) : undefined);
         console.log("create_uid will be set to:", create_uid_value);
 
-        try {
-          employeeId = await odooHelpers.createWithCustomUid(
-            "hr.employee",
-            data,
-            create_uid_value
-          );
-          employeeCreated = true; // TRACK EMPLOYEE CREATION
-          console.log("Employee created with ID:", employeeId);
-        } catch (employeeCreateError) {
-          console.error("ERROR CREATING EMPLOYEE:", employeeCreateError);
+        employeeId = await odooHelpers.createWithCustomUid(
+          "hr.employee",
+          data,
+          create_uid_value
+        );
 
-          // ROLLBACK: Delete bank account if it was created
-          if (bankAccountCreated && createdBankAccountId) {
-            try {
-              console.log("ROLLING BACK: Deleting bank account ID:", createdBankAccountId);
-              await odooHelpers.unlink("res.partner.bank", [createdBankAccountId]);
-              console.log("✓ Bank account deleted successfully");
-            } catch (rollbackError) {
-              console.error("✗ ERROR rolling back bank account:", rollbackError);
-            }
-          }
-
-          throw employeeCreateError; // Re-throw to be caught by outer catch
-        }
+        console.log("Employee created with ID:", employeeId);
 
         await odooHelpers.write("res.users", userId, {
           employee_ids: [[4, employeeId]],
@@ -1405,14 +1385,8 @@ const createEmployee = async (req, res) => {
 
         console.log("Creating user with data:", userData);
 
-        try {
-          userId = await odooHelpers.create("res.users", userData);
-          userCreated = true; // TRACK USER CREATION
-          console.log("User created with ID:", userId);
-        } catch (userCreateError) {
-          console.error("ERROR CREATING USER:", userCreateError);
-          throw userCreateError;
-        }
+        userId = await odooHelpers.create("res.users", userData);
+        console.log("User created with ID:", userId);
 
         // Get the partner_id of the newly created user
         const newUser = await odooHelpers.searchRead(
@@ -1451,15 +1425,14 @@ const createEmployee = async (req, res) => {
             if (bank_iafc_code) {
               bankAccountData.bank_iafc_code = bank_iafc_code;
             }
-            if (resolvedCurrencyId) {
-              bankAccountData.currency_id = resolvedCurrencyId;
+            if (currency_id) {
+              bankAccountData.currency_id = parseInt(currency_id);
             }
 
             createdBankAccountId = await odooHelpers.create(
               "res.partner.bank",
               bankAccountData
             );
-            bankAccountCreated = true; // TRACK BANK ACCOUNT CREATION
 
             console.log("✓ Bank account created successfully!");
             console.log("✓ Bank account ID:", createdBankAccountId);
@@ -1469,17 +1442,6 @@ const createEmployee = async (req, res) => {
             console.error("✗ ERROR creating bank account:", bankCreateError);
             console.error("Error details:", bankCreateError.message);
             console.error("==========================================");
-
-            // ROLLBACK: Delete user if it was created
-            if (userCreated && userId) {
-              try {
-                console.log("ROLLING BACK: Deleting user ID:", userId);
-                await odooHelpers.unlink("res.users", [userId]);
-                console.log("✓ User deleted successfully");
-              } catch (rollbackError) {
-                console.error("✗ ERROR rolling back user:", rollbackError);
-              }
-            }
 
             return res.status(500).json({
               status: "error",
@@ -1503,7 +1465,6 @@ const createEmployee = async (req, res) => {
 
         if (autoCreatedEmployee.length > 0) {
           employeeId = autoCreatedEmployee[0].id;
-          employeeCreated = true; // TRACK EMPLOYEE CREATION
           console.log("Found auto-created employee with ID:", employeeId);
 
           const updateData = {
@@ -1554,6 +1515,7 @@ const createEmployee = async (req, res) => {
             voter_id,
             passport_id,
             esi_number,
+            category,
             is_uan_number_applicable,
             uan_number,
             cd_employee_num,
@@ -1600,65 +1562,11 @@ const createEmployee = async (req, res) => {
             device_platform: device_platform || null,
           };
 
-          // REMOVE category field to avoid the error
-          if (category) {
-            delete updateData.category;
-          }
-
-          try {
-            await odooHelpers.write("hr.employee", employeeId, updateData);
-            console.log("Updated employee with all data");
-          } catch (employeeUpdateError) {
-            console.error("ERROR UPDATING EMPLOYEE:", employeeUpdateError);
-
-            // ROLLBACK: Delete everything created
-            if (bankAccountCreated && createdBankAccountId) {
-              try {
-                console.log("ROLLING BACK: Deleting bank account ID:", createdBankAccountId);
-                await odooHelpers.unlink("res.partner.bank", [createdBankAccountId]);
-                console.log("✓ Bank account deleted successfully");
-              } catch (rollbackError) {
-                console.error("✗ ERROR rolling back bank account:", rollbackError);
-              }
-            }
-
-            if (userCreated && userId) {
-              try {
-                console.log("ROLLING BACK: Deleting user ID:", userId);
-                await odooHelpers.unlink("res.users", [userId]);
-                console.log("✓ User deleted successfully");
-              } catch (rollbackError) {
-                console.error("✗ ERROR rolling back user:", rollbackError);
-              }
-            }
-
-            throw employeeUpdateError; // Re-throw to be caught by outer catch
-          }
+          await odooHelpers.write("hr.employee", employeeId, updateData);
+          console.log("Updated employee with all data");
         } else {
           console.error("Auto-created employee not found!");
-
-          // ROLLBACK: Delete everything created
-          if (bankAccountCreated && createdBankAccountId) {
-            try {
-              console.log("ROLLING BACK: Deleting bank account ID:", createdBankAccountId);
-              await odooHelpers.unlink("res.partner.bank", [createdBankAccountId]);
-              console.log("✓ Bank account deleted successfully");
-            } catch (rollbackError) {
-              console.error("✗ ERROR rolling back bank account:", rollbackError);
-            }
-          }
-
-          if (userCreated && userId) {
-            try {
-              console.log("ROLLING BACK: Deleting user ID:", userId);
-              await odooHelpers.unlink("res.users", [userId]);
-              console.log("✓ User deleted successfully");
-            } catch (rollbackError) {
-              console.error("✗ ERROR rolling back user:", rollbackError);
-            }
-          }
-
-          return res.status(400).json({
+          return res.status(500).json({
             status: "error",
             message: "Employee auto-creation failed",
           });
@@ -1735,7 +1643,7 @@ const createEmployee = async (req, res) => {
     } catch (userError) {
       console.error("Error in user/employee creation:", userError);
 
-      return res.status(400).json({
+      return res.status(500).json({
         status: "error",
         message: userError.message || "Failed to create employee and user",
         error_details: userError,
