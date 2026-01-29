@@ -1088,6 +1088,7 @@ class ApiController {
           "hr.employee",
           [["user_id", "=", user.id]],
           ["id", "address_id"],
+          0,
           1
         );
 
@@ -1100,6 +1101,7 @@ class ApiController {
               "res.users",
               [["partner_id", "=", planCheckPartnerId], ["is_client_employee_admin", "=", true]],
               ["id"],
+              0,
               1
             );
             if (adminUser && adminUser.length > 0) adminUserIdFromEmployee = adminUser[0].id;
@@ -1107,11 +1109,31 @@ class ApiController {
         }
       }
 
+      // Fetch partner details with state and city
+      const partnerDetails = await odooService.searchRead(
+        "res.partner",
+        [["id", "=", userPartnerId]],
+        ["state_id", "city"],
+        0,
+        1
+      );
+
+      let state_name = null;
+      let city_name = null;
+
+      if (partnerDetails && partnerDetails.length > 0) {
+        // state_id is a many2one field, returns [id, name]
+        state_name = partnerDetails[0].state_id ? partnerDetails[0].state_id[1] : null;
+        // city is a char field, returns directly
+        city_name = partnerDetails[0].city || null;
+      }
+
       // Check if user has ever bought any plan (active or expired)
       const anyPlan = await odooService.searchRead(
         "client.plan.details",
         [["partner_id", "=", planCheckPartnerId]],
         ["id"],
+        0,
         1
       );
 
@@ -1131,6 +1153,7 @@ class ApiController {
           ["is_expier", "=", true]
         ],
         ["id", "product_id", "start_date", "end_date"],
+        0,
         1
       );
 
@@ -1145,7 +1168,6 @@ class ApiController {
       const isEmployeeUser = user.is_client_employee_user === true;
       const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
       const token = jwt.sign({ userId: uid, email }, process.env.JWT_SECRET, { expiresIn: "7d" });
-
 
       if (isAdminUser) {
         if (!planData) {
@@ -1162,6 +1184,8 @@ class ApiController {
           user_id: uid,
           email,
           full_name,
+          state: state_name,
+          city: city_name,
           user_role: "REGISTER_ADMIN",
           plan_status: "ACTIVE",
           plan_id: planData.id,
@@ -1184,15 +1208,13 @@ class ApiController {
           user_id: uid,
           email,
           full_name,
+          state: state_name,
+          city: city_name,
           user_role: "EMPLOYEE_RELATED_OWN_USER",
           plan_status: "ACTIVE",
           is_client_employee_user: true,
           employee_id: employeeId,
           admin_user_id: adminUserIdFromEmployee,
-          // plan_id: planData?.id || null,
-          // product_id: planData?.product_id || null,
-          // plan_start_date: planData?.start_date || null,
-          // plan_end_date: planData?.end_date || null,
         });
       }
       else {
