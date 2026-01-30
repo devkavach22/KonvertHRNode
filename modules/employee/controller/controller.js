@@ -4124,6 +4124,8 @@ const getEmployeeById = async (req, res) => {
 //     });
 //   }
 // };
+
+
 // const updateEmployee = async (req, res) => {
 //   try {
 //     const { id } = req.params;
@@ -5123,9 +5125,18 @@ const updateEmployee = async (req, res) => {
       data.notice_period_days = notice_period_days;
     if (joining_date !== undefined) data.joining_date = joining_date;
     if (employment_type !== undefined) data.employment_type = employment_type;
-    if (driving_license !== undefined) data.driving_license = driving_license;
-    if (upload_passbook !== undefined) data.upload_passbook = upload_passbook;
-    if (image_1920 !== undefined) data.image_1920 = image_1920;
+
+    // ✅ FIX: Only update images if they are provided AND not empty
+    if (driving_license !== undefined && driving_license) {
+      data.driving_license = driving_license;
+    }
+    if (upload_passbook !== undefined && upload_passbook) {
+      data.upload_passbook = upload_passbook;
+    }
+    if (image_1920 !== undefined && image_1920) {
+      data.image_1920 = image_1920;
+    }
+
     if (name_of_site !== undefined) data.name_of_site = parseInt(name_of_site);
     if (longitude !== undefined) data.longitude = longitude;
     if (device_id !== undefined) data.device_id = device_id;
@@ -5240,8 +5251,10 @@ const updateEmployee = async (req, res) => {
         userUpdateStatus = "failed";
       }
     }
+
     cacheManager.clearAll();
     console.log("🗑️ Employee cache auto-cleared after update");
+
     return res.status(200).json({
       status: "success",
       message: "Employee updated successfully",
