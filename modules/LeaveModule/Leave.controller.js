@@ -1594,13 +1594,12 @@ class LeaveController {
         leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
 
       /* ───────── 6. CREATE LEAVE REQUEST ───────── */
-      // ✅ CORRECTED: Using request_date_from and request_date_to
       const vals = {
         employee_id: empIdInt,
         holiday_status_id: leaveTypeIdInt,
-        request_date_from: date_from, // ✅ Changed from date_from
-        request_date_to: date_to, // ✅ Changed from date_to
-        name: reason || false, // ✅ Changed from null to false (as per Odoo vals)
+        request_date_from: date_from,
+        request_date_to: date_to,
+        name: reason || false,
         create_uid: user_id
       };
 
@@ -1621,7 +1620,15 @@ class LeaveController {
       } catch (submitError) {
         const msg = (submitError?.message || "").toLowerCase();
 
-        // ✅ ODOO KNOWN BEHAVIOR (TYPO SAFE)
+        // Check for allocation error
+        if (msg.includes("allocation") || msg.includes("you do not have any allocation")) {
+          return res.status(400).json({
+            status: "error",
+            message: "You don't have any allocation for this time off type"
+          });
+        }
+
+        // ODOO KNOWN BEHAVIOR (TYPO SAFE)
         if (
           msg.includes("already") &&
           (msg.includes("generated") || msg.includes("genrated"))
@@ -1660,6 +1667,15 @@ class LeaveController {
 
       const rawError = error?.message || "";
 
+      // Check for allocation error
+      if (rawError.includes("allocation") || rawError.includes("You do not have any allocation")) {
+        return res.status(400).json({
+          status: "error",
+          message: "You don't have any allocation for this time off type"
+        });
+      }
+
+      // Check for overlap error
       if (rawError.includes("overlaps with this period")) {
         return res.status(409).json({
           status: "error",
@@ -1674,7 +1690,6 @@ class LeaveController {
       });
     }
   }
-
 
 
   async getLeaveRequest(req, res) {
@@ -2386,8 +2401,6 @@ class LeaveController {
   async createPublicHoliday(req, res) {
     try {
       console.log("API called for Public Holiday creation");
-      // console.log(req.body);
-
       const { name, date_from, date_to, work_entry_type_id, calendar_id } = req.body;
       console.log(req.body);
 
@@ -2407,12 +2420,67 @@ class LeaveController {
       }
 
       // -----------------------------
-      // 2. Get Client ID
+      // 2. Validate Date Format
       // -----------------------------
-      const { client_id } = await getClientFromRequest(req);
+      const dateTimeRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+      if (!dateTimeRegex.test(date_from)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date_from format. Expected format: YYYY-MM-DD HH:MM:SS (e.g., 2026-02-05 00:00:00)"
+        });
+      }
+
+      if (!dateTimeRegex.test(date_to)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date_to format. Expected format: YYYY-MM-DD HH:MM:SS (e.g., 2026-02-05 23:59:59)"
+        });
+      }
 
       // -----------------------------
-      // 3. Validate Work Entry Type (Global)
+      // 3. Get Client ID
+      // -----------------------------
+      let client_id;
+      try {
+        const clientData = await getClientFromRequest(req);
+        client_id = clientData.client_id;
+
+        if (!client_id) {
+          return res.status(400).json({
+            status: "error",
+            message: "Either user_id or unique_user_id is required"
+          });
+        }
+      } catch (authError) {
+        return res.status(400).json({
+          status: "error",
+          message: authError.message || "Either user_id or unique_user_id is required"
+        });
+      }
+
+      // -----------------------------
+      // 4. Check for Duplicate (client_id + name)
+      // -----------------------------
+      const existingHoliday = await odooService.searchRead(
+        "resource.calendar.leaves",
+        [
+          ["client_id", "=", client_id],
+          ["name", "=", name]
+        ],
+        ["id", "name"],
+        1
+      );
+
+      if (existingHoliday.length) {
+        return res.status(409).json({
+          status: "error",
+          message: "Public holiday with this name already exists for this client"
+        });
+      }
+
+      // -----------------------------
+      // 5. Validate Work Entry Type (Global)
       // -----------------------------
       let valid_work_entry_type_id = false;
       if (work_entry_type_id) {
@@ -2422,14 +2490,18 @@ class LeaveController {
           ["id", "name"],
           1
         );
+
         if (!workEntryType.length) {
-          return res.status(400).json({ status: "error", message: "Invalid work_entry_type_id" });
+          return res.status(400).json({
+            status: "error",
+            message: "Invalid work_entry_type_id"
+          });
         }
         valid_work_entry_type_id = work_entry_type_id;
       }
 
       // -----------------------------
-      // 4. Validate Calendar (Client Specific)
+      // 6. Validate Calendar (Client Specific)
       // -----------------------------
       let valid_calendar_id = false;
       if (calendar_id) {
@@ -2450,7 +2522,7 @@ class LeaveController {
       }
 
       // -----------------------------
-      // 5. Payload
+      // 7. Payload
       // -----------------------------
       const vals = {
         name,
@@ -2464,12 +2536,12 @@ class LeaveController {
       console.log("Payload sending to Odoo:", vals);
 
       // -----------------------------
-      // 6. Create Holiday
+      // 8. Create Holiday
       // -----------------------------
       const holidayId = await odooService.create("resource.calendar.leaves", vals);
 
       // -----------------------------
-      // 7. Fetch Created Holiday for proper response
+      // 9. Fetch Created Holiday for proper response
       // -----------------------------
       const createdHoliday = await odooService.searchRead(
         "resource.calendar.leaves",
@@ -2485,13 +2557,21 @@ class LeaveController {
 
     } catch (error) {
       console.error("❌ Create Public Holiday Error:", error);
+
+      // Check if it's a validation error from Odoo
+      if (error.message && error.message.includes("does not match format")) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date format. Expected format: YYYY-MM-DD HH:MM:SS"
+        });
+      }
+
       return res.status(500).json({
         status: "error",
         message: error.message || "Failed to create public holiday",
       });
     }
   }
-
   async getPublicHoliday(req, res) {
     try {
       console.log("API called for fetching Public Holidays");
@@ -2566,14 +2646,31 @@ class LeaveController {
   async updatePublicHoliday(req, res) {
     try {
       console.log("API called for updatePublicHoliday");
-      // console.log(req.body);
-
       const { id } = req.params;
       const { name, date_from, date_to, work_entry_type_id, calendar_id } = req.body;
       console.log(req.body);
 
       /* -----------------------------
-       * 1. Check Existence
+       * 1. Validate Date Format (if provided)
+       * ----------------------------- */
+      const dateTimeRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+      if (date_from !== undefined && !dateTimeRegex.test(date_from)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date_from format. Expected format: YYYY-MM-DD HH:MM:SS (e.g., 2026-02-05 00:00:00)"
+        });
+      }
+
+      if (date_to !== undefined && !dateTimeRegex.test(date_to)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date_to format. Expected format: YYYY-MM-DD HH:MM:SS (e.g., 2026-02-05 23:59:59)"
+        });
+      }
+
+      /* -----------------------------
+       * 2. Check Existence
        * ----------------------------- */
       const existing = await odooService.searchRead(
         "resource.calendar.leaves",
@@ -2590,7 +2687,7 @@ class LeaveController {
       }
 
       /* -----------------------------
-       * 2. Validate Relations
+       * 3. Validate Relations
        * ----------------------------- */
       let valid_work_entry_type_id = false;
       if (work_entry_type_id) {
@@ -2600,6 +2697,7 @@ class LeaveController {
           ["id"],
           1
         );
+
         if (!workEntryType.length) {
           return res.status(400).json({
             status: "error",
@@ -2617,6 +2715,7 @@ class LeaveController {
           ["id"],
           1
         );
+
         if (!calendar.length) {
           return res.status(400).json({
             status: "error",
@@ -2627,7 +2726,7 @@ class LeaveController {
       }
 
       /* -----------------------------
-       * 3. Payload
+       * 4. Payload
        * ----------------------------- */
       const vals = {};
       if (name !== undefined) vals.name = name;
@@ -2641,7 +2740,7 @@ class LeaveController {
       console.log("Update Payload:", vals);
 
       /* -----------------------------
-       * 4. Update
+       * 5. Update
        * ----------------------------- */
       await odooService.write(
         "resource.calendar.leaves",
@@ -2650,7 +2749,7 @@ class LeaveController {
       );
 
       /* -----------------------------
-       * 5. Fetch Updated Record
+       * 6. Fetch Updated Record
        * ----------------------------- */
       const updatedHoliday = await odooService.searchRead(
         "resource.calendar.leaves",
@@ -2666,6 +2765,15 @@ class LeaveController {
 
     } catch (error) {
       console.error("❌ Update Public Holiday Error:", error);
+
+      // Check if it's a validation error from Odoo
+      if (error.message && error.message.includes("does not match format")) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid date format. Expected format: YYYY-MM-DD HH:MM:SS"
+        });
+      }
+
       return res.status(500).json({
         status: "error",
         message: error.message || "Failed to update public holiday"
@@ -3064,27 +3172,46 @@ class LeaveController {
     }
   }
 
+
   async createMandatoryDays(req, res) {
     try {
       console.log("API called for Mandatory Day creation");
-      // console.log(req.body);
-
-      const { name, start_date, end_date, color, company_id } = req.body;
+      const { name, start_date, end_date, color } = req.body;
       console.log(req.body);
 
       // -----------------------------
       // 1. Get client_id from auth
       // -----------------------------
-      const { client_id } = await getClientFromRequest(req);
+      let client_id;
+      try {
+        const clientData = await getClientFromRequest(req);
+        client_id = clientData.client_id;
+
+        if (!client_id) {
+          return res.status(400).json({
+            status: "error",
+            message: "Either user_id or unique_user_id is required"
+          });
+        }
+      } catch (authError) {
+        return res.status(400).json({
+          status: "error",
+          message: authError.message || "Either user_id or unique_user_id is required"
+        });
+      }
 
       // -----------------------------
-      // 2. Mandatory Validation
+      // 2. Assign company_id from backend
+      // -----------------------------
+      const company_id = 12;
+
+      // -----------------------------
+      // 3. Mandatory Validation
       // -----------------------------
       const missingFields = [];
       if (!name) missingFields.push("name");
       if (!start_date) missingFields.push("start_date");
       if (!end_date) missingFields.push("end_date");
-      if (!company_id) missingFields.push("company_id");
 
       if (missingFields.length) {
         return res.status(400).json({
@@ -3094,11 +3221,31 @@ class LeaveController {
       }
 
       // -----------------------------
-      // 3. Validate Company (Many2one)
+      // 4. Check for Duplicate (client_id + name)
+      // -----------------------------
+      const existingDay = await odooService.searchRead(
+        "hr.leave.mandatory.day",
+        [
+          ["client_id", "=", client_id],
+          ["name", "=", name]
+        ],
+        ["id", "name"],
+        1
+      );
+
+      if (existingDay.length) {
+        return res.status(409).json({
+          status: "error",
+          message: "Mandatory day with this name already exists for this client"
+        });
+      }
+
+      // -----------------------------
+      // 5. Validate Company (Many2one)
       // -----------------------------
       const company = await odooService.searchRead(
         "res.company",
-        [["id", "=", Number(company_id)]],
+        [["id", "=", company_id]],
         ["id", "name"],
         1
       );
@@ -3111,7 +3258,7 @@ class LeaveController {
       }
 
       // -----------------------------
-      // 4. Validate Client (Many2one)
+      // 6. Validate Client (Many2one)
       // -----------------------------
       const client = await odooService.searchRead(
         "res.partner",
@@ -3128,7 +3275,7 @@ class LeaveController {
       }
 
       // -----------------------------
-      // 5. Construct Payload
+      // 7. Construct Payload
       // -----------------------------
       const vals = {
         client_id,
@@ -3136,13 +3283,13 @@ class LeaveController {
         start_date,
         end_date,
         company_id,
-        color: color || false // optional
+        color: color || false
       };
 
       console.log("Payload sending to Odoo:", vals);
 
       // -----------------------------
-      // 6. Create Mandatory Day
+      // 8. Create Mandatory Day
       // -----------------------------
       const mandatoryDayId = await odooService.create(
         "hr.leave.mandatory.day",
@@ -3150,12 +3297,12 @@ class LeaveController {
       );
 
       // -----------------------------
-      // 7. Fetch Created Record
+      // 9. Fetch Created Record
       // -----------------------------
       const createdDay = await odooService.searchRead(
         "hr.leave.mandatory.day",
         [["id", "=", mandatoryDayId]],
-        ["id", "name", "client_id", "start_date", "end_date", "color", "company_id"]
+        ["id", "name", "start_date", "end_date", "color"]
       );
 
       return res.status(201).json({
@@ -3241,16 +3388,26 @@ class LeaveController {
   async updateMandatoryDays(req, res) {
     try {
       console.log("API called for updateMandatoryDays");
-      // console.log(req.body);
-
       const { id } = req.params;
-      const { name, start_date, end_date, color, company_id } = req.body;
+      const { name, start_date, end_date, color } = req.body;
       console.log(req.body);
+      let client_id;
+      try {
+        const clientData = await getClientFromRequest(req);
+        client_id = clientData.client_id;
 
-      /* -----------------------------
-       * 1. Get client_id
-       * ----------------------------- */
-      const { client_id } = await getClientFromRequest(req);
+        if (!client_id) {
+          return res.status(400).json({
+            status: "error",
+            message: "Either user_id or unique_user_id is required"
+          });
+        }
+      } catch (authError) {
+        return res.status(400).json({
+          status: "error",
+          message: authError.message || "Either user_id or unique_user_id is required"
+        });
+      }
 
       /* -----------------------------
        * 2. Check Existence (Client Isolation)
@@ -3273,20 +3430,24 @@ class LeaveController {
       }
 
       /* -----------------------------
-       * 3. Validate Company (if provided)
+       * 3. Check for Duplicate Name (if name is being updated)
        * ----------------------------- */
-      if (company_id !== undefined) {
-        const company = await odooService.searchRead(
-          "res.company",
-          [["id", "=", company_id]],
+      if (name !== undefined) {
+        const duplicateCheck = await odooService.searchRead(
+          "hr.leave.mandatory.day",
+          [
+            ["id", "!=", parseInt(id)],
+            ["client_id", "=", client_id],
+            ["name", "=", name]
+          ],
           ["id"],
           1
         );
 
-        if (!company.length) {
-          return res.status(400).json({
+        if (duplicateCheck.length) {
+          return res.status(409).json({
             status: "error",
-            message: "Invalid company_id"
+            message: "Mandatory day with this name already exists for this client"
           });
         }
       }
@@ -3295,11 +3456,9 @@ class LeaveController {
        * 4. Construct Payload
        * ----------------------------- */
       const vals = {};
-
       if (name !== undefined) vals.name = name;
       if (start_date !== undefined) vals.start_date = start_date;
       if (end_date !== undefined) vals.end_date = end_date;
-      if (company_id !== undefined) vals.company_id = company_id;
       if (color !== undefined) vals.color = color || false;
 
       console.log("Update Payload:", vals);
@@ -3319,7 +3478,7 @@ class LeaveController {
       const updatedDay = await odooService.searchRead(
         "hr.leave.mandatory.day",
         [["id", "=", parseInt(id)]],
-        ["id", "name", "client_id", "start_date", "end_date", "color", "company_id"]
+        ["id", "name", "start_date", "end_date", "color"]
       );
 
       return res.status(200).json({

@@ -560,7 +560,7 @@ router.post(
 
 router.get(
   "/admin/requests",
-  authenticate ,
+  authenticate,
   apiController.getAllApprovalRequests.bind(apiController)
 );
 
@@ -596,11 +596,33 @@ router.get(
   authenticate,
   PayrollController.getStructureTypes.bind(PayrollController)
 );
+
+router.put(
+  "/structure-type/:struct_type_id",
+  authenticate,
+  PayrollController.updateStructureType.bind(PayrollController)
+);
+router.delete(
+  "/structure-type/:struct_type_id",
+  authenticate,
+  PayrollController.deleteStructureType.bind(PayrollController)
+);
 router.post(
   "/create/Input-Type",
   authenticate,
   PayrollController.createInputType.bind(PayrollController)
 );
+router.put(
+  "/input-type/:input_type_id",
+  authenticate,
+  PayrollController.updateInputType.bind(PayrollController)
+);
+router.delete(
+  "/input-type/:input_type_id",
+  authenticate,
+  PayrollController.deleteInputType.bind(PayrollController)
+);
+
 router.get(
   "/Input-Type",
   authenticate,
@@ -615,6 +637,11 @@ router.get(
   "/salary-rule-categories",
   authenticate,
   PayrollController.getSalaryRuleCategories.bind(PayrollController)
+);
+router.put(
+  "/salary-rule-category/:category_id",
+  authenticate,
+  PayrollController.updateSalaryRuleCategory.bind(PayrollController)
 );
 
 router.post(
@@ -851,11 +878,12 @@ router.post(
   authenticate,
   productController.downloadInvoicePDF.bind(productController)
 );
-router.get(
-  "/getCustomerSubscriptions",
-  authenticate,
-  productController.getCustomerSubscriptions.bind(productController)
-);
+
+// router.get(
+//   "/getCustomerSubscriptions",
+//   authenticate,
+//   productController.getCustomerSubscriptions.bind(productController)
+// );
 router.get(
   "/getClientLeaveDashboardCount",
   authenticate,
@@ -887,4 +915,28 @@ router.post(
   authenticate,
   PayrollController.markPayslipAsPaid.bind(PayrollController)
 );
+router.post(
+  "/create/PayslipBatch",
+  authenticate,
+  PayrollController.createPayslipBatch.bind(PayrollController)
+);
+
+router.post(
+  "/generatePayslips",
+  authenticate,
+  PayrollController.generatePayslips.bind(PayrollController)
+);
+
+router.post(
+  "/printPayslip",
+  authenticate,
+  PayrollController.downloadPayslipPDF.bind(PayrollController)
+);
+
+router.post(
+  "/print/Payslip",
+  authenticate,
+  PayrollController.downloadPayslipPDFMobile.bind(PayrollController)
+);
+
 module.exports = router;
