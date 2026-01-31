@@ -1074,7 +1074,7 @@ class ApiController {
           });
         });
       } catch (authError) {
-        return res.status(401).json({ status: "error", message: "Incorrect password" });
+        return res.status(400).json({ status: "error", message: "Incorrect password" });
       }
 
       if (!uid) return;
@@ -9018,6 +9018,7 @@ class ApiController {
         "description",
         "state",
         "reason",
+        "create_date",
         "approval_log_list"
       ];
 
