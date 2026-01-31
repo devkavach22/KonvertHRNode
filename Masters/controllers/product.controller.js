@@ -434,130 +434,130 @@ module.exports = {
       });
     }
   },
-  async getCustomerSubscriptions(req, res) {
-    try {
-      console.log("Customer Subscriptions API called .......");
+  //   async getCustomerSubscriptions(req, res) {
+  //     try {
+  //       console.log("Customer Subscriptions API called .......");
 
-      const { user_id } = req.query;
+  //       const { user_id } = req.query;
 
-      if (!user_id) {
-        return res.status(400).json({
-          status: "error",
-          message: "user_id is required",
-        });
-      }
+  //       if (!user_id) {
+  //         return res.status(400).json({
+  //           status: "error",
+  //           message: "user_id is required",
+  //         });
+  //       }
 
-      /* --------------------------------------------------
-STEP 1: user → customer (partner_id)
--------------------------------------------------- */
-      const users = await odooService.searchRead(
-        "res.users",
-        [["id", "=", Number(user_id)]],
-        ["id", "partner_id"]
-      );
+  //       /* --------------------------------------------------
+  // STEP 1: user → customer (partner_id)
+  // -------------------------------------------------- */
+  //       const users = await odooService.searchRead(
+  //         "res.users",
+  //         [["id", "=", Number(user_id)]],
+  //         ["id", "partner_id"]
+  //       );
 
-      if (!users.length || !users[0].partner_id) {
-        return res.status(404).json({
-          status: "error",
-          message: "Customer not linked with this user",
-        });
-      }
+  //       if (!users.length || !users[0].partner_id) {
+  //         return res.status(404).json({
+  //           status: "error",
+  //           message: "Customer not linked with this user",
+  //         });
+  //       }
 
-      const customerId = users[0].partner_id[0];
+  //       const customerId = users[0].partner_id[0];
 
-      /* --------------------------------------------------
-STEP 2: Fetch subscription orders WITH invoice_ids
--------------------------------------------------- */
-      const orders = await odooService.searchRead(
-        "sale.order",
-        [
-          ["is_subscription", "=", true],
-          ["partner_id", "=", customerId],
-        ],
-        [
-          "id",
-          "name",
-          "date_order",
-          "subscription_state",
-          "next_invoice_date",
-          "amount_total",
-          "currency_id",
-          "plan_id",
-          "invoice_ids", // ⭐ IMPORTANT
-        ]
-      );
+  //       /* --------------------------------------------------
+  // STEP 2: Fetch subscription orders WITH invoice_ids
+  // -------------------------------------------------- */
+  //       const orders = await odooService.searchRead(
+  //         "sale.order",
+  //         [
+  //           ["is_subscription", "=", true],
+  //           ["partner_id", "=", customerId],
+  //         ],
+  //         [
+  //           "id",
+  //           "name",
+  //           "date_order",
+  //           "subscription_state",
+  //           "next_invoice_date",
+  //           "amount_total",
+  //           "currency_id",
+  //           "plan_id",
+  //           "invoice_ids", // ⭐ IMPORTANT
+  //         ]
+  //       );
 
-      if (!orders.length) {
-        return res.status(200).json({
-          status: "success",
-          count: 0,
-          data: [],
-        });
-      }
+  //       if (!orders.length) {
+  //         return res.status(200).json({
+  //           status: "success",
+  //           count: 0,
+  //           data: [],
+  //         });
+  //       }
 
-      /* --------------------------------------------------
-STEP 3: Fetch invoice details
--------------------------------------------------- */
-      const invoiceIds = orders.flatMap((o) => o.invoice_ids);
+  //       /* --------------------------------------------------
+  // STEP 3: Fetch invoice details
+  // -------------------------------------------------- */
+  //       const invoiceIds = orders.flatMap((o) => o.invoice_ids);
 
-      let invoices = [];
-      if (invoiceIds.length) {
-        invoices = await odooService.searchRead(
-          "account.move",
-          [
-            ["id", "in", invoiceIds],
-            ["move_type", "=", "out_invoice"],
-          ],
-          ["id", "name", "invoice_date", "amount_total", "state"]
-        );
-      }
+  //       let invoices = [];
+  //       if (invoiceIds.length) {
+  //         invoices = await odooService.searchRead(
+  //           "account.move",
+  //           [
+  //             ["id", "in", invoiceIds],
+  //             ["move_type", "=", "out_invoice"],
+  //           ],
+  //           ["id", "name", "invoice_date", "amount_total", "state"]
+  //         );
+  //       }
 
-      /* --------------------------------------------------
-STEP 4: Final response
--------------------------------------------------- */
-      const data = orders.map((order) => {
-        const orderInvoices = invoices
-          .filter((inv) => order.invoice_ids.includes(inv.id))
-          .map((inv) => ({
-            invoice_id: inv.id, // ✅ THIS IS WHAT YOU WANT
-            invoice_number: inv.name,
-            invoice_date: inv.invoice_date,
-            amount: inv.amount_total,
-            state: inv.state,
-            download_url: `/api/invoice/download/${inv.id}`,
-          }));
+  //       /* --------------------------------------------------
+  // STEP 4: Final response
+  // -------------------------------------------------- */
+  //       const data = orders.map((order) => {
+  //         const orderInvoices = invoices
+  //           .filter((inv) => order.invoice_ids.includes(inv.id))
+  //           .map((inv) => ({
+  //             invoice_id: inv.id, // ✅ THIS IS WHAT YOU WANT
+  //             invoice_number: inv.name,
+  //             invoice_date: inv.invoice_date,
+  //             amount: inv.amount_total,
+  //             state: inv.state,
+  //             download_url: `/api/invoice/download/${inv.id}`,
+  //           }));
 
-        return {
-          subscription_id: order.id,
-          order_number: order.name,
-          order_date: order.date_order, // ✅ HERE
+  //         return {
+  //           subscription_id: order.id,
+  //           order_number: order.name,
+  //           order_date: order.date_order, // ✅ HERE
 
-          plan_id: order.plan_id?.[0],
-          plan_name: order.plan_id?.[1],
-          status: order.subscription_state,
-          next_invoice_date: order.next_invoice_date,
-          total_amount: order.amount_total,
-          currency: order.currency_id?.[1],
+  //           plan_id: order.plan_id?.[0],
+  //           plan_name: order.plan_id?.[1],
+  //           status: order.subscription_state,
+  //           next_invoice_date: order.next_invoice_date,
+  //           total_amount: order.amount_total,
+  //           currency: order.currency_id?.[1],
 
-          // 🔥 invoices linked via invoice_ids
-          invoices: orderInvoices,
-        };
-      });
+  //           // 🔥 invoices linked via invoice_ids
+  //           invoices: orderInvoices,
+  //         };
+  //       });
 
-      return res.status(200).json({
-        status: "success",
-        count: data.length,
-        data,
-      });
-    } catch (error) {
-      console.error("❌ Error:", error);
-      return res.status(500).json({
-        status: "error",
-        message: "Failed to fetch subscriptions",
-        error: error.message,
-      });
-    }
-  },
+  //       return res.status(200).json({
+  //         status: "success",
+  //         count: data.length,
+  //         data,
+  //       });
+  //     } catch (error) {
+  //       console.error("❌ Error:", error);
+  //       return res.status(500).json({
+  //         status: "error",
+  //         message: "Failed to fetch subscriptions",
+  //         error: error.message,
+  //       });
+  //     }
+  //   },
   async downloadInvoicePDF(req, res) {
     try {
       const { invoice_id } = req.body;
@@ -640,4 +640,155 @@ STEP 4: Final response
       });
     }
   },
+
+  async getCustomerSubscriptions(req, res) {
+    try {
+      console.log("Customer Subscriptions API called .......");
+      const { user_id } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          status: "error",
+          message: "user_id is required",
+        });
+      }
+
+      /* --------------------------------------------------
+         STEP 1: user → customer (partner_id)
+      -------------------------------------------------- */
+      const users = await odooService.searchRead(
+        "res.users",
+        [["id", "=", Number(user_id)]],
+        ["id", "partner_id"]
+      );
+
+      if (!users.length || !users[0].partner_id) {
+        return res.status(404).json({
+          status: "error",
+          message: "Customer not linked with this user",
+        });
+      }
+
+      const customerId = users[0].partner_id[0];
+
+      /* --------------------------------------------------
+         STEP 2: Fetch subscription orders WITH invoice_ids
+      -------------------------------------------------- */
+      const orders = await odooService.searchRead(
+        "sale.order",
+        [
+          ["is_subscription", "=", true],
+          ["partner_id", "=", customerId],
+        ],
+        [
+          "id",
+          "name",
+          "date_order",
+          "subscription_state",
+          "next_invoice_date",
+          "amount_total",
+          "currency_id",
+          "plan_id",
+          "invoice_ids",
+        ]
+      );
+
+      if (!orders.length) {
+        return res.status(200).json({
+          status: "success",
+          count: 0,
+          data: [],
+        });
+      }
+
+      /* --------------------------------------------------
+         STEP 3: Fetch invoice details
+      -------------------------------------------------- */
+      const invoiceIds = orders.flatMap((o) => o.invoice_ids);
+      let invoices = [];
+
+      if (invoiceIds.length) {
+        invoices = await odooService.searchRead(
+          "account.move",
+          [
+            ["id", "in", invoiceIds],
+            ["move_type", "=", "out_invoice"],
+          ],
+          ["id", "name", "invoice_date", "amount_total", "state"]
+        );
+      }
+
+      /* --------------------------------------------------
+         🔥 HELPER FUNCTION: Convert UTC to IST (UTC+5:30)
+      -------------------------------------------------- */
+      const convertToIST = (utcDateStr) => {
+        if (!utcDateStr) return null;
+
+        // Ensure the date string is treated as UTC by adding 'Z' if not present
+        let dateStr = utcDateStr;
+        if (!dateStr.endsWith('Z') && !dateStr.includes('+')) {
+          dateStr = utcDateStr.replace(' ', 'T') + 'Z';
+        }
+
+        // Parse as UTC
+        const utcDate = new Date(dateStr);
+
+        // Add 5 hours 30 minutes for IST
+        const istOffset = 5.5 * 60 * 60 * 1000;
+        const istDate = new Date(utcDate.getTime() + istOffset);
+
+        // Format as YYYY-MM-DD HH:mm:ss
+        const year = istDate.getUTCFullYear();
+        const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(istDate.getUTCDate()).padStart(2, '0');
+        const hours = String(istDate.getUTCHours()).padStart(2, '0');
+        const minutes = String(istDate.getUTCMinutes()).padStart(2, '0');
+        const seconds = String(istDate.getUTCSeconds()).padStart(2, '0');
+
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      };
+
+      /* --------------------------------------------------
+         STEP 4: Final response with IST dates
+      -------------------------------------------------- */
+      const data = orders.map((order) => {
+        const orderInvoices = invoices
+          .filter((inv) => order.invoice_ids.includes(inv.id))
+          .map((inv) => ({
+            invoice_id: inv.id,
+            invoice_number: inv.name,
+            invoice_date: convertToIST(inv.invoice_date), // ✅ Converted to IST
+            amount: inv.amount_total,
+            state: inv.state,
+            download_url: `/api/invoice/download/${inv.id}`,
+          }));
+
+        return {
+          subscription_id: order.id,
+          order_number: order.name,
+          order_date: convertToIST(order.date_order), // ✅ Converted to IST
+          plan_id: order.plan_id?.[0],
+          plan_name: order.plan_id?.[1],
+          status: order.subscription_state,
+          next_invoice_date: convertToIST(order.next_invoice_date), // ✅ Converted to IST
+          total_amount: order.amount_total,
+          currency: order.currency_id?.[1],
+          invoices: orderInvoices,
+        };
+      });
+
+      return res.status(200).json({
+        status: "success",
+        count: data.length,
+        data,
+      });
+    } catch (error) {
+      console.error("❌ Error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to fetch subscriptions",
+        error: error.message,
+      });
+    }
+  }
 };

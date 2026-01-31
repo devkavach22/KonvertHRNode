@@ -878,11 +878,12 @@ router.post(
   authenticate,
   productController.downloadInvoicePDF.bind(productController)
 );
-router.get(
-  "/getCustomerSubscriptions",
-  authenticate,
-  productController.getCustomerSubscriptions.bind(productController)
-);
+
+// router.get(
+//   "/getCustomerSubscriptions",
+//   authenticate,
+//   productController.getCustomerSubscriptions.bind(productController)
+// );
 router.get(
   "/getClientLeaveDashboardCount",
   authenticate,
