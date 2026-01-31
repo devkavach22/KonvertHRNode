@@ -15,15 +15,20 @@ services:
       context: .
     env_file:
       - /etc/node-env/server/.env
+      # - C:\Users\B A P S\Downloads\konvertHRNode_env\.env
     environment:
       ENV_FILE: /app/.env
     volumes:
       - /etc/node-env/server/.env:/app/.env
-    ports:
-      - 4002:4002
+      # - C:\Users\B A P S\Downloads\konvertHRNode_env\.env:/app/.env
+    # Windows/Development: Use ports for local access
+    # ports:
+    #   - 4002:4002
 
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # Linux/Production: Uncomment network_mode: host and comment out ports above
+    network_mode: host
+
+
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
