@@ -6741,11 +6741,10 @@ class ApiController {
           message: "Invalid date format. Please provide valid dates.",
         });
       }
-
       if (toDateObj < fromDateObj) {
         return res.status(400).json({
           status: "error",
-          message: "End date cannot be earlier than start date",
+          message: "Check-out time and date cannot be earlier than check-in time and date",
         });
       }
 
@@ -6814,7 +6813,7 @@ class ApiController {
         try {
           await odooService.delete("attendance.regular", regId);
         } catch (deleteError) { }
-        return res.status(500).json({
+        return res.status(400).json({
           status: "error",
           message: "Failed to submit regularization request",
           details: submitError.message,
