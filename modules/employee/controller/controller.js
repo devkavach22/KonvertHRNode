@@ -573,18 +573,22 @@ const createAttendancePolicy = async (req, res) => {
       });
     }
 
+    // ✅ CHECK: Policy name exists for THIS client_id
     const existing = await odooService.searchRead(
       "attendance.policy",
-      [["name", "=", data.name.trim()]],
+      [
+        ["name", "=", data.name.trim()],
+        ["client_id", "=", client_id]  // ⭐ Added client_id check
+      ],
       ["id"],
       1
     );
 
     if (existing.length > 0) {
-      console.log(`⚠️ Conflict: Policy '${data.name}' already exists`);
+      console.log(`⚠️ Conflict: Policy '${data.name}' already exists for client ${client_id}`);
       return res.status(409).json({
         status: "error",
-        message: "Attendance Policy with this name already exists",
+        message: "Attendance Policy with this name already exists for this client",
       });
     }
 
@@ -3311,7 +3315,7 @@ const createEmployee = async (req, res) => {
           phone: work_phone || "",
           mobile: work_phone || "",
           password: employee_password,
-          is_client_employee_user: true,
+          // is_client_employee_user: true,
           first_name: trimmedName, // Employee ka name as first_name
           state_id: state_id ? parseInt(state_id) : undefined,
           city: district_id ? parseInt(district_id) : undefined, // district_id ko city field mein
@@ -3322,6 +3326,11 @@ const createEmployee = async (req, res) => {
 
         userId = await odooHelpers.create("res.users", userData);
         console.log("User created with ID:", userId);
+
+        await odooHelpers.write("res.users", userId, {
+          is_client_employee_user: true,
+        });
+        console.log("✓ Updated is_client_employee_user to true for user:", userId);
 
         // Get the partner_id of the newly created user
         const newUser = await odooHelpers.searchRead(

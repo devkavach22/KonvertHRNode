@@ -5,13 +5,15 @@
 */
 const fs = require("fs");
 const dotenv = require("dotenv");
+const path = require("path");
+
 
 // Determine environment file path
 // For local: uses .env by default
 // For PM2: pass ENV_FILE=/path/to/custom.env
 const ENV_PATH = process.env.ENV_FILE || ".env";
 
-// Check if env file exists
+// Check if env file existsn
 if (!fs.existsSync(ENV_PATH)) {
   throw new Error(`❌ Env file not found: ${ENV_PATH}`);
 }
@@ -59,6 +61,11 @@ app.use(
 );
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ limit: "200mb", extended: true }));
+
+app.use(
+  "/exports",
+  express.static(path.join(__dirname, "exports"))
+);
 
 /**
 * =====================================================
@@ -109,6 +116,8 @@ app.use((err, req, res, next) => {
     message: "Internal Server Error"
   });
 });
+
+
 
 /**
 * =====================================================

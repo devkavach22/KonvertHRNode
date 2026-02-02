@@ -3,6 +3,10 @@ const mailService = require("../services/mail.service");
 const redisClient = require("../services/redisClient");
 const moment = require("moment-timezone");
 const otpStore = new Map();
+const ExcelJS = require("exceljs");
+const path = require("path");
+const fs = require("fs");
+const PDFDocument = require("pdfkit");
 
 const { getClientFromRequest, fetchOdooRecords } = require("../services/plan.helper");
 const jwt = require("jsonwebtoken");
@@ -9917,6 +9921,474 @@ class ApiController {
 
     } catch (error) {
       return res.status(500).json({ status: "error", message: error.message });
+    }
+  }
+
+  async _fetchEmployeeAttendanceData(user_id, date_from, date_to, limit = 1000, offset = 0) {
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["user_id", "=", parseInt(user_id)]],
+      ["id", "name", "job_id", "department_id"]
+    );
+
+    if (!employee.length) {
+      throw { status: 404, message: `No employee found for user_id: ${user_id}` };
+    }
+
+    const employeeData = employee[0];
+    const employeeId = employeeData.id;
+
+    let domain = [["employee_id", "=", employeeId]];
+    if (date_from) domain.push(["check_in", ">=", date_from]);
+    if (date_to) domain.push(["check_in", "<=", date_to]);
+
+    const FIELDS = [
+      "employee_id",
+      "check_in",
+      "checkin_lat",
+      "checkin_lon",
+      "check_out",
+      "checkout_lat",
+      "checkout_lon",
+      "worked_hours",
+      "early_out_minutes",
+      "overtime_hours",
+      "is_early_out",
+      "validated_overtime_hours",
+      "is_late_in",
+      "late_time_display",
+      "status_code",
+    ];
+
+    const attendances = await odooService.searchRead(
+      "hr.attendance",
+      domain,
+      FIELDS,
+      parseInt(offset),
+      parseInt(limit),
+      "check_in desc"
+    );
+
+    const convertToIST = (utcDateStr) => {
+      if (!utcDateStr) return null;
+      const utcDate = new Date(utcDateStr + " UTC");
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(utcDate.getTime() + istOffset);
+      return istDate.toISOString().slice(0, 19).replace("T", " ");
+    };
+
+    const attendanceIds = attendances.map((a) => a.id);
+
+    let breakLines = [];
+    if (attendanceIds.length > 0) {
+      breakLines = await odooService.searchRead(
+        "hr.attendance.line",
+        [["attendance_id", "in", attendanceIds]],
+        ["attendance_id", "break_start", "break_end", "break_hours"]
+      );
+    }
+
+    const breakMap = {};
+    breakLines.forEach((line) => {
+      const attId = line.attendance_id?.[0];
+      breakMap[attId] = line;
+    });
+
+    const finalData = attendances.map((att) => {
+      const breakLine = breakMap[att.id];
+      return {
+        id: att.id,
+        employee_name: att.employee_id?.[1] || employeeData.name,
+        check_in: convertToIST(att.check_in),
+        checkin_lat: att.checkin_lat,
+        checkin_lon: att.checkin_lon,
+        check_out: convertToIST(att.check_out),
+        checkout_lat: att.checkout_lat,
+        checkout_lon: att.checkout_lon,
+        worked_hours: att.worked_hours,
+        early_out_minutes: att.early_out_minutes,
+        overtime_hours: att.overtime_hours,
+        validated_overtime_hours: att.validated_overtime_hours,
+        is_late_in: att.is_late_in,
+        late_time_display: att.late_time_display,
+        is_early_out: att.is_early_out,
+        status_code: att.status_code,
+        break_start: convertToIST(breakLine?.break_start),
+        break_end: convertToIST(breakLine?.break_end),
+        break_hours: breakLine?.break_hours || null,
+      };
+    });
+
+    return {
+      data: finalData,
+      employee: {
+        id: employeeData.id,
+        name: employeeData.name,
+        job: employeeData.job_id ? employeeData.job_id[1] : null,
+        department: employeeData.department_id ? employeeData.department_id[1] : null,
+      },
+    };
+  }
+
+  async exportEmployeeAttendanceExcel(req, res) {
+    try {
+      const { user_id, date_from, date_to } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          success: false,
+          status: "error",
+          errorMessage: "user_id is required",
+        });
+      }
+
+      console.log("📊 Employee Excel Export - user_id:", user_id, "date_from:", date_from, "date_to:", date_to);
+
+      let data, employee;
+      try {
+        const result = await this._fetchEmployeeAttendanceData(user_id, date_from, date_to);
+        data = result.data;
+        employee = result.employee;
+      } catch (fetchError) {
+        console.error("Data fetch error:", fetchError);
+        return res.status(fetchError.status || 500).json({
+          success: false,
+          status: "error",
+          errorMessage: fetchError.message || "Failed to fetch attendance data",
+        });
+      }
+
+      console.log("📊 Employee Excel Export - Records fetched:", data.length);
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "KonvertHR";
+      workbook.created = new Date();
+
+      const worksheet = workbook.addWorksheet("My Attendance");
+
+      // Add employee info header
+      worksheet.mergeCells("A1:R1");
+      worksheet.getCell("A1").value = `Attendance Report - ${employee.name}`;
+      worksheet.getCell("A1").font = { bold: true, size: 14 };
+      worksheet.getCell("A1").alignment = { horizontal: "center" };
+
+      worksheet.mergeCells("A2:R2");
+      worksheet.getCell("A2").value = `Department: ${employee.department || "N/A"} | Job: ${employee.job || "N/A"} | Period: ${date_from || "All"} to ${date_to || "Present"}`;
+      worksheet.getCell("A2").alignment = { horizontal: "center" };
+
+      // Add empty row
+      worksheet.addRow([]);
+
+      // Define columns starting from row 4
+      worksheet.columns = [
+        { header: "Date", key: "date", width: 12 },
+        { header: "Check In", key: "check_in", width: 20 },
+        { header: "Check Out", key: "check_out", width: 20 },
+        { header: "Worked Hours", key: "worked_hours", width: 15 },
+        { header: "Late In", key: "is_late_in", width: 10 },
+        { header: "Late Time", key: "late_time_display", width: 15 },
+        { header: "Early Out", key: "is_early_out", width: 12 },
+        { header: "Early Out (Min)", key: "early_out_minutes", width: 15 },
+        { header: "Overtime Hours", key: "overtime_hours", width: 15 },
+        { header: "Break Start", key: "break_start", width: 20 },
+        { header: "Break End", key: "break_end", width: 20 },
+        { header: "Break Hours", key: "break_hours", width: 12 },
+        { header: "Status", key: "status_code", width: 12 },
+        { header: "Check-in Lat", key: "checkin_lat", width: 15 },
+        { header: "Check-in Lon", key: "checkin_lon", width: 15 },
+        { header: "Check-out Lat", key: "checkout_lat", width: 15 },
+        { header: "Check-out Lon", key: "checkout_lon", width: 15 },
+      ];
+
+      // Add header row at row 4
+      const headerRow = worksheet.getRow(4);
+      headerRow.values = ["Date", "Check In", "Check Out", "Worked Hours", "Late In", "Late Time", "Early Out", "Early Out (Min)", "Overtime Hours", "Break Start", "Break End", "Break Hours", "Status", "Check-in Lat", "Check-in Lon", "Check-out Lat", "Check-out Lon"];
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      headerRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF4472C4" },
+      };
+      headerRow.alignment = { horizontal: "center", vertical: "middle" };
+
+      // Add data rows starting from row 5
+      data.forEach((record, index) => {
+        const dateOnly = record.check_in ? record.check_in.split(" ")[0] : "-";
+        const row = worksheet.addRow({
+          date: dateOnly,
+          check_in: record.check_in || "Not Checked In",
+          check_out: record.check_out || "Not Checked Out",
+          worked_hours: record.worked_hours ? Number(record.worked_hours).toFixed(2) : "0.00",
+          is_late_in: record.is_late_in ? "Yes" : "No",
+          late_time_display: record.late_time_display || "-",
+          is_early_out: record.is_early_out ? "Yes" : "No",
+          early_out_minutes: record.early_out_minutes || 0,
+          overtime_hours: record.overtime_hours ? Number(record.overtime_hours).toFixed(2) : "0.00",
+          break_start: record.break_start || "-",
+          break_end: record.break_end || "-",
+          break_hours: record.break_hours ? Number(record.break_hours).toFixed(2) : "-",
+          status_code: record.status_code || "-",
+          checkin_lat: record.checkin_lat || "-",
+          checkin_lon: record.checkin_lon || "-",
+          checkout_lat: record.checkout_lat || "-",
+          checkout_lon: record.checkout_lon || "-",
+        });
+
+        // Alternating row colors
+        if (index % 2 === 0) {
+          row.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFE9EFF7" },
+          };
+        }
+      });
+
+      // Add borders to all data cells
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber >= 4) {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: "thin" },
+              left: { style: "thin" },
+              bottom: { style: "thin" },
+              right: { style: "thin" },
+            };
+          });
+        }
+      });
+
+      // Create exports directory if it doesn't exist
+      const exportsDir = path.join(__dirname, "../../exports");
+      if (!fs.existsSync(exportsDir)) {
+        fs.mkdirSync(exportsDir, { recursive: true });
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const safeName = employee.name.replace(/[^a-zA-Z0-9]/g, "_");
+      const filename = `employee_attendance_${safeName}_${date_from || "all"}_to_${date_to || "all"}_${timestamp}.xlsx`;
+      const filePath = path.join(exportsDir, filename);
+
+      // Write to file
+      await workbook.xlsx.writeFile(filePath);
+
+      console.log("✅ Employee Excel file created:", filePath);
+
+      // Generate download URL
+      const baseUrl = process.env.BASE_URL || `http://${req.get("host")}`;
+      const downloadUrl = `${baseUrl}/exports/${filename}`;
+
+      return res.status(200).json({
+        success: true,
+        status: "success",
+        message: "Excel report generated successfully",
+        data: {
+          filename: filename,
+          download_url: downloadUrl,
+          total_records: data.length,
+          employee_name: employee.name,
+        },
+      });
+    } catch (error) {
+      console.error("Employee Excel Export Error:", error);
+      return res.status(500).json({
+        success: false,
+        status: "error",
+        errorMessage: error.message || "Failed to export attendance to Excel",
+      });
+    }
+  }
+
+  async exportEmployeeAttendancePDF(req, res) {
+    try {
+      const { user_id, date_from, date_to } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          success: false,
+          status: "error",
+          errorMessage: "user_id is required",
+        });
+      }
+
+      console.log("📄 Employee PDF Export - user_id:", user_id, "date_from:", date_from, "date_to:", date_to);
+
+      let data, employee;
+      try {
+        const result = await this._fetchEmployeeAttendanceData(user_id, date_from, date_to);
+        data = result.data;
+        employee = result.employee;
+      } catch (fetchError) {
+        console.error("🔥 Data fetch error:", fetchError);
+        return res.status(fetchError.status || 500).json({
+          success: false,
+          status: "error",
+          errorMessage: fetchError.message || "Failed to fetch attendance data",
+        });
+      }
+
+      console.log("📄 Employee PDF Export - Records fetched:", data.length);
+
+      // Create exports directory if it doesn't exist
+      const exportsDir = path.join(__dirname, "../../exports");
+      if (!fs.existsSync(exportsDir)) {
+        fs.mkdirSync(exportsDir, { recursive: true });
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const safeName = employee.name.replace(/[^a-zA-Z0-9]/g, "_");
+      const filename = `employee_attendance_${safeName}_${date_from || "all"}_to_${date_to || "all"}_${timestamp}.pdf`;
+      const filePath = path.join(exportsDir, filename);
+
+      // Create PDF document (landscape for better table fit)
+      const doc = new PDFDocument({
+        margin: 30,
+        size: "A4",
+        layout: "landscape",
+        bufferPages: true
+      });
+
+      // Pipe to file
+      const writeStream = fs.createWriteStream(filePath);
+      doc.pipe(writeStream);
+
+      // Title
+      doc.fontSize(18).font("Helvetica-Bold").text("My Attendance Report", { align: "center" });
+      doc.moveDown(0.3);
+
+      // Employee info
+      doc.fontSize(12).font("Helvetica-Bold").text(employee.name, { align: "center" });
+      doc.fontSize(10).font("Helvetica");
+      doc.text(`Department: ${employee.department || "N/A"} | Job: ${employee.job || "N/A"}`, { align: "center" });
+      doc.text(`Generated: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`, { align: "center" });
+      if (date_from || date_to) {
+        doc.text(`Period: ${date_from || "Start"} to ${date_to || "Present"}`, { align: "center" });
+      }
+      doc.text(`Total Records: ${data.length}`, { align: "center" });
+      doc.moveDown(1);
+
+      // Table configuration
+      const tableLeft = 30;
+      const colWidths = [70, 90, 90, 60, 45, 55, 50, 55, 55, 60];
+      const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+      const headers = [
+        "Date",
+        "Check In",
+        "Check Out",
+        "Worked Hrs",
+        "Late",
+        "Late Time",
+        "Early",
+        "Break Hrs",
+        "Overtime",
+        "Status",
+      ];
+
+      // Function to draw header
+      const drawHeader = (yPosition) => {
+        doc.save();
+        doc.rect(tableLeft, yPosition, tableWidth, 20).fill("#4472C4");
+        doc.fillColor("white").font("Helvetica-Bold").fontSize(8);
+        let xPos = tableLeft;
+        headers.forEach((header, i) => {
+          doc.text(header, xPos + 2, yPosition + 6, { width: colWidths[i] - 4, align: "left" });
+          xPos += colWidths[i];
+        });
+        doc.restore();
+        return yPosition + 20;
+      };
+
+      let tableTop = doc.y;
+      let yPos = drawHeader(tableTop);
+      const rowHeight = 16;
+      const pageHeight = doc.page.height - 50;
+
+      // Draw data rows
+      data.forEach((record, index) => {
+        // Check if we need a new page
+        if (yPos + rowHeight > pageHeight) {
+          doc.addPage();
+          yPos = drawHeader(30);
+        }
+
+        // Alternating row background
+        doc.save();
+        if (index % 2 === 0) {
+          doc.rect(tableLeft, yPos, tableWidth, rowHeight).fill("#E9EFF7");
+        } else {
+          doc.rect(tableLeft, yPos, tableWidth, rowHeight).fill("#FFFFFF");
+        }
+        doc.restore();
+
+        // Row data
+        doc.fillColor("black").font("Helvetica").fontSize(7);
+        let xPos = tableLeft;
+        const dateOnly = record.check_in ? record.check_in.split(" ")[0] : "-";
+        const timeIn = record.check_in ? record.check_in.split(" ")[1] : "-";
+        const timeOut = record.check_out ? record.check_out.split(" ")[1] : "-";
+        const workedHrs = record.worked_hours ? Number(record.worked_hours).toFixed(2) : "0.00";
+        const breakHrs = record.break_hours ? Number(record.break_hours).toFixed(2) : "-";
+        const overtimeHrs = record.overtime_hours ? Number(record.overtime_hours).toFixed(2) : "-";
+
+        const rowData = [
+          dateOnly,
+          timeIn,
+          timeOut,
+          workedHrs,
+          record.is_late_in ? "Yes" : "No",
+          (record.late_time_display || "-").substring(0, 8),
+          record.is_early_out ? "Yes" : "No",
+          breakHrs,
+          overtimeHrs,
+          (record.status_code || "-").substring(0, 8),
+        ];
+
+        rowData.forEach((cellData, i) => {
+          doc.text(String(cellData), xPos + 2, yPos + 4, {
+            width: colWidths[i] - 4,
+            align: "left",
+          });
+          xPos += colWidths[i];
+        });
+
+        yPos += rowHeight;
+      });
+
+      // Finalize PDF
+      doc.end();
+
+      // Wait for filten
+      new Promise((resolve, reject) => {
+        writeStream.on("finish", resolve);
+        writeStream.on("error", reject);
+      });
+
+      console.log("✅ Employee PDF file created:", filePath);
+
+      // Generate download URL
+      const baseUrl = process.env.BASE_URL || `http://${req.get("host")}`;
+      const downloadUrl = `${baseUrl}/exports/${filename}`;
+
+      return res.status(200).json({
+        success: true,
+        status: "success",
+        message: "PDF report generated successfully",
+        data: {
+          filename: filename,
+          download_url: downloadUrl,
+          total_records: data.length,
+          employee_name: employee.name,
+        },
+      });
+    } catch (error) {
+      console.error("🔥 Employee PDF Export Error:", error);
+      return res.status(500).json({
+        success: false,
+        status: "error",
+        errorMessage: error.message || "Failed to export attendance to PDF",
+      });
     }
   }
 }

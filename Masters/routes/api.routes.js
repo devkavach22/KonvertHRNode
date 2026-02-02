@@ -939,4 +939,16 @@ router.post(
   PayrollController.downloadPayslipPDFMobile.bind(PayrollController)
 );
 
+router.get(
+  "/employee/attendance/export/excel",
+  authenticate,
+  apiController.exportEmployeeAttendanceExcel.bind(apiController)
+);
+
+router.get(
+  "/employee/attendance/export/pdf",
+  authenticate,
+  apiController.exportEmployeeAttendancePDF.bind(apiController)
+);
+
 module.exports = router;
