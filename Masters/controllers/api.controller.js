@@ -1233,6 +1233,7 @@ class ApiController {
   async loginMarketingPage(req, res) {
     try {
       console.log("🔥 Login API called");
+
       const { email, password } = req.body;
 
       // Validate input
@@ -1262,7 +1263,8 @@ class ApiController {
           "name",
           "first_name",
           "last_name",
-          "partner_id", // Added to get partner_id
+          "partner_id",
+          "is_client_employee_user"   // <-- ADDED FIELD
         ]
       );
 
@@ -1274,6 +1276,16 @@ class ApiController {
       }
 
       const user = userRecord[0];
+
+      // 🔥 NEW CHECK — ONLY CHANGE YOU REQUESTED
+      if (user.is_client_employee_user === true) {
+        return res.status(403).json({
+          status: "error",
+          message: "You are not Admin, sorry you can't login here.",
+        });
+      }
+      // ---------------------------------------------------------
+
       const userPartnerId = user.partner_id?.[0];
       const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
 
@@ -1311,9 +1323,10 @@ class ApiController {
         );
 
         if (partnerDetails && partnerDetails.length > 0) {
-          // state_id is a many2one field, returns [id, name]
-          state_name = partnerDetails[0].state_id ? partnerDetails[0].state_id[1] : null;
-          // city is a char field, returns directly
+          state_name = partnerDetails[0].state_id
+            ? partnerDetails[0].state_id[1]
+            : null;
+
           city_name = partnerDetails[0].city || null;
         }
       }
@@ -1351,6 +1364,7 @@ class ApiController {
       });
     }
   }
+
   async getStates(req, res) {
     try {
       const { country_id } = req.query;
