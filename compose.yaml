@@ -22,11 +22,13 @@ services:
       - /etc/node-env/server/.env:/app/.env
       # - C:\Users\B A P S\Downloads\konvertHRNode_env\.env:/app/.env
     # Windows/Development: Use ports for local access
-    # ports:
-    #   - 4002:4002
+    ports:
+      - 4002:4002
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     # Linux/Production: Uncomment network_mode: host and comment out ports above
-    network_mode: host
+    # network_mode: host
 
 
 
