@@ -7939,12 +7939,472 @@ class ApiController {
   }
 
 
+  // async getEmployeeAttendanceComplete(req, res) {
+  //   try {
+  //     const {
+  //       user_id,
+  //       date_from,
+  //       date_to,
+  //       date,
+  //       limit = 100,
+  //       offset = 0,
+  //     } = req.query;
+
+  //     if (!user_id) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: "user_id is required",
+  //         successMessage: "",
+  //         statuscode: 400,
+  //       });
+  //     }
+
+  //     console.log("🔍 Searching employee for user_id:", user_id);
+
+  //     const formatDatetime = (datetime) => {
+  //       if (!datetime) return null;
+  //       return moment
+  //         .utc(datetime)
+  //         .tz("Asia/Kolkata")
+  //         .format("YYYY-MM-DD HH:mm:ss");
+  //     };
+
+  //     const employee = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", parseInt(user_id)]],
+  //       ["id", "name", "resource_calendar_id"]
+  //     );
+
+  //     if (!employee.length) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: `No employee found for user_id: ${user_id}`,
+  //         successMessage: "",
+  //         statuscode: 404,
+  //       });
+  //     }
+
+  //     const employeeData = employee[0];
+  //     const employeeId = employeeData.id;
+
+  //     let domain = [["employee_id", "=", employeeId]];
+  //     if (date_from) domain.push(["check_in", ">=", date_from]);
+  //     if (date_to) domain.push(["check_in", "<=", date_to]);
+
+  //     const REQUIRED_FIELDS = [
+  //       "employee_id",
+  //       "check_in",
+  //       "check_out",
+  //       "checkin_lat",
+  //       "checkin_lon",
+  //       "checkout_lat",
+  //       "checkout_lon",
+  //       "total_working_hours",
+  //       "total_productive_hours",
+  //       "early_out_minutes",
+  //       "overtime_hours",
+  //       "is_early_out",
+  //       "validated_overtime_hours",
+  //       "is_late_in",
+  //       "late_time_display",
+  //       "status_code",
+  //       "overtime_start",
+  //       "overtime_end",
+  //     ];
+
+  //     const attendances = await odooService.searchRead(
+  //       "hr.attendance",
+  //       domain,
+  //       REQUIRED_FIELDS,
+  //       parseInt(offset),
+  //       parseInt(limit),
+  //       "check_in desc"
+  //     );
+
+  //     const totalCount = await odooService.search("hr.attendance", domain);
+
+  //     const todayDate = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
+
+  //     const attendanceIds = attendances.map((att) => att.id);
+  //     let attendanceLinesByAttendance = {};
+
+  //     if (attendanceIds.length > 0) {
+  //       const allAttendanceLines = await odooService.searchRead(
+  //         "hr.attendance.line",
+  //         [["attendance_id", "in", attendanceIds]],
+  //         [
+  //           "attendance_id",
+  //           "check_in",
+  //           "check_out",
+  //           "break_start",
+  //           "break_end",
+  //           "break_hours",
+  //           "productive_hours",
+  //         ]
+  //       );
+
+  //       allAttendanceLines.forEach((line) => {
+  //         const attId = line.attendance_id?.[0];
+  //         if (attId) {
+  //           if (!attendanceLinesByAttendance[attId]) {
+  //             attendanceLinesByAttendance[attId] = [];
+  //           }
+  //           attendanceLinesByAttendance[attId].push(line);
+  //         }
+  //       });
+  //     }
+
+  //     const finalAttendance = attendances.map((att) => {
+  //       const checkInDate = moment
+  //         .utc(att.check_in)
+  //         .tz("Asia/Kolkata")
+  //         .format("YYYY-MM-DD");
+  //       const isToday = checkInDate === todayDate;
+
+  //       const formatted = {
+  //         id: att.id,
+  //         employee_id: att.employee_id,
+  //         checkin_lat: att.checkin_lat,
+  //         checkin_lon: att.checkin_lon,
+  //         checkout_lat: att.checkout_lat,
+  //         checkout_lon: att.checkout_lon,
+  //         total_working_hours: att.total_working_hours,
+  //         total_productive_hours: att.total_productive_hours,
+  //         early_out_minutes: att.early_out_minutes,
+  //         overtime_hours: att.overtime_hours,
+  //         is_early_out: att.is_early_out,
+  //         is_late_in: att.is_late_in,
+  //         late_time_display: att.late_time_display,
+  //         status_code: att.status_code,
+  //         overtime_start: formatDatetime(att.overtime_start),
+  //         overtime_end: formatDatetime(att.overtime_end),
+  //       };
+
+  //       const attendanceLines = attendanceLinesByAttendance[att.id] || [];
+
+  //       if (attendanceLines.length > 0) {
+  //         const firstLine = attendanceLines[0];
+  //         const lastLine = attendanceLines[attendanceLines.length - 1];
+  //         formatted.check_in = formatDatetime(firstLine.check_in);
+  //         formatted.check_out = formatDatetime(lastLine.check_out);
+  //       } else {
+  //         formatted.check_in = formatDatetime(att.check_in);
+  //         formatted.check_out = formatDatetime(att.check_out);
+  //       }
+
+  //       return formatted;
+  //     });
+  //     let workingHoursSummary = null;
+
+  //     if (employeeData.resource_calendar_id) {
+  //       const calendarId = Array.isArray(employeeData.resource_calendar_id)
+  //         ? employeeData.resource_calendar_id[0]
+  //         : employeeData.resource_calendar_id;
+
+  //       const calendar = await odooService.searchRead(
+  //         "resource.calendar",
+  //         [["id", "=", calendarId]],
+  //         ["id", "name", "hours_per_day", "total_overtime_hours_allowed"]
+  //       );
+
+  //       if (calendar.length) {
+  //         const allowedHoursPerDay = calendar[0].hours_per_day || 0;
+  //         const allowedOvertimePerDay =
+  //           calendar[0].total_overtime_hours_allowed || 0;
+  //         const targetDate =
+  //           date || moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
+
+  //         const getDateRanges = (dateString) => {
+  //           const tz = "Asia/Kolkata";
+  //           const todayStart = moment
+  //             .tz(dateString, tz)
+  //             .startOf("day")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+  //           const todayEnd = moment
+  //             .tz(dateString, tz)
+  //             .endOf("day")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+
+  //           const weekStart = moment
+  //             .tz(dateString, tz)
+  //             .startOf("week")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+  //           const weekEnd = moment
+  //             .tz(dateString, tz)
+  //             .endOf("week")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+
+  //           const monthStart = moment
+  //             .tz(dateString, tz)
+  //             .startOf("month")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+  //           const monthEnd = moment
+  //             .tz(dateString, tz)
+  //             .endOf("month")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+
+  //           return {
+  //             todayStart,
+  //             todayEnd,
+  //             weekStart,
+  //             weekEnd,
+  //             monthStart,
+  //             monthEnd,
+  //           };
+  //         };
+
+  //         const getWorkingDaysInMonth = (dateString) => {
+  //           const tz = "Asia/Kolkata";
+  //           const start = moment.tz(dateString, tz).startOf("month");
+  //           const end = moment.tz(dateString, tz).endOf("month");
+
+  //           let workingDays = 0;
+  //           let current = start.clone();
+
+  //           while (current.isSameOrBefore(end)) {
+  //             const day = current.day();
+  //             if (day !== 0 && day !== 6) {
+  //               workingDays++;
+  //             }
+  //             current.add(1, "day");
+  //           }
+
+  //           return workingDays;
+  //         };
+
+  //         const ranges = getDateRanges(targetDate);
+
+  //         const [todayLogs, weekLogs, monthLogs] = await Promise.all([
+  //           odooService.searchRead(
+  //             "hr.attendance",
+  //             [
+  //               ["employee_id", "=", employeeId],
+  //               ["check_in", ">=", ranges.todayStart],
+  //               ["check_in", "<=", ranges.todayEnd],
+  //             ],
+  //             ["id", "total_working_hours"]
+  //           ),
+  //           odooService.searchRead(
+  //             "hr.attendance",
+  //             [
+  //               ["employee_id", "=", employeeId],
+  //               ["check_in", ">=", ranges.weekStart],
+  //               ["check_in", "<=", ranges.weekEnd],
+  //             ],
+  //             ["id", "total_working_hours"]
+  //           ),
+  //           odooService.searchRead(
+  //             "hr.attendance",
+  //             [
+  //               ["employee_id", "=", employeeId],
+  //               ["check_in", ">=", ranges.monthStart],
+  //               ["check_in", "<=", ranges.monthEnd],
+  //             ],
+  //             ["id", "total_working_hours"]
+  //           ),
+  //         ]);
+
+  //         const sumWorkingHours = (records) =>
+  //           records.reduce(
+  //             (sum, rec) => sum + (parseFloat(rec.total_working_hours) || 0),
+  //             0
+  //           );
+
+  //         const workedToday = sumWorkingHours(todayLogs);
+  //         const workedWeek = sumWorkingHours(weekLogs);
+  //         const workedMonth = sumWorkingHours(monthLogs);
+
+  //         let breakHoursToday = 0;
+  //         let todayAttendanceLineDetails = [];
+
+  //         if (todayLogs.length > 0) {
+  //           const todayIds = todayLogs.map((att) => att.id);
+  //           const breakLines = await odooService.searchRead(
+  //             "hr.attendance.line",
+  //             [["attendance_id", "in", todayIds]],
+  //             [
+  //               "attendance_id",
+  //               "check_in",
+  //               "check_out",
+  //               "break_start",
+  //               "break_end",
+  //               "break_hours",
+  //               "productive_hours",
+  //             ]
+  //           );
+
+  //           breakHoursToday = breakLines.reduce(
+  //             (sum, brk) => sum + (parseFloat(brk.break_hours) || 0),
+  //             0
+  //           );
+
+  //           todayAttendanceLineDetails = breakLines.map((line) => ({
+  //             attendance_id: line.attendance_id?.[0] || null,
+  //             check_in: formatDatetime(line.check_in),
+  //             check_out: formatDatetime(line.check_out),
+  //             break_start: formatDatetime(line.break_start),
+  //             break_end: formatDatetime(line.break_end),
+  //             break_hours: parseFloat((line.break_hours || 0).toFixed(2)),
+  //             productive_hours: parseFloat(
+  //               (line.productive_hours || 0).toFixed(2)
+  //             ),
+  //           }));
+  //         }
+  //         const workingDaysInMonth = getWorkingDaysInMonth(targetDate);
+  //         const allowedWeek = allowedHoursPerDay * 5;
+  //         const allowedMonth = allowedHoursPerDay * workingDaysInMonth;
+  //         const allowedOvertimeWeek = allowedOvertimePerDay * 5;
+  //         const allowedOvertimeMonth =
+  //           allowedOvertimePerDay * workingDaysInMonth;
+  //         const sumOvertimeHours = (records) =>
+  //           records.reduce(
+  //             (sum, rec) =>
+  //               sum + (parseFloat(rec.validated_overtime_hours) || 0),
+  //             0
+  //           );
+  //         const [todayOvertimeLogs, weekOvertimeLogs, monthOvertimeLogs] =
+  //           await Promise.all([
+  //             odooService.searchRead(
+  //               "hr.attendance",
+  //               [
+  //                 ["employee_id", "=", employeeId],
+  //                 ["check_in", ">=", ranges.todayStart],
+  //                 ["check_in", "<=", ranges.todayEnd],
+  //               ],
+  //               ["id", "validated_overtime_hours"]
+  //             ),
+  //             odooService.searchRead(
+  //               "hr.attendance",
+  //               [
+  //                 ["employee_id", "=", employeeId],
+  //                 ["check_in", ">=", ranges.weekStart],
+  //                 ["check_in", "<=", ranges.weekEnd],
+  //               ],
+  //               ["id", "validated_overtime_hours"]
+  //             ),
+  //             odooService.searchRead(
+  //               "hr.attendance",
+  //               [
+  //                 ["employee_id", "=", employeeId],
+  //                 ["check_in", ">=", ranges.monthStart],
+  //                 ["check_in", "<=", ranges.monthEnd],
+  //               ],
+  //               ["id", "validated_overtime_hours"]
+  //             ),
+  //           ]);
+  //         const overtimeToday = sumOvertimeHours(todayOvertimeLogs);
+  //         const overtimeWeek = sumOvertimeHours(weekOvertimeLogs);
+  //         const overtimeMonth = sumOvertimeHours(monthOvertimeLogs);
+  //         workingHoursSummary = {
+  //           resource_calendar_id: calendarId,
+  //           calendar_name: calendar[0].name,
+  //           allowed_hours_per_day: allowedHoursPerDay,
+
+  //           today: {
+  //             date: targetDate,
+  //             worked_hours: parseFloat(workedToday.toFixed(2)),
+  //             allowed_hours: allowedHoursPerDay,
+  //             remaining_hours: parseFloat(
+  //               Math.max(0, allowedHoursPerDay - workedToday).toFixed(2)
+  //             ),
+  //             percentage: parseFloat(
+  //               Math.min(100, (workedToday / allowedHoursPerDay) * 100).toFixed(
+  //                 2
+  //               )
+  //             ),
+  //             is_completed: workedToday >= allowedHoursPerDay,
+  //             attendance_records: todayLogs.length,
+  //             total_break_hours: parseFloat(breakHoursToday.toFixed(2)),
+  //             total_overtime_hours_allowed: parseFloat(
+  //               allowedOvertimePerDay.toFixed(2)
+  //             ),
+  //             total_overtime_hours_worked: parseFloat(overtimeToday.toFixed(2)),
+  //             attendance_line_details: todayAttendanceLineDetails,
+  //             message:
+  //               todayLogs.length === 0 ? "Not checked in till now" : null,
+  //           },
+
+  //           week: {
+  //             worked_hours: parseFloat(workedWeek.toFixed(2)),
+  //             allowed_hours: allowedWeek,
+  //             remaining_hours: parseFloat(
+  //               Math.max(0, allowedWeek - workedWeek).toFixed(2)
+  //             ),
+  //             percentage: parseFloat(
+  //               Math.min(100, (workedWeek / allowedWeek) * 100).toFixed(2)
+  //             ),
+  //             attendance_records: weekLogs.length,
+  //             total_overtime_hours_allowed: parseFloat(
+  //               allowedOvertimeWeek.toFixed(2)
+  //             ),
+  //             total_overtime_hours_worked: parseFloat(overtimeWeek.toFixed(2)),
+  //           },
+
+  //           month: {
+  //             worked_hours: parseFloat(workedMonth.toFixed(2)),
+  //             allowed_hours: allowedMonth,
+  //             remaining_hours: parseFloat(
+  //               Math.max(0, allowedMonth - workedMonth).toFixed(2)
+  //             ),
+  //             percentage: parseFloat(
+  //               Math.min(100, (workedMonth / allowedMonth) * 100).toFixed(2)
+  //             ),
+  //             attendance_records: monthLogs.length,
+  //             total_overtime_hours_allowed: parseFloat(
+  //               allowedOvertimeMonth.toFixed(2)
+  //             ),
+  //             total_overtime_hours_worked: parseFloat(overtimeMonth.toFixed(2)),
+  //           },
+  //         };
+  //       }
+  //     }
+
+  //     return res.status(200).json({
+  //       success: true,
+  //       status: "success",
+  //       successMessage: "Employee attendance data fetched successfully",
+  //       statuscode: 200,
+  //       data: {
+  //         employee: {
+  //           employee_id: employeeId,
+  //           employee_name: employeeData.name,
+  //         },
+  //         attendance_records: finalAttendance,
+  //         working_hours_summary: workingHoursSummary,
+  //       },
+  //       meta: {
+  //         total_attendance_records: totalCount.length,
+  //         limit: parseInt(limit),
+  //         offset: parseInt(offset),
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("🔥 Error fetching employee attendance data:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       status: "error",
+  //       errorMessage: error.message || "Internal Server Error",
+  //       statuscode: 500,
+  //     });
+  //   }
+  // }
+
   async getEmployeeAttendanceComplete(req, res) {
     try {
       const {
         user_id,
         date_from,
         date_to,
+        month,
+        year,
         date,
         limit = 100,
         offset = 0,
@@ -7989,9 +8449,56 @@ class ApiController {
       const employeeData = employee[0];
       const employeeId = employeeData.id;
 
+      // ===== NEW: Handle month/year filtering =====
+      let finalDateFrom = date_from;
+      let finalDateTo = date_to;
+      const timezone = "Asia/Kolkata";
+      const currentYear = moment().tz(timezone).year();
+      const currentMonth = moment().tz(timezone).month() + 1;
+
+      if (month || year) {
+        const selectedYear = year || currentYear;
+        if (month) {
+          finalDateFrom = moment
+            .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+            .startOf("month")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+          finalDateTo = moment
+            .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+            .endOf("month")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+        } else {
+          finalDateFrom = moment
+            .tz(`${selectedYear}-01-01`, timezone)
+            .startOf("year")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+          finalDateTo = moment
+            .tz(`${selectedYear}-12-31`, timezone)
+            .endOf("year")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+        }
+      } else if (!date_from && !date_to) {
+        // Default to current month if no filters provided
+        finalDateFrom = moment
+          .tz(timezone)
+          .startOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+        finalDateTo = moment
+          .tz(timezone)
+          .endOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+      }
+
       let domain = [["employee_id", "=", employeeId]];
-      if (date_from) domain.push(["check_in", ">=", date_from]);
-      if (date_to) domain.push(["check_in", "<=", date_to]);
+      if (finalDateFrom) domain.push(["check_in", ">=", finalDateFrom]);
+      if (finalDateTo) domain.push(["check_in", "<=", finalDateTo]);
+      // ===== END: month/year filtering =====
 
       const REQUIRED_FIELDS = [
         "employee_id",
@@ -8396,8 +8903,6 @@ class ApiController {
       });
     }
   }
-
-
   async getUserContacts(req, res) {
     try {
       const { user_id } = req.query;
