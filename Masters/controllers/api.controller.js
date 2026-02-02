@@ -7412,7 +7412,7 @@ class ApiController {
   //     });
   //   }
   // }
-async getAdminAttendances(req, res) {
+  async getAdminAttendances(req, res) {
     try {
       const {
         user_id,
@@ -7587,13 +7587,13 @@ async getAdminAttendances(req, res) {
       // ===== END: month/year filtering =====
 
       console.log("\n👥 Fetching All Employees for client_id:", client_id);
-      
+
       // ===== NEW: Filter by specific employee if employee_id provided =====
       let employeeDomain = [["address_id", "=", client_id]];
       if (employee_id) {
         employeeDomain.push(["id", "=", parseInt(employee_id)]);
       }
-      
+
       const allEmployees = await odooService.searchRead(
         "hr.employee",
         employeeDomain,
@@ -7603,10 +7603,10 @@ async getAdminAttendances(req, res) {
       console.log("📋 All Employees Data:", JSON.stringify(allEmployees, null, 2));
 
       if (!allEmployees.length) {
-        const errorMsg = employee_id 
+        const errorMsg = employee_id
           ? `No employee found for employee_id: ${employee_id}`
           : "No employees found for this client_id";
-        
+
         return res.status(404).json({
           success: false,
           status: "error",
@@ -7655,7 +7655,7 @@ async getAdminAttendances(req, res) {
       // ===== NEW: Check if no attendance records found =====
       if (attendances.length === 0) {
         let noDataMessage = "No attendance records found";
-        
+
         if (employee_id && month) {
           const empName = allEmployees[0]?.name || `Employee ${employee_id}`;
           const monthName = moment().month(parseInt(month) - 1).format("MMMM");
@@ -8521,7 +8521,7 @@ async getAdminAttendances(req, res) {
   //     });
   //   }
   // }
-async getEmployeeAttendanceComplete(req, res) {
+  async getEmployeeAttendanceComplete(req, res) {
     try {
       const {
         user_id,
@@ -8659,7 +8659,7 @@ async getEmployeeAttendanceComplete(req, res) {
       // ===== NEW: Check if no attendance records found =====
       if (attendances.length === 0) {
         let noDataMessage = "No attendance records found";
-        
+
         if (month && year) {
           const monthName = moment().month(parseInt(month) - 1).format("MMMM");
           noDataMessage = `No data for ${monthName} ${year}`;
