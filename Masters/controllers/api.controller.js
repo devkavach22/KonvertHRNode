@@ -7072,7 +7072,6 @@ class ApiController {
     }
   }
 
-
   // async getAdminAttendances(req, res) {
   //   try {
   //     const {
@@ -7095,22 +7094,47 @@ class ApiController {
 
   //     console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
 
-  //     const partner = await odooService.searchRead(
+  //     // -----------------------------
+  //     // 1. Check if user is admin
+  //     // -----------------------------
+  //     const userInfo = await odooService.searchRead(
   //       "res.users",
   //       [["id", "=", parseInt(user_id)]],
-  //       ["id", "partner_id"]
+  //       ["id", "partner_id", "is_client_employee_admin", "is_client_employee_user"]
   //     );
-  //     console.log("👤 Partner Data:", partner);
+  //     console.log("👤 User Data:", userInfo);
 
-  //     if (!partner.length) {
+  //     if (!userInfo.length) {
   //       return res.status(404).json({
   //         success: false,
   //         status: "error",
-  //         errorMessage: `Partner not found for user_id: ${user_id}`,
+  //         errorMessage: `User not found for user_id: ${user_id}`,
   //       });
   //     }
 
-  //     const partnerId = partner[0].partner_id?.[0];
+  //     const user = userInfo[0];
+
+  //     // Check if both fields are false - plan expired or not purchased
+  //     if (!user.is_client_employee_admin && !user.is_client_employee_user) {
+  //       return res.status(403).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: "Your plan expired or you didn't Buy",
+  //       });
+  //     }
+
+  //     // Check if user is admin
+  //     if (!user.is_client_employee_admin) {
+  //       return res.status(403).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: "You are not admin ,you are Employee",
+  //       });
+  //     }
+
+  //     console.log("✅ User is admin. Proceeding...");
+
+  //     const partnerId = user.partner_id?.[0];
   //     console.log("🆔 Partner ID:", partnerId);
 
   //     const adminEmployee = await odooService.searchRead(
@@ -7388,13 +7412,15 @@ class ApiController {
   //     });
   //   }
   // }
-
-  async getAdminAttendances(req, res) {
+async getAdminAttendances(req, res) {
     try {
       const {
         user_id,
         date_from,
         date_to,
+        month,
+        year,
+        employee_id,
         limit = 100,
         offset = 0,
       } = req.query;
@@ -7514,20 +7540,77 @@ class ApiController {
       );
       console.log("✅ Approved Leave Employees:", ApprovedLeaveOfEmployee);
 
+      // ===== NEW: Handle month/year filtering =====
+      let finalDateFrom = date_from;
+      let finalDateTo = date_to;
+      const timezone = "Asia/Kolkata";
+      const currentYear = moment().tz(timezone).year();
+
+      if (month || year) {
+        const selectedYear = year || currentYear;
+        if (month) {
+          finalDateFrom = moment
+            .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+            .startOf("month")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+          finalDateTo = moment
+            .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+            .endOf("month")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+        } else {
+          finalDateFrom = moment
+            .tz(`${selectedYear}-01-01`, timezone)
+            .startOf("year")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+          finalDateTo = moment
+            .tz(`${selectedYear}-12-31`, timezone)
+            .endOf("year")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+        }
+      } else if (!date_from && !date_to) {
+        // Default to current month if no filters provided
+        finalDateFrom = moment
+          .tz(timezone)
+          .startOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+        finalDateTo = moment
+          .tz(timezone)
+          .endOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+      }
+      // ===== END: month/year filtering =====
+
       console.log("\n👥 Fetching All Employees for client_id:", client_id);
+      
+      // ===== NEW: Filter by specific employee if employee_id provided =====
+      let employeeDomain = [["address_id", "=", client_id]];
+      if (employee_id) {
+        employeeDomain.push(["id", "=", parseInt(employee_id)]);
+      }
+      
       const allEmployees = await odooService.searchRead(
         "hr.employee",
-        [["address_id", "=", client_id]],
+        employeeDomain,
         ["id", "name", "job_id"]
       );
       console.log("📋 All Employees Count:", allEmployees.length);
       console.log("📋 All Employees Data:", JSON.stringify(allEmployees, null, 2));
 
       if (!allEmployees.length) {
+        const errorMsg = employee_id 
+          ? `No employee found for employee_id: ${employee_id}`
+          : "No employees found for this client_id";
+        
         return res.status(404).json({
           success: false,
           status: "error",
-          errorMessage: "No employees found for this client_id",
+          errorMessage: errorMsg,
         });
       }
 
@@ -7535,8 +7618,8 @@ class ApiController {
       console.log("🔢 Employee IDs:", employeeIds);
 
       let domain = [["employee_id", "in", employeeIds]];
-      if (date_from) domain.push(["check_in", ">=", date_from]);
-      if (date_to) domain.push(["check_in", "<=", date_to]);
+      if (finalDateFrom) domain.push(["check_in", ">=", finalDateFrom]);
+      if (finalDateTo) domain.push(["check_in", "<=", finalDateTo]);
       console.log("🔍 Attendance Domain:", JSON.stringify(domain));
 
       const FIELDS = [
@@ -7568,6 +7651,47 @@ class ApiController {
       );
       console.log("📊 Attendance Records Count:", attendances.length);
       console.log("📊 First 3 Attendance Records:", JSON.stringify(attendances.slice(0, 3), null, 2));
+
+      // ===== NEW: Check if no attendance records found =====
+      if (attendances.length === 0) {
+        let noDataMessage = "No attendance records found";
+        
+        if (employee_id && month) {
+          const empName = allEmployees[0]?.name || `Employee ${employee_id}`;
+          const monthName = moment().month(parseInt(month) - 1).format("MMMM");
+          noDataMessage = `No attendance records found for ${empName} in ${monthName} ${year || currentYear}`;
+        } else if (employee_id) {
+          const empName = allEmployees[0]?.name || `Employee ${employee_id}`;
+          noDataMessage = `No attendance records found for ${empName}`;
+        } else if (month) {
+          const monthName = moment().month(parseInt(month) - 1).format("MMMM");
+          noDataMessage = `No attendance records found for ${monthName} ${year || currentYear}`;
+        } else if (finalDateFrom && finalDateTo) {
+          noDataMessage = `No attendance records found for the selected date range`;
+        }
+
+        return res.status(200).json({
+          success: true,
+          status: "success",
+          successMessage: noDataMessage,
+          data: [],
+          meta: {
+            total_Attendace_records: 0,
+            total_employees: allEmployees.length,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            admin_partner_id: partnerId,
+            admin_address_id: client_id,
+            TotalEmployee: totalEmployees,
+            Presentemployee: Presentemployee,
+            TotalLateemployee: TotalLateemployee,
+            Ununiformendemployee: Ununiformendemployee,
+            TodayAbsetEmployee: TodayAbsetEmployee,
+            ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee,
+          },
+        });
+      }
+      // ===== END: No data check =====
 
       const convertToIST = (utcDateStr) => {
         if (!utcDateStr) return null;
@@ -7729,6 +7853,7 @@ class ApiController {
       });
     }
   }
+
   async updateAdminAttendance(req, res) {
     try {
       const { id } = req.params;
@@ -8396,8 +8521,7 @@ class ApiController {
   //     });
   //   }
   // }
-
-  async getEmployeeAttendanceComplete(req, res) {
+async getEmployeeAttendanceComplete(req, res) {
     try {
       const {
         user_id,
@@ -8531,6 +8655,44 @@ class ApiController {
       );
 
       const totalCount = await odooService.search("hr.attendance", domain);
+
+      // ===== NEW: Check if no attendance records found =====
+      if (attendances.length === 0) {
+        let noDataMessage = "No attendance records found";
+        
+        if (month && year) {
+          const monthName = moment().month(parseInt(month) - 1).format("MMMM");
+          noDataMessage = `No data for ${monthName} ${year}`;
+        } else if (month) {
+          const monthName = moment().month(parseInt(month) - 1).format("MMMM");
+          noDataMessage = `No data for ${monthName} ${currentYear}`;
+        } else if (year) {
+          noDataMessage = `No data for ${year}`;
+        } else if (finalDateFrom && finalDateTo) {
+          noDataMessage = `No data for the selected date range`;
+        }
+
+        return res.status(200).json({
+          success: true,
+          status: "success",
+          successMessage: noDataMessage,
+          statuscode: 200,
+          data: {
+            employee: {
+              employee_id: employeeId,
+              employee_name: employeeData.name,
+            },
+            attendance_records: [],
+            working_hours_summary: null,
+          },
+          meta: {
+            total_attendance_records: 0,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+          },
+        });
+      }
+      // ===== END: No data check =====
 
       const todayDate = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
 
