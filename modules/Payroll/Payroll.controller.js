@@ -3400,5 +3400,279 @@ class PayrollController {
             });
         }
     }
+
+    async updateSalaryRule(req, res) {
+    try {
+        const { id } = req.params;
+        
+        if (!id) {
+            return res.status(400).json({ status: "error", message: "Rule ID is required" });
+        }
+
+        const {
+            name,
+            active,
+            appears_on_payslip,
+            appears_on_employee_cost_dashboard,
+            appears_on_payroll_report,
+            category_id,
+            code,
+            sequence,
+            condition_select,
+            condition_range,
+            condition_range_min,
+            condition_range_max,
+            condition_python,
+            condition_other_input_id,
+            quantity,
+            partner_id,
+            amount_fix,
+            amount_select,
+            amount_percentage_base,
+            amount_percentage,
+            amount_other_input_id,
+            amount_python_compute,
+            note,
+            struct_id
+        } = req.body;
+
+        let { client_id } = await getClientFromRequest(req);
+        if (typeof client_id === 'string') {
+            client_id = parseInt(client_id, 10);
+        }
+
+        // Check if rule exists and belongs to client
+        const existingRule = await odooService.searchRead(
+            "hr.salary.rule",
+            [
+                ["id", "=", parseInt(id)],
+                ["client_id", "=", client_id]
+            ],
+            ["id"],
+            1
+        );
+
+        if (!existingRule.length) {
+            return res.status(404).json({
+                status: "error",
+                message: "Salary Rule not found or does not belong to this client"
+            });
+        }
+
+        // Validate condition_select if provided
+        if (condition_select) {
+            const validConditions = ["none", "range", "input", "python"];
+            if (!validConditions.includes(condition_select)) {
+                return res.status(400).json({ 
+                    status: "error", 
+                    message: `Invalid condition_select. Must be: ${validConditions.join(", ")}` 
+                });
+            }
+
+            if (condition_select === "range") {
+                if (!condition_range || condition_range_min === undefined || condition_range_max === undefined) {
+                    return res.status(400).json({ 
+                        status: "error", 
+                        message: "Range Based on, Minimum, and Maximum are required for 'Range' condition" 
+                    });
+                }
+            }
+
+            if (condition_select === "python" && !condition_python) {
+                return res.status(400).json({ 
+                    status: "error", 
+                    message: "Python Condition code is required" 
+                });
+            }
+
+            if (condition_select === "input" && !condition_other_input_id) {
+                return res.status(400).json({ 
+                    status: "error", 
+                    message: "Condition Other Input is required" 
+                });
+            }
+        }
+
+        // Validate amount_select if provided
+        if (amount_select) {
+            const validAmountTypes = ["percentage", "fix", "input", "code"];
+            if (!validAmountTypes.includes(amount_select)) {
+                return res.status(400).json({ 
+                    status: "error", 
+                    message: `Invalid amount_select. Must be: ${validAmountTypes.join(", ")}` 
+                });
+            }
+
+            if (amount_select === "fix" && (amount_fix === undefined || amount_fix === null)) {
+                return res.status(400).json({ 
+                    status: "error", 
+                    message: "Fixed amount is required" 
+                });
+            }
+
+            if (amount_select === "percentage") {
+                if (!amount_percentage_base || amount_percentage === undefined) {
+                    return res.status(400).json({ 
+                        status: "error", 
+                        message: "Percentage base and value are required" 
+                    });
+                }
+            }
+
+            if (amount_select === "input" && !amount_other_input_id) {
+                return res.status(400).json({ 
+                    status: "error", 
+                    message: "Amount Other Input is required" 
+                });
+            }
+
+            if (amount_select === "code" && !amount_python_compute) {
+                return res.status(400).json({ 
+                    status: "error", 
+                    message: "Python Code for computation is required" 
+                });
+            }
+        }
+
+        // Check if code is being updated and if it conflicts with existing
+        if (code) {
+            const existingCode = await odooService.searchRead(
+                "hr.salary.rule",
+                [
+                    ["code", "=", code],
+                    ["client_id", "=", client_id],
+                    ["id", "!=", parseInt(id)]
+                ],
+                ["id"],
+                1
+            );
+
+            if (existingCode.length) {
+                return res.status(409).json({
+                    status: "error",
+                    message: `Salary Rule with code '${code}' already exists for this client`
+                });
+            }
+        }
+
+        // Build update values object
+        const vals = {};
+
+        if (name !== undefined) vals.name = name;
+        if (active !== undefined) vals.active = active;
+        if (appears_on_payslip !== undefined) vals.appears_on_payslip = appears_on_payslip;
+        if (appears_on_employee_cost_dashboard !== undefined) vals.appears_on_employee_cost_dashboard = appears_on_employee_cost_dashboard;
+        if (appears_on_payroll_report !== undefined) vals.appears_on_payroll_report = appears_on_payroll_report;
+        if (category_id !== undefined) vals.category_id = category_id;
+        if (code !== undefined) vals.code = code;
+        if (sequence !== undefined) vals.sequence = sequence;
+        if (condition_select !== undefined) vals.condition_select = condition_select;
+        if (amount_select !== undefined) vals.amount_select = amount_select;
+        if (struct_id !== undefined) vals.struct_id = struct_id;
+        if (note !== undefined) vals.note = note;
+
+        // Handle condition-specific fields
+        if (condition_select === "range") {
+            vals.condition_range = condition_range;
+            vals.condition_range_min = parseFloat(condition_range_min);
+            vals.condition_range_max = parseFloat(condition_range_max);
+            // Clear other condition fields
+            vals.condition_python = false;
+            vals.condition_other_input_id = false;
+        } else if (condition_select === "python") {
+            vals.condition_python = condition_python;
+            // Clear other condition fields
+            vals.condition_range = false;
+            vals.condition_range_min = false;
+            vals.condition_range_max = false;
+            vals.condition_other_input_id = false;
+        } else if (condition_select === "input") {
+            vals.condition_other_input_id = condition_other_input_id;
+            // Clear other condition fields
+            vals.condition_range = false;
+            vals.condition_range_min = false;
+            vals.condition_range_max = false;
+            vals.condition_python = false;
+        } else if (condition_select === "none") {
+            // Clear all condition fields
+            vals.condition_range = false;
+            vals.condition_range_min = false;
+            vals.condition_range_max = false;
+            vals.condition_python = false;
+            vals.condition_other_input_id = false;
+        }
+
+        // Handle amount-specific fields
+        if (amount_select && !["code", "input"].includes(amount_select)) {
+            if (quantity !== undefined) vals.quantity = quantity;
+        }
+        
+        if (amount_select === "fix") {
+            vals.amount_fix = amount_fix;
+            // Clear other amount fields
+            vals.amount_percentage_base = false;
+            vals.amount_percentage = false;
+            vals.amount_other_input_id = false;
+            vals.amount_python_compute = false;
+        } else if (amount_select === "percentage") {
+            vals.amount_percentage_base = amount_percentage_base;
+            vals.amount_percentage = amount_percentage;
+            // Clear other amount fields
+            vals.amount_fix = false;
+            vals.amount_other_input_id = false;
+            vals.amount_python_compute = false;
+        } else if (amount_select === "input") {
+            vals.amount_other_input_id = amount_other_input_id;
+            // Clear other amount fields
+            vals.amount_fix = false;
+            vals.amount_percentage_base = false;
+            vals.amount_percentage = false;
+            vals.amount_python_compute = false;
+        } else if (amount_select === "code") {
+            vals.amount_python_compute = amount_python_compute;
+            // Clear other amount fields
+            vals.amount_fix = false;
+            vals.amount_percentage_base = false;
+            vals.amount_percentage = false;
+            vals.amount_other_input_id = false;
+        }
+
+        if (partner_id !== undefined) vals.partner_id = partner_id;
+
+        // Update the record
+        await odooService.execute(
+            "hr.salary.rule",
+            "write",
+            [[parseInt(id)], vals]
+        );
+
+        // Fetch updated record
+        const updatedRecord = await odooService.execute(
+            "hr.salary.rule",
+            "read",
+            [[parseInt(id)], [
+                "id", "name", "code", "sequence", "condition_select",
+                "condition_range", "condition_range_min", "condition_range_max",
+                "condition_python", "condition_other_input_id",
+                "amount_select", "amount_fix", "amount_percentage", "struct_id",
+                "client_id", "active", "appears_on_payslip"
+            ]]
+        );
+
+        return res.status(200).json({
+            status: "success",
+            message: "Salary Rule updated successfully",
+            data: updatedRecord[0]
+        });
+
+    } catch (error) {
+        console.error("Update Salary Rule Error:", error);
+        console.error("Error stack:", error.stack);
+        return res.status(error.status || 500).json({
+            status: "error",
+            message: error.message || "Failed to update salary rule"
+        });
+    }
+}
 }
 module.exports = new PayrollController();

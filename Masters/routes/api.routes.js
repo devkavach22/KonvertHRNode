@@ -950,5 +950,9 @@ router.get(
   authenticate,
   apiController.exportEmployeeAttendancePDF.bind(apiController)
 );
-
+router.put(
+  "/update/salary-rule/:id",
+  authenticate,
+  PayrollController.updateSalaryRule.bind(PayrollController)
+);
 module.exports = router;
