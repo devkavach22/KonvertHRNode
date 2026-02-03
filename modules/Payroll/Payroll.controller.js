@@ -1599,162 +1599,162 @@ class PayrollController {
             });
         }
     }
-    async getContracts(req, res) {
-        try {
-            console.log("API called for Get Contracts");
+    // async getContracts(req, res) {
+    //     try {
+    //         console.log("API called for Get Contracts");
 
-            const {
-                employee_id,
-                job_id,
-                state,
-                date_from,
-                date_to,
-                limit = 10,
-                offset = 0
-            } = req.query;
-            console.log(req.query);
+    //         const {
+    //             employee_id,
+    //             job_id,
+    //             state,
+    //             date_from,
+    //             date_to,
+    //             limit = 10,
+    //             offset = 0
+    //         } = req.query;
+    //         console.log(req.query);
 
-            /* ───────── 1. GET client_id FROM AUTH ───────── */
-            const { client_id } = await getClientFromRequest(req);
+    //         /* ───────── 1. GET client_id FROM AUTH ───────── */
+    //         const { client_id } = await getClientFromRequest(req);
 
-            /* ───────── 2. BUILD DOMAIN ───────── */
-            const domain = [["client_id", "=", client_id]];
+    //         /* ───────── 2. BUILD DOMAIN ───────── */
+    //         const domain = [["client_id", "=", client_id]];
 
-            if (employee_id) {
-                domain.push(["employee_id", "=", Number(employee_id)]);
-            }
+    //         if (employee_id) {
+    //             domain.push(["employee_id", "=", Number(employee_id)]);
+    //         }
 
-            if (job_id) {
-                domain.push(["job_id", "=", Number(job_id)]);
-            }
+    //         if (job_id) {
+    //             domain.push(["job_id", "=", Number(job_id)]);
+    //         }
 
-            if (state) {
-                domain.push(["state", "=", state]);
-            }
+    //         if (state) {
+    //             domain.push(["state", "=", state]);
+    //         }
 
-            if (date_from) {
-                domain.push(["date_start", ">=", date_from]);
-            }
+    //         if (date_from) {
+    //             domain.push(["date_start", ">=", date_from]);
+    //         }
 
-            if (date_to) {
-                domain.push(["date_start", "<=", date_to]);
-            }
+    //         if (date_to) {
+    //             domain.push(["date_start", "<=", date_to]);
+    //         }
 
-            /* ───────── 3. FETCH CONTRACTS ───────── */
-            const records = await odooService.searchRead(
-                "hr.contract",
-                domain,
-                [
-                    "id",
-                    "name",
-                    "state",
-                    "client_id",
+    //         /* ───────── 3. FETCH CONTRACTS ───────── */
+    //         const records = await odooService.searchRead(
+    //             "hr.contract",
+    //             domain,
+    //             [
+    //                 "id",
+    //                 "name",
+    //                 "state",
+    //                 "client_id",
 
-                    "employee_code",
-                    "employee_id",
-                    "job_id",
-                    "department_id",
-                    "contract_type_id",
+    //                 "employee_code",
+    //                 "employee_id",
+    //                 "job_id",
+    //                 "department_id",
+    //                 "contract_type_id",
 
-                    "date_start",
-                    "date_end",
+    //                 "date_start",
+    //                 "date_end",
 
-                    "structure_type_id",
-                    "wage_type",
-                    "schedule_pay",
-                    "wage",
+    //                 "structure_type_id",
+    //                 "wage_type",
+    //                 "schedule_pay",
+    //                 "wage",
 
-                    "work_entry_source",
-                    "resource_calendar_id",
+    //                 "work_entry_source",
+    //                 "resource_calendar_id",
 
-                    "conveyance_allowances",
-                    "skill_allowances",
-                    "food_allowances",
-                    "washing_allowances",
-                    "special_allowances",
-                    "medical_allowances",
-                    "uniform_allowances",
-                    "child_eduction_allowances",
-                    "other_allowances",
-                    "variable_pay",
-                    "gratuity",
-                    "professional_tax",
-                    "lta",
+    //                 "conveyance_allowances",
+    //                 "skill_allowances",
+    //                 "food_allowances",
+    //                 "washing_allowances",
+    //                 "special_allowances",
+    //                 "medical_allowances",
+    //                 "uniform_allowances",
+    //                 "child_eduction_allowances",
+    //                 "other_allowances",
+    //                 "variable_pay",
+    //                 "gratuity",
+    //                 "professional_tax",
+    //                 "lta",
 
-                    "create_date",
-                    "write_date"
-                ],
-                Number(limit),
-                Number(offset),
-                "create_date desc"
-            );
+    //                 "create_date",
+    //                 "write_date"
+    //             ],
+    //             Number(limit),
+    //             Number(offset),
+    //             "create_date desc"
+    //         );
 
-            /* ───────── 4. FORMAT RESPONSE ───────── */
-            const data = records.map(c => ({
-                contract_id: c.id,
-                name: c.name,
-                state: c.state,
-                client: c.client_id,
+    //         /* ───────── 4. FORMAT RESPONSE ───────── */
+    //         const data = records.map(c => ({
+    //             contract_id: c.id,
+    //             name: c.name,
+    //             state: c.state,
+    //             client: c.client_id,
 
-                employee_code: c.employee_code,
-                employee: c.employee_id,
-                job_position: c.job_id,
-                department: c.department_id,
-                contract_type: c.contract_type_id,
+    //             employee_code: c.employee_code,
+    //             employee: c.employee_id,
+    //             job_position: c.job_id,
+    //             department: c.department_id,
+    //             contract_type: c.contract_type_id,
 
-                date_start: c.date_start,
-                date_end: c.date_end,
+    //             date_start: c.date_start,
+    //             date_end: c.date_end,
 
-                salary_structure_type: c.structure_type_id,
-                wage_type: c.wage_type,
-                schedule_pay: c.schedule_pay,
-                wage: c.wage,
+    //             salary_structure_type: c.structure_type_id,
+    //             wage_type: c.wage_type,
+    //             schedule_pay: c.schedule_pay,
+    //             wage: c.wage,
 
-                work_entry_source: c.work_entry_source,
-                working_schedule: c.resource_calendar_id,
+    //             work_entry_source: c.work_entry_source,
+    //             working_schedule: c.resource_calendar_id,
 
-                allowances: {
-                    conveyance: c.conveyance_allowances,
-                    skill: c.skill_allowances,
-                    food: c.food_allowances,
-                    washing: c.washing_allowances,
-                    special: c.special_allowances,
-                    medical: c.medical_allowances,
-                    uniform: c.uniform_allowances,
-                    child_education: c.child_eduction_allowances,
-                    other: c.other_allowances,
-                    variable_pay: c.variable_pay,
-                    gratuity: c.gratuity,
-                    professional_tax: c.professional_tax,
-                    lta: c.lta
-                },
+    //             allowances: {
+    //                 conveyance: c.conveyance_allowances,
+    //                 skill: c.skill_allowances,
+    //                 food: c.food_allowances,
+    //                 washing: c.washing_allowances,
+    //                 special: c.special_allowances,
+    //                 medical: c.medical_allowances,
+    //                 uniform: c.uniform_allowances,
+    //                 child_education: c.child_eduction_allowances,
+    //                 other: c.other_allowances,
+    //                 variable_pay: c.variable_pay,
+    //                 gratuity: c.gratuity,
+    //                 professional_tax: c.professional_tax,
+    //                 lta: c.lta
+    //             },
 
-                meta: {
-                    created_at: c.create_date,
-                    updated_at: c.write_date
-                }
-            }));
+    //             meta: {
+    //                 created_at: c.create_date,
+    //                 updated_at: c.write_date
+    //             }
+    //         }));
+    //         console.log("Data ::::::::", data)
+    //         /* ───────── 5. RESPONSE ───────── */
+    //         return res.status(200).json({
+    //             status: "success",
+    //             message: "Contracts fetched successfully",
+    //             data,
+    //             meta: {
+    //                 total: data.length,
+    //                 limit: Number(limit),
+    //                 offset: Number(offset)
+    //             }
+    //         });
 
-            /* ───────── 5. RESPONSE ───────── */
-            return res.status(200).json({
-                status: "success",
-                message: "Contracts fetched successfully",
-                data,
-                meta: {
-                    total: data.length,
-                    limit: Number(limit),
-                    offset: Number(offset)
-                }
-            });
-
-        } catch (error) {
-            console.error("❌ Get Contracts Error:", error);
-            return res.status(500).json({
-                status: "error",
-                message: error.message || "Failed to fetch contracts"
-            });
-        }
-    }
+    //     } catch (error) {
+    //         console.error("❌ Get Contracts Error:", error);
+    //         return res.status(500).json({
+    //             status: "error",
+    //             message: error.message || "Failed to fetch contracts"
+    //         });
+    //     }
+    // }
 
     async createInputType(req, res) {
         try {
@@ -3917,6 +3917,220 @@ class PayrollController {
             return res.status(500).json({
                 status: "error",
                 message: error.message || "Failed to update contract"
+            });
+        }
+    }
+
+    async getContracts(req, res) {
+        try {
+            const {
+                limit = 100,
+                offset = 0,
+                user_id,
+                employee_id,
+                state,
+                wage_type,
+                work_entry_source,
+                date_start,
+                date_end
+            } = req.query;
+
+            // ✅ Get client_id from request
+            const { client_id } = await getClientFromRequest(req);
+
+            // ✅ Validate user_id
+            if (!user_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "user_id is required"
+                });
+            }
+
+            // ✅ Fetch user details to check role
+            const user = await odooService.searchRead(
+                "res.users",
+                [["id", "=", parseInt(user_id)]],
+                ["id", "is_client_employee_admin", "is_client_employee_user", "employee_id"],
+                1
+            );
+
+            if (!user.length) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid user_id"
+                });
+            }
+
+            const userData = user[0];
+            const isAdmin = userData.is_client_employee_admin || false;
+            const isUser = userData.is_client_employee_user || false;
+            const userEmployeeId = userData.employee_id ? userData.employee_id[0] : null;
+
+            const fields = [
+                "id",
+                "name",
+                "employee_code",
+                "employee_id",
+                "job_id",
+                "department_id",
+                "contract_type_id",
+                "structure_type_id",
+                "wage_type",
+                "schedule_pay",
+                "wage",
+                "work_entry_source",
+                "resource_calendar_id",
+                "conveyance_allowances",
+                "skill_allowances",
+                "food_allowances",
+                "washing_allowances",
+                "special_allowances",
+                "medical_allowances",
+                "uniform_allowances",
+                "child_eduction_allowances",
+                "other_allowances",
+                "variable_pay",
+                "gratuity",
+                "professional_tax",
+                "lta",
+                "date_start",
+                "date_end",
+                "state",
+                "client_id",
+                "create_date",
+                "write_date"
+            ];
+
+            // ✅ Apply client_id filter in domain
+            const domain = [["client_id", "=", client_id]];
+
+            // ✅ Role-based filtering
+            if (isAdmin) {
+                // Admin can see all contracts belonging to their client
+                console.log(`User ${user_id} is Admin - Fetching all contracts for client ${client_id}`);
+            } else if (isUser) {
+                // Regular user can only see their own contracts
+                if (!userEmployeeId) {
+                    return res.status(403).json({
+                        status: "error",
+                        message: "User does not have an associated employee record"
+                    });
+                }
+                domain.push(["employee_id", "=", userEmployeeId]);
+                console.log(`User ${user_id} is Regular User - Fetching contracts only for employee ${userEmployeeId}`);
+            } else {
+                // User has neither admin nor user role
+                return res.status(403).json({
+                    status: "error",
+                    message: "User does not have permission to view contracts"
+                });
+            }
+
+            // ✅ Add optional filters (only if admin or if it matches user's own employee)
+            if (employee_id) {
+                if (isUser && parseInt(employee_id) !== userEmployeeId) {
+                    return res.status(403).json({
+                        status: "error",
+                        message: "You can only view your own contracts"
+                    });
+                }
+                domain.push(["employee_id", "=", parseInt(employee_id)]);
+            }
+            if (state) {
+                domain.push(["state", "=", state]);
+            }
+            if (wage_type) {
+                domain.push(["wage_type", "=", wage_type]);
+            }
+            if (work_entry_source) {
+                domain.push(["work_entry_source", "=", work_entry_source]);
+            }
+            if (date_start) {
+                domain.push(["date_start", ">=", date_start]);
+            }
+            if (date_end) {
+                domain.push(["date_end", "<=", date_end]);
+            }
+
+            const contracts = await odooService.searchRead(
+                "hr.contract",
+                domain,
+                fields,
+                parseInt(offset),
+                parseInt(limit),
+                "name asc"
+            );
+
+            // ✅ Count only for specific client and role
+            const totalCount = await odooService.searchCount(
+                "hr.contract",
+                domain
+            );
+
+            // ✅ Format response data to match create API structure
+            const formattedContracts = contracts.map(c => ({
+                contract_id: c.id,
+                name: c.name,
+                state: c.state,
+                client: c.client_id,
+
+                employee_code: c.employee_code,
+                employee: c.employee_id,
+                job_position: c.job_id,
+                department: c.department_id,
+                contract_type: c.contract_type_id,
+
+                date_start: c.date_start,
+                date_end: c.date_end,
+
+                salary_structure_type: c.structure_type_id,
+                wage_type: c.wage_type,
+                schedule_pay: c.schedule_pay,
+                wage: c.wage,
+
+                work_entry_source: c.work_entry_source,
+                working_schedule: c.resource_calendar_id,
+
+                allowances: {
+                    conveyance: c.conveyance_allowances,
+                    skill: c.skill_allowances,
+                    food: c.food_allowances,
+                    washing: c.washing_allowances,
+                    special: c.special_allowances,
+                    medical: c.medical_allowances,
+                    uniform: c.uniform_allowances,
+                    child_education: c.child_eduction_allowances,
+                    other: c.other_allowances,
+                    variable_pay: c.variable_pay,
+                    gratuity: c.gratuity,
+                    professional_tax: c.professional_tax,
+                    lta: c.lta
+                },
+
+                meta: {
+                    created_at: c.create_date,
+                    updated_at: c.write_date
+                }
+            }));
+
+            return res.status(200).json({
+                status: "success",
+                message: "Contracts fetched successfully",
+                data: formattedContracts,
+                meta: {
+                    total: totalCount,
+                    limit: parseInt(limit),
+                    offset: parseInt(offset),
+                    returned: formattedContracts.length,
+                },
+            });
+
+        } catch (error) {
+            console.error("❌ Get Contracts Error:", error);
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to fetch contracts",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }
