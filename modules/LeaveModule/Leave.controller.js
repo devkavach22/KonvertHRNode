@@ -2404,9 +2404,6 @@ class LeaveController {
       const { name, date_from, date_to, work_entry_type_id, calendar_id } = req.body;
       console.log(req.body);
 
-      // -----------------------------
-      // 1. Mandatory Validation
-      // -----------------------------
       const missingFields = [];
       if (!name) missingFields.push("name (Reason)");
       if (!date_from) missingFields.push("date_from (Start Date)");
@@ -2419,9 +2416,6 @@ class LeaveController {
         });
       }
 
-      // -----------------------------
-      // 2. Validate Date Format
-      // -----------------------------
       const dateTimeRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
       if (!dateTimeRegex.test(date_from)) {
@@ -2438,9 +2432,6 @@ class LeaveController {
         });
       }
 
-      // -----------------------------
-      // 3. Get Client ID
-      // -----------------------------
       let client_id;
       try {
         const clientData = await getClientFromRequest(req);
@@ -2459,29 +2450,48 @@ class LeaveController {
         });
       }
 
-      // -----------------------------
-      // 4. Check for Duplicate (client_id + name)
-      // -----------------------------
-      const existingHoliday = await odooService.searchRead(
+      // ✅ UPDATED: Check for exact duplicate (same client_id, name, and dates)
+      const exactDuplicate = await odooService.searchRead(
         "resource.calendar.leaves",
         [
           ["client_id", "=", client_id],
-          ["name", "=", name]
+          ["name", "=", name],
+          ["date_from", "=", date_from],
+          ["date_to", "=", date_to]
         ],
-        ["id", "name"],
+        ["id", "name", "date_from", "date_to"],
         1
       );
 
-      if (existingHoliday.length) {
+      if (exactDuplicate.length) {
         return res.status(409).json({
           status: "error",
-          message: "Public holiday with this name already exists for this client"
+          message: "This holiday already exists with your client"
         });
       }
 
-      // -----------------------------
-      // 5. Validate Work Entry Type (Global)
-      // -----------------------------
+      const calendarFilter = calendar_id ? ["calendar_id", "=", parseInt(calendar_id)] : ["calendar_id", "=", false];
+
+      const overlappingHolidays = await odooService.searchRead(
+        "resource.calendar.leaves",
+        [
+          ["client_id", "=", client_id],
+          calendarFilter,
+          ["date_from", "<", date_to],
+          ["date_to", ">", date_from]
+        ],
+        ["id", "name", "date_from", "date_to"]
+      );
+
+      console.log("Found overlapping holidays:", overlappingHolidays);
+
+      if (overlappingHolidays.length > 0) {
+        return res.status(409).json({
+          status: "error",
+          message: `A public holiday already exists during this period: "${overlappingHolidays[0].name}" (${overlappingHolidays[0].date_from} to ${overlappingHolidays[0].date_to})`
+        });
+      }
+
       let valid_work_entry_type_id = false;
       if (work_entry_type_id) {
         const workEntryType = await odooService.searchRead(
@@ -2500,9 +2510,6 @@ class LeaveController {
         valid_work_entry_type_id = work_entry_type_id;
       }
 
-      // -----------------------------
-      // 6. Validate Calendar (Client Specific)
-      // -----------------------------
       let valid_calendar_id = false;
       if (calendar_id) {
         const calendar = await odooService.searchRead(
@@ -2521,9 +2528,6 @@ class LeaveController {
         valid_calendar_id = calendar_id;
       }
 
-      // -----------------------------
-      // 7. Payload
-      // -----------------------------
       const vals = {
         name,
         date_from,
@@ -2535,14 +2539,8 @@ class LeaveController {
 
       console.log("Payload sending to Odoo:", vals);
 
-      // -----------------------------
-      // 8. Create Holiday
-      // -----------------------------
       const holidayId = await odooService.create("resource.calendar.leaves", vals);
 
-      // -----------------------------
-      // 9. Fetch Created Holiday for proper response
-      // -----------------------------
       const createdHoliday = await odooService.searchRead(
         "resource.calendar.leaves",
         [["id", "=", holidayId]],
@@ -2558,7 +2556,13 @@ class LeaveController {
     } catch (error) {
       console.error("❌ Create Public Holiday Error:", error);
 
-      // Check if it's a validation error from Odoo
+      if (error.message && error.message.includes("cannot overlap")) {
+        return res.status(409).json({
+          status: "error",
+          message: "A public holiday already exists during this Date"
+        });
+      }
+
       if (error.message && error.message.includes("does not match format")) {
         return res.status(400).json({
           status: "error",
