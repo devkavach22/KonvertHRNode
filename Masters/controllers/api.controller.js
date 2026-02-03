@@ -5870,7 +5870,6 @@ class ApiController {
     try {
       console.log("API Called getPartners Branches .......");
       const { client_id } = await getClientFromRequest(req);
-
       const partners = await odooService.searchRead(
         "res.partner",
         [["parent_id", "=", client_id]],
@@ -5879,7 +5878,6 @@ class ApiController {
           "name",
           "mobile",
           "email",
-          "l10n_in_pan",
           "vat",
           "l10n_in_gst_treatment",
           "street",
@@ -5889,18 +5887,45 @@ class ApiController {
           "zip",
           "country_id",
           "company_type",
-          "is_from_konvert_hr_portal",
+          "parent_id"
         ]
       );
+      const formatted = partners.map(p => {
+        const addressParts = [
+          p.street,
+          p.street2,
+          p.city,
+          p.state_id ? p.state_id[1] : null,
+          p.zip,
+          p.country_id ? p.country_id[1] : null
+        ]
+          .filter(Boolean)
+          .map(part => part.toString().trim().replace(/,+$/, ''));
+
+        const fullAddress = addressParts.join(', ');
+
+        return {
+          ...p,
+          RegisteredCompnany: p.parent_id ? p.parent_id[1] : null,
+          address: fullAddress || null,
+          parent_id: undefined
+        };
+      });
+      const cleaned = formatted.map(record => {
+        const obj = {};
+        for (const key in record) {
+          if (record[key] !== undefined) obj[key] = record[key];
+        }
+        return obj;
+      });
 
       return res.status(200).json({
         status: "success",
         message: "Branches fetched successfully",
-        data: partners,
+        data: cleaned
       });
     } catch (error) {
       console.error("Get Branch Error:", error);
-
       return res.status(error.status || 500).json({
         status: "error",
         message: error.message || "Failed to fetch Branchs",
