@@ -658,16 +658,45 @@ class ApiController {
   //         customer_rank: 1,
   //       });
 
-  //       // --- UPDATED: UPDATE EMPLOYEE PASSWORD AND ADDRESS_ID ---
+  //       // --- UPDATED: UPDATE EMPLOYEE PASSWORD, ADDRESS_ID, WORK_PHONE AND PRIVATE_EMAIL ---
+  //       let employeeId = null;
   //       if (userData[0].employee_ids && userData[0].employee_ids.length > 0) {
-  //         const employeeId = userData[0].employee_ids[0];
+  //         employeeId = userData[0].employee_ids[0];
   //         try {
   //           await odooService.write("hr.employee", [employeeId], {
   //             employee_password: password,
-  //             address_id: companyPartnerId, // ADDED: Assign user's partner_id to employee's address_id
+  //             address_id: companyPartnerId,
+  //             work_phone: mobile,        // ✅ Set work_phone from mobile
+  //             mobile_phone: mobile,      // ✅ Set mobile_phone as well
+  //             private_email: email,      // ✅ Set private_email for email sending
   //           });
-  //           console.log(`Employee password and address_id set for employee ID: ${employeeId}`);
+  //           console.log(`Employee password, address_id, work_phone, and private_email set for employee ID: ${employeeId}`);
   //           console.log(`Partner ID ${companyPartnerId} assigned to employee address_id`);
+  //           console.log(`Work phone ${mobile} assigned to employee`);
+  //           console.log(`Private email ${email} assigned to employee`);
+
+  //           // --- SEND REGISTRATION CODE EMAIL TO EMPLOYEE ---
+  //           try {
+  //             console.log("==========================================");
+  //             console.log("SENDING REGISTRATION CODE EMAIL");
+  //             console.log("Employee ID:", employeeId);
+  //             console.log("==========================================");
+
+  //             await odooService.callMethod(
+  //               "hr.employee",
+  //               "send_registration_code_email",
+  //               [employeeId]
+  //             );
+
+  //             console.log("✓ Registration code email sent successfully!");
+  //             console.log("==========================================");
+  //           } catch (emailError) {
+  //             console.error("==========================================");
+  //             console.error("✗ ERROR sending registration code email:", emailError);
+  //             console.error("Error details:", emailError.message);
+  //             console.error("==========================================");
+  //             // Don't fail the entire request if email fails
+  //           }
   //         } catch (empError) {
   //           console.error("Error setting employee data:", empError);
   //         }
@@ -763,6 +792,7 @@ class ApiController {
   //         status: "OK",
   //         message: "User Is Registered, Email Sent",
   //         id: userId,
+  //         employee_id: employeeId,
   //       });
   //     } catch (error) {
   //       console.error("Create user error:", error);
@@ -772,6 +802,7 @@ class ApiController {
   //       });
   //     }
   //   }
+
   async createUser(req, res) {
     console.log("Register Called ");
     try {
@@ -818,10 +849,10 @@ class ApiController {
         });
       }
 
-      // --- 2. UNIQUE EMAIL CHECK ---
+      // --- 2. UNIQUE EMAIL CHECK (ONLY ACTIVE USERS) ---
       const existingUsers = await odooService.searchRead(
         "res.users",
-        [["login", "=", email]],
+        [["login", "=", email], ["active", "=", true]],
         ["id"]
       );
 
@@ -832,10 +863,10 @@ class ApiController {
         });
       }
 
-      // --- 3. UNIQUE GST (VAT) CHECK ---
+      // --- 3. UNIQUE GST (VAT) CHECK (ONLY ACTIVE PARTNERS) ---
       const existingGST = await odooService.searchRead(
         "res.partner",
-        [["vat", "=", gst_number]],
+        [["vat", "=", gst_number], ["active", "=", true]],
         ["id"]
       );
 

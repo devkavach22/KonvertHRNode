@@ -17,7 +17,7 @@ class OdooService {
       host: urlObj.hostname,
       port: urlObj.port || (this.protocol === "https:" ? 443 : 80),
       path: path,
-      allowNone: true, 
+      allowNone: true,
     };
     return this.protocol === "https:"
       ? xmlrpc.createSecureClient(clientConfig)
@@ -47,7 +47,7 @@ class OdooService {
     const effectiveUid = userId || this.uid;
     const effectivePassword = userPassword || this.password;
     const objectClient = this.createClient("/xmlrpc/2/object");
-    
+
     return new Promise((resolve, reject) => {
       objectClient.methodCall(
         "execute_kw",
@@ -108,10 +108,22 @@ class OdooService {
   async unlink(model, ids, userId = null, userPassword = null) {
     return await this.execute(model, "unlink", [ids], {}, userId, userPassword);
   }
+  // ✅ NEW: Dedicated Employee Write Function
+  async writeEmployee(employeeId, values) {
+    const cleanId = Array.isArray(employeeId) ? employeeId[0] : employeeId;
+    console.log(`📝 Writing to hr.employee ID: ${cleanId} (type: ${typeof cleanId})`);
+    return await this.execute("hr.employee", "write", [[cleanId], values]);
+  }
 
+  // ✅ NEW: Dedicated User Write Function
+  async writeUser(userId, values) {
+    const cleanId = Array.isArray(userId) ? userId[0] : userId;
+    console.log(`📝 Writing to res.users ID: ${cleanId} (type: ${typeof cleanId})`);
+    return await this.execute("res.users", "write", [[cleanId], values]);
+  }
   async callMethod(model, method, recordIds = [], context = {}, userId = null, userPassword = null) {
     console.log(`🔹 Calling method: ${method} on model: ${model} with IDs:`, recordIds);
-    
+
     try {
       const result = await this.execute(
         model,
@@ -121,7 +133,7 @@ class OdooService {
         userId,
         userPassword
       );
-      
+
       console.log(`Method ${method} completed successfully`);
       return result;
     } catch (error) {

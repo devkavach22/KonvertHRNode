@@ -3624,13 +3624,12 @@ const getEmployees = async (req, res) => {
         status: "success",
         count: cachedData.length,
         data: cachedData,
-        response_time_ms: totalTime,
-        cached: true
       });
     }
 
     let employeeSearchDomain;
 
+    // ✅ Added ["active", "=", true] to both domains below
     if (
       currentUser.is_client_employee_user &&
       !currentUser.is_client_employee_admin
@@ -3638,12 +3637,16 @@ const getEmployees = async (req, res) => {
       employeeSearchDomain = [
         ["address_id", "=", client_id],
         ["user_id", "=", currentUser.id],
+        ["active", "=", true], 
       ];
     } else {
-      employeeSearchDomain = [["address_id", "=", client_id]];
+      employeeSearchDomain = [
+        ["address_id", "=", client_id],
+        ["active", "=", true],
+      ];
     }
 
-    // ✅ Get employee IDs only (super fast)
+    // ✅ Get employee IDs only
     const employeeIds = await odooHelpers.searchRead(
       "hr.employee",
       employeeSearchDomain,
@@ -3659,21 +3662,16 @@ const getEmployees = async (req, res) => {
       });
     }
 
-    // ✅ Fetch all approvals in ONE batch call
     const allApprovalsPromise = odooHelpers.searchRead(
       "employee.approval.user.details",
       [["employee_id", "in", employeeIds.map(e => e.id)]],
       ["employee_id", "group_id", "user_id", "approval_sequance", "model"]
     );
 
-    // ✅ Process employees with limited concurrency (avoid overwhelming Odoo)
-    const BATCH_SIZE = 5; // Process 5 employees at a time
+    const BATCH_SIZE = 5; 
     const validEmployees = [];
-
-    // Wait for approvals to be fetched
     const allApprovals = await allApprovalsPromise;
 
-    // Create approvals lookup map
     const approvalsMap = {};
     allApprovals.forEach(approval => {
       const empId = Array.isArray(approval.employee_id)
@@ -3692,14 +3690,12 @@ const getEmployees = async (req, res) => {
       });
     });
 
-    // Process in batches
     for (let i = 0; i < employeeIds.length; i += BATCH_SIZE) {
       const batch = employeeIds.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.all(
         batch.map(async (emp) => {
           try {
-            // ✅ Fetch employee data with minimal fields first
             const employeeData = await odooHelpers.searchRead(
               "hr.employee",
               [["id", "=", emp.id]],
@@ -3734,14 +3730,12 @@ const getEmployees = async (req, res) => {
 
             const employee = employeeData[0];
 
-            // Cleanup
             Object.keys(employee).forEach((key) => {
               if (employee[key] === false || employee[key] === null) {
                 employee[key] = "";
               }
             });
 
-            // ✅ Parallel: Images + Bank Account
             const imagePromises = [];
 
             if (employee.image_1920) {
@@ -3765,7 +3759,6 @@ const getEmployees = async (req, res) => {
               );
             }
 
-            // Bank account fetch
             const bankPromise = (employee.bank_account_id && Array.isArray(employee.bank_account_id) && employee.bank_account_id.length > 0)
               ? odooHelpers.searchRead(
                 "res.partner.bank",
@@ -3775,13 +3768,11 @@ const getEmployees = async (req, res) => {
               )
               : Promise.resolve([]);
 
-            // Wait for all parallel operations
             const [imageResults, bankAccountData] = await Promise.all([
               Promise.all(imagePromises),
               bankPromise
             ]);
 
-            // Set image URLs
             employee.image_url = "";
             employee.driving_license_url = "";
             employee.passbook_url = "";
@@ -3792,15 +3783,12 @@ const getEmployees = async (req, res) => {
               if (result.type === 'passbook') employee.passbook_url = result.url;
             });
 
-            // Clean up base64
             delete employee.image_1920;
             delete employee.driving_license;
             delete employee.upload_passbook;
 
-            // ✅ Get approvals from pre-fetched map (instant!)
             employee.approvals = approvalsMap[employee.id] || [];
 
-            // ✅ Get bank account details
             if (bankAccountData.length > 0) {
               const bank = bankAccountData[0];
               employee.bank_account_details = {
@@ -3830,20 +3818,15 @@ const getEmployees = async (req, res) => {
       validEmployees.push(...batchResults.filter(emp => emp !== null));
     }
 
-    // ✅ Cache the results
     cacheManager.set(cacheKey, validEmployees);
 
     const endTime = Date.now();
     const totalTime = endTime - startTime;
 
-    console.log(`⏱️ Total API Time: ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s)`);
-
     return res.status(200).json({
       status: "success",
       count: validEmployees.length,
       data: validEmployees,
-      response_time_ms: totalTime,
-      cached: false
     });
   } catch (error) {
     console.error("Error fetching employees:", error);
@@ -5284,7 +5267,7 @@ const updateEmployee = async (req, res) => {
 const deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-
+    
     if (!id) {
       return res.status(400).json({
         status: "error",
@@ -5294,9 +5277,19 @@ const deleteEmployee = async (req, res) => {
 
     const { client_id } = await getClientFromRequest(req);
 
-    const existingEmployee = await odooHelpers.searchRead(
+    // Parse and validate employee ID
+    const employeeIdInt = parseInt(id, 10);
+    if (isNaN(employeeIdInt)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid Employee ID format",
+      });
+    }
+
+    // Fetch employee details
+    const existingEmployee = await odooService.searchRead(
       "hr.employee",
-      [["id", "=", parseInt(id)]],
+      [["id", "=", employeeIdInt]],
       ["id", "name", "user_id"]
     );
 
@@ -5309,17 +5302,29 @@ const deleteEmployee = async (req, res) => {
 
     const employee = existingEmployee[0];
 
-    /** 🔥 STEP 1 — Soft delete employee */
-    await odooHelpers.write("hr.employee", parseInt(id), { active: false });
+    // Extract clean employee ID from response
+    const cleanEmployeeId = Array.isArray(employee.id) 
+      ? employee.id[0] 
+      : employee.id;
 
-    /** 🔥 STEP 2 — Soft delete linked user (optional) */
+    console.log(`Deleting employee ID: ${cleanEmployeeId}`);
+
+    // 🔥 STEP 1 — Soft delete employee using dedicated function
+    await odooService.writeEmployee(cleanEmployeeId, { active: false });
+
+    // 🔥 STEP 2 — Soft delete linked user
     let userDeleteStatus = null;
-
     if (employee.user_id) {
       try {
-        await odooHelpers.write("res.users", employee.user_id, {
-          active: false,
-        });
+        // Extract user ID (comes as [id, "name"] from Odoo)
+        const userIdInt = Array.isArray(employee.user_id)
+          ? employee.user_id[0]
+          : employee.user_id;
+
+        console.log(`Deleting user ID: ${userIdInt}`);
+
+        // Use dedicated user write function
+        await odooService.writeUser(userIdInt, { active: false });
         userDeleteStatus = "soft-deleted";
       } catch (err) {
         console.error("User soft delete failed:", err);
@@ -5329,10 +5334,9 @@ const deleteEmployee = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message: "Employee soft deleted successfully",
-      id: parseInt(id),
+      message: "Employee  deleted successfully",
+      id: cleanEmployeeId,
       user_id: employee.user_id,
-      user_delete_status: userDeleteStatus,
     });
   } catch (error) {
     console.error("Error deleting employee:", error);
