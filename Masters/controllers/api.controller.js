@@ -1592,9 +1592,61 @@ class ApiController {
     }
   }
 
+  // async getJobPositions(req, res) {
+  //   try {
+  //     const { client_id } = await getClientFromRequest(req);
+
+  //     const jobs = await fetchOdooRecords(
+  //       "hr.job",
+  //       client_id,
+  //       [
+  //         "id",
+  //         "name",
+  //         "department_id",
+  //         "no_of_recruitment",
+  //         "industry_id",
+  //         "contract_type_id",
+  //         "skill_ids",
+  //       ]
+  //     );
+
+  //     const data = jobs.map((job) => ({
+  //       job_id: job.id,
+  //       name: job.name,
+  //       department_id: job.department_id?.[0] || null,
+  //       department_name: job.department_id?.[1] || null,
+  //       no_of_recruitment: job.no_of_recruitment,
+  //       industry_id: job.industry_id?.[0] || null,
+  //       industry_name: job.industry_id?.[1] || null,
+  //       contract_type_id: job.contract_type_id?.[0] || null,
+  //       contract_type_name: job.contract_type_id?.[1] || null,
+  //       skill_ids: job.skill_ids || [],
+  //     }));
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Job positions fetched successfully",
+  //       data,
+  //     });
+  //   } catch (error) {
+  //     console.error("❌ Get Job Positions Error:", error);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to fetch job positions",
+  //     });
+  //   }
+  // }
+
   async getJobPositions(req, res) {
     try {
       const { client_id } = await getClientFromRequest(req);
+      const { department_id } = req.query; // Get department_id from query params
+
+      // Build domain filter
+      let domain = [];
+      if (department_id) {
+        domain.push(["department_id", "=", parseInt(department_id)]);
+      }
 
       const jobs = await fetchOdooRecords(
         "hr.job",
@@ -1607,7 +1659,8 @@ class ApiController {
           "industry_id",
           "contract_type_id",
           "skill_ids",
-        ]
+        ],
+        domain // Pass the filter
       );
 
       const data = jobs.map((job) => ({
