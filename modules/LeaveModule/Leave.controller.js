@@ -1410,287 +1410,383 @@ class LeaveController {
       });
     }
   }
+  // New createLeaveRequest
+  // async createLeaveRequest(req, res) {
+  //   try {
+  //     console.log("========== CREATE LEAVE REQUEST API START ==========");
+  //     console.log("Incoming Request Body:", JSON.stringify(req.body, null, 2));
+  //     console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
 
-  // Old createLeaveRequest
-  // async createLeaveRequest(req,res) {
-  //   try{
-  //     console.log("API called for Leave Request");
-  //     // console.log(req.body);
+  //     const { holiday_status_id, date_from, date_to, reason } = req.body;
 
-  //     const {
-  //       employee_id,
-  //       holiday_status_id,
-  //       date_from,
-  //       date_to,
-  //       reason,
-  //     } = req.body;
-  //     console.log(req.body);
+  //     /* ───────── 1. GET USER ID ───────── */
+  //     const rawUserId = req.body.user_id ?? req.query.user_id;
+  //     const user_id = Number(rawUserId);
 
-  //     const { user_id } = await getClientFromRequest(req);
-
-  //     if (!employee_id || !holiday_status_id || !date_from || !date_to)
-  //     {
-  //       console.error("Validation error:Missing mandatory fields");
+  //     if (!rawUserId || Number.isNaN(user_id) || user_id <= 0) {
   //       return res.status(400).json({
   //         status: "error",
-  //         message: "Require fields missing: employee_id, holiday_status_id,date_from,date_to"
+  //         message: "user_id is required"
   //       });
   //     }
 
-  //     const empIdInt = parseInt(employee_id);
+  //     /* ───────── 2. REQUIRED FIELD VALIDATION ───────── */
+  //     if (!holiday_status_id || !date_from || !date_to) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Require fields missing: holiday_status_id, date_from, date_to"
+  //       });
+  //     }
+
   //     const leaveTypeIdInt = parseInt(holiday_status_id);
 
-  //     const employeeInfo = await odooService.searchRead(
-  //       "hr.employee",
-  //       [["id","=",empIdInt]],
-  //       ["name","department_id","company_id"],
+  //     /* ───────── 3. FETCH USER → COMPANY ───────── */
+  //     const userInfo = await odooService.searchRead(
+  //       "res.users",
+  //       [["id", "=", user_id]],
+  //       ["company_id"],
   //       1
   //     );
 
-  //     if(!employeeInfo.length)
-  //     {
-  //       console.error(`Database error: Employee ID ${empIdInt} not found in Odoo.`);
+  //     if (!userInfo.length || !userInfo[0].company_id) {
   //       return res.status(404).json({
   //         status: "error",
-  //         message: "Employee not found."
+  //         message: "User company not found."
+  //       });
+  //     }
+
+  //     /* ───────── 4. FETCH EMPLOYEE ───────── */
+  //     const employeeInfo = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", user_id]],
+  //       ["id", "name", "department_id", "company_id"],
+  //       1
+  //     );
+
+  //     if (!employeeInfo.length) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Employee not linked with this user."
   //       });
   //     }
 
   //     const empData = employeeInfo[0];
-  //     const department_name = empData.department_id ? empData.department_id[1] : "No Department Found.";
-  //     const company_name = empData.company_id ? empData.company_id[1] : "No Company Found.";
+  //     const empIdInt = empData.id;
 
+  //     const department_name = empData.department_id
+  //       ? empData.department_id[1]
+  //       : "No Department Found";
+
+  //     const company_name = empData.company_id
+  //       ? empData.company_id[1]
+  //       : "No Company Found";
+
+  //     /* ───────── 5. FETCH LEAVE TYPE ───────── */
   //     const leaveTypeInfo = await odooService.searchRead(
   //       "hr.leave.type",
-  //       [["id","=",leaveTypeIdInt]],
+  //       [["id", "=", leaveTypeIdInt]],
   //       ["name"],
   //       1
   //     );
 
-  //     const leave_type_name = leaveTypeInfo.length > 0 ? leaveTypeInfo[0].name : "Unknow Type.";
+  //     const leave_type_name =
+  //       leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
 
-  //     console.log(`Resolved context: Employee:${empData.name} | Dept:${department_name} | Company:${company_name} | Leave Type:${leave_type_name}`);
-
+  //     /* ───────── 6. CREATE LEAVE REQUEST ───────── */
   //     const vals = {
-  //       employee_id:empIdInt,
+  //       employee_id: empIdInt,
   //       holiday_status_id: leaveTypeIdInt,
-  //       date_from: date_from,
-  //       date_to: date_to,
-  //       name: reason || null,
+  //       request_date_from: date_from,
+  //       request_date_to: date_to,
+  //       name: reason || false,
   //       create_uid: user_id
   //     };
 
-  //     console.log("Payload:",vals);
-  //     const requestId = await odooService.create("hr.leave",vals);
-  //     console.log(`Success: Leave Request ID:${requestId} create in Odoo.`);
+  //     console.log("Leave Creation Payload:", vals);
 
+  //     const leaveId = await odooService.create("hr.leave", vals);
+  //     console.log(`✅ Leave created. ID: ${leaveId}`);
+
+  //     /* ───────── 7. AUTO SUBMIT (UI BUTTON LOGIC) ───────── */
+  //     try {
+  //       console.log("Calling make_approval_request...");
+  //       await odooService.callMethod(
+  //         "hr.leave",
+  //         "make_approval_request",
+  //         [[leaveId]]
+  //       );
+  //       console.log("✅ Leave submit executed");
+  //     } catch (submitError) {
+  //       const msg = (submitError?.message || "").toLowerCase();
+
+  //       // Check for allocation error
+  //       if (msg.includes("allocation") || msg.includes("you do not have any allocation")) {
+  //         return res.status(400).json({
+  //           status: "error",
+  //           message: "You don't have any allocation for this time off type"
+  //         });
+  //       }
+
+  //       // ODOO KNOWN BEHAVIOR (TYPO SAFE)
+  //       if (
+  //         msg.includes("already") &&
+  //         (msg.includes("generated") || msg.includes("genrated"))
+  //       ) {
+  //         console.log("ℹ️ Approval request already generated by Odoo (safe to ignore)");
+  //       } else {
+  //         console.error("❌ Unexpected submit error:", submitError.message);
+  //         return res.status(500).json({
+  //           status: "error",
+  //           message: "Leave created but submit failed",
+  //           details: submitError.message
+  //         });
+  //       }
+  //     }
+
+  //     /* ───────── 8. SUCCESS RESPONSE ───────── */
   //     return res.status(200).json({
-  //       status: "sucess",
-  //       message: "Leave request created successfully.",
-  //       data:{
-  //         request_id: requestId,
-  //         empaloyee_name: empData.name,
-  //         leave_type_name: leave_type_name,
-  //         company_name: company_name,
-  //         department_name: department_name,
-  //         validity:{
+  //       status: "success",
+  //       message: "Leave request created and submitted successfully.",
+  //       data: {
+  //         request_id: leaveId,
+  //         employee_name: empData.name,
+  //         leave_type_name,
+  //         company_name,
+  //         department_name,
+  //         validity: {
   //           from: date_from,
   //           to: date_to
   //         },
-  //         reason: reason
+  //         reason
   //       }
   //     });
-  //   }
-  //   catch (error)
-  //   {
-  //     console.error("Fatal error in create leave request:",error);
-  //     return res.status(error.status || 500 ).json({
+
+  //   } catch (error) {
+  //     console.error("========== CREATE LEAVE REQUEST FAILED ==========");
+
+  //     const rawError = error?.message || "";
+
+  //     // Check for allocation error
+  //     if (rawError.includes("allocation") || rawError.includes("You do not have any allocation")) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "You don't have any allocation for this time off type"
+  //       });
+  //     }
+
+  //     // Check for overlap error
+  //     if (rawError.includes("overlaps with this period")) {
+  //       return res.status(409).json({
+  //         status: "error",
+  //         message: `Your requested leave (${req.body.date_from} to ${req.body.date_to}) conflicts with an existing entry.`,
+  //         error_type: "LEAVE_OVERLAP"
+  //       });
+  //     }
+
+  //     return res.status(error.status || 500).json({
   //       status: "error",
   //       message: error.message || "Failed to create leave request."
   //     });
   //   }
   // }
+  // async createLeaveRequest(req, res) {
+  //   try {
+  //     console.log("========== CREATE LEAVE REQUEST API START ==========");
+  //     console.log("Incoming Request Body:", JSON.stringify(req.body, null, 2));
+  //     console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
 
-  // New createLeaveRequest
-  async createLeaveRequest(req, res) {
-    try {
-      console.log("========== CREATE LEAVE REQUEST API START ==========");
-      console.log("Incoming Request Body:", JSON.stringify(req.body, null, 2));
-      console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
+  //     const { holiday_status_id, date_from, date_to, reason } = req.body;
 
-      const { holiday_status_id, date_from, date_to, reason } = req.body;
+  //     /* ───────── 1. GET USER ID ───────── */
+  //     const rawUserId = req.body.user_id ?? req.query.user_id;
+  //     const user_id = Number(rawUserId);
 
-      /* ───────── 1. GET USER ID ───────── */
-      const rawUserId = req.body.user_id ?? req.query.user_id;
-      const user_id = Number(rawUserId);
+  //     if (!rawUserId || Number.isNaN(user_id) || user_id <= 0) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "user_id is required"
+  //       });
+  //     }
 
-      if (!rawUserId || Number.isNaN(user_id) || user_id <= 0) {
-        return res.status(400).json({
-          status: "error",
-          message: "user_id is required"
-        });
-      }
+  //     /* ───────── 2. REQUIRED FIELD VALIDATION ───────── */
+  //     if (!holiday_status_id || !date_from || !date_to) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Require fields missing: holiday_status_id, date_from, date_to"
+  //       });
+  //     }
 
-      /* ───────── 2. REQUIRED FIELD VALIDATION ───────── */
-      if (!holiday_status_id || !date_from || !date_to) {
-        return res.status(400).json({
-          status: "error",
-          message: "Require fields missing: holiday_status_id, date_from, date_to"
-        });
-      }
+  //     const leaveTypeIdInt = parseInt(holiday_status_id);
 
-      const leaveTypeIdInt = parseInt(holiday_status_id);
+  //     /* ───────── 3. FETCH USER → COMPANY ───────── */
+  //     const userInfo = await odooService.searchRead(
+  //       "res.users",
+  //       [["id", "=", user_id]],
+  //       ["company_id"],
+  //       1
+  //     );
 
-      /* ───────── 3. FETCH USER → COMPANY ───────── */
-      const userInfo = await odooService.searchRead(
-        "res.users",
-        [["id", "=", user_id]],
-        ["company_id"],
-        1
-      );
+  //     if (!userInfo.length || !userInfo[0].company_id) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "User company not found."
+  //       });
+  //     }
 
-      if (!userInfo.length || !userInfo[0].company_id) {
-        return res.status(404).json({
-          status: "error",
-          message: "User company not found."
-        });
-      }
+  //     /* ───────── 4. FETCH EMPLOYEE ───────── */
+  //     const employeeInfo = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", user_id]],
+  //       ["id", "name", "department_id", "company_id"],
+  //       1
+  //     );
 
-      /* ───────── 4. FETCH EMPLOYEE ───────── */
-      const employeeInfo = await odooService.searchRead(
-        "hr.employee",
-        [["user_id", "=", user_id]],
-        ["id", "name", "department_id", "company_id"],
-        1
-      );
+  //     if (!employeeInfo.length) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Employee not linked with this user."
+  //       });
+  //     }
 
-      if (!employeeInfo.length) {
-        return res.status(404).json({
-          status: "error",
-          message: "Employee not linked with this user."
-        });
-      }
+  //     const empData = employeeInfo[0];
+  //     const empIdInt = empData.id;
 
-      const empData = employeeInfo[0];
-      const empIdInt = empData.id;
+  //     const department_name = empData.department_id
+  //       ? empData.department_id[1]
+  //       : "No Department Found";
 
-      const department_name = empData.department_id
-        ? empData.department_id[1]
-        : "No Department Found";
+  //     const company_name = empData.company_id
+  //       ? empData.company_id[1]
+  //       : "No Company Found";
 
-      const company_name = empData.company_id
-        ? empData.company_id[1]
-        : "No Company Found";
+  //     /* ───────── 5. FETCH LEAVE TYPE ───────── */
+  //     const leaveTypeInfo = await odooService.searchRead(
+  //       "hr.leave.type",
+  //       [["id", "=", leaveTypeIdInt]],
+  //       ["name"],
+  //       1
+  //     );
 
-      /* ───────── 5. FETCH LEAVE TYPE ───────── */
-      const leaveTypeInfo = await odooService.searchRead(
-        "hr.leave.type",
-        [["id", "=", leaveTypeIdInt]],
-        ["name"],
-        1
-      );
+  //     const leave_type_name =
+  //       leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
 
-      const leave_type_name =
-        leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
+  //     /* ───────── 5.1. CHECK FUTURE DATE FOR SICK/MEDICAL LEAVE ───────── */
+  //     const leaveTypeNameLower = leave_type_name.toLowerCase().replace(/\s+/g, '');
+  //     const isSickOrMedical =
+  //       leaveTypeNameLower.includes('sickleave') ||
+  //       leaveTypeNameLower.includes('medicalleave');
 
-      /* ───────── 6. CREATE LEAVE REQUEST ───────── */
-      const vals = {
-        employee_id: empIdInt,
-        holiday_status_id: leaveTypeIdInt,
-        request_date_from: date_from,
-        request_date_to: date_to,
-        name: reason || false,
-        create_uid: user_id
-      };
+  //     if (isSickOrMedical) {
+  //       const today = new Date();
+  //       today.setHours(0, 0, 0, 0);
+  //       const requestFromDate = new Date(date_from);
+  //       requestFromDate.setHours(0, 0, 0, 0);
 
-      console.log("Leave Creation Payload:", vals);
+  //       if (requestFromDate > today) {
+  //         return res.status(400).json({
+  //           status: "error",
+  //           message: `You can't apply ${leave_type_name} for future dates.`
+  //         });
+  //       }
+  //     }
 
-      const leaveId = await odooService.create("hr.leave", vals);
-      console.log(`✅ Leave created. ID: ${leaveId}`);
+  //     /* ───────── 6. CREATE LEAVE REQUEST ───────── */
+  //     const vals = {
+  //       employee_id: empIdInt,
+  //       holiday_status_id: leaveTypeIdInt,
+  //       request_date_from: date_from,
+  //       request_date_to: date_to,
+  //       name: reason || false,
+  //       create_uid: user_id
+  //     };
 
-      /* ───────── 7. AUTO SUBMIT (UI BUTTON LOGIC) ───────── */
-      try {
-        console.log("Calling make_approval_request...");
-        await odooService.callMethod(
-          "hr.leave",
-          "make_approval_request",
-          [[leaveId]]
-        );
-        console.log("✅ Leave submit executed");
-      } catch (submitError) {
-        const msg = (submitError?.message || "").toLowerCase();
+  //     console.log("Leave Creation Payload:", vals);
 
-        // Check for allocation error
-        if (msg.includes("allocation") || msg.includes("you do not have any allocation")) {
-          return res.status(400).json({
-            status: "error",
-            message: "You don't have any allocation for this time off type"
-          });
-        }
+  //     const leaveId = await odooService.create("hr.leave", vals);
+  //     console.log(`✅ Leave created. ID: ${leaveId}`);
 
-        // ODOO KNOWN BEHAVIOR (TYPO SAFE)
-        if (
-          msg.includes("already") &&
-          (msg.includes("generated") || msg.includes("genrated"))
-        ) {
-          console.log("ℹ️ Approval request already generated by Odoo (safe to ignore)");
-        } else {
-          console.error("❌ Unexpected submit error:", submitError.message);
-          return res.status(500).json({
-            status: "error",
-            message: "Leave created but submit failed",
-            details: submitError.message
-          });
-        }
-      }
+  //     /* ───────── 7. AUTO SUBMIT (UI BUTTON LOGIC) ───────── */
+  //     try {
+  //       console.log("Calling make_approval_request...");
+  //       await odooService.callMethod(
+  //         "hr.leave",
+  //         "make_approval_request",
+  //         [[leaveId]]
+  //       );
+  //       console.log("✅ Leave submit executed");
+  //     } catch (submitError) {
+  //       const msg = (submitError?.message || "").toLowerCase();
 
-      /* ───────── 8. SUCCESS RESPONSE ───────── */
-      return res.status(200).json({
-        status: "success",
-        message: "Leave request created and submitted successfully.",
-        data: {
-          request_id: leaveId,
-          employee_name: empData.name,
-          leave_type_name,
-          company_name,
-          department_name,
-          validity: {
-            from: date_from,
-            to: date_to
-          },
-          reason
-        }
-      });
+  //       // Check for allocation error
+  //       if (msg.includes("allocation") || msg.includes("you do not have any allocation")) {
+  //         return res.status(400).json({
+  //           status: "error",
+  //           message: "You don't have any allocation for this time off type"
+  //         });
+  //       }
 
-    } catch (error) {
-      console.error("========== CREATE LEAVE REQUEST FAILED ==========");
+  //       // ODOO KNOWN BEHAVIOR (TYPO SAFE)
+  //       if (
+  //         msg.includes("already") &&
+  //         (msg.includes("generated") || msg.includes("genrated"))
+  //       ) {
+  //         console.log("ℹ️ Approval request already generated by Odoo (safe to ignore)");
+  //       } else {
+  //         console.error("❌ Unexpected submit error:", submitError.message);
+  //         return res.status(500).json({
+  //           status: "error",
+  //           message: "Leave created but submit failed",
+  //           details: submitError.message
+  //         });
+  //       }
+  //     }
 
-      const rawError = error?.message || "";
+  //     /* ───────── 8. SUCCESS RESPONSE ───────── */
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Leave request created and submitted successfully.",
+  //       data: {
+  //         request_id: leaveId,
+  //         employee_name: empData.name,
+  //         leave_type_name,
+  //         company_name,
+  //         department_name,
+  //         validity: {
+  //           from: date_from,
+  //           to: date_to
+  //         },
+  //         reason
+  //       }
+  //     });
 
-      // Check for allocation error
-      if (rawError.includes("allocation") || rawError.includes("You do not have any allocation")) {
-        return res.status(400).json({
-          status: "error",
-          message: "You don't have any allocation for this time off type"
-        });
-      }
+  //   } catch (error) {
+  //     console.error("========== CREATE LEAVE REQUEST FAILED ==========");
 
-      // Check for overlap error
-      if (rawError.includes("overlaps with this period")) {
-        return res.status(409).json({
-          status: "error",
-          message: `Your requested leave (${req.body.date_from} to ${req.body.date_to}) conflicts with an existing entry.`,
-          error_type: "LEAVE_OVERLAP"
-        });
-      }
+  //     const rawError = error?.message || "";
 
-      return res.status(error.status || 500).json({
-        status: "error",
-        message: error.message || "Failed to create leave request."
-      });
-    }
-  }
+  //     // Check for allocation error
+  //     if (rawError.includes("allocation") || rawError.includes("You do not have any allocation")) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "You don't have any allocation for this time off type"
+  //       });
+  //     }
 
+  //     // Check for overlap error
+  //     if (rawError.includes("overlaps with this period")) {
+  //       return res.status(409).json({
+  //         status: "error",
+  //         message: `Already applied for this date`,
+  //         error_type: "LEAVE_OVERLAP"
+  //       });
+  //     }
+
+  //     return res.status(error.status || 500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to create leave request."
+  //     });
+  //   }
+  // }
 
   async getLeaveRequest(req, res) {
     try {
@@ -3715,7 +3811,213 @@ class LeaveController {
     }
   }
 
+async createLeaveRequest(req, res) {
+    try {
+      console.log("========== CREATE LEAVE REQUEST API START ==========");
+      console.log("Incoming Request Body:", JSON.stringify(req.body, null, 2));
+      console.log("Incoming Request Query:", JSON.stringify(req.query, null, 2));
 
+      const { holiday_status_id, date_from, date_to, reason } = req.body;
+
+      /* ───────── 1. GET USER ID ───────── */
+      const rawUserId = req.body.user_id ?? req.query.user_id;
+      const user_id = Number(rawUserId);
+
+      if (!rawUserId || Number.isNaN(user_id) || user_id <= 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "user_id is required"
+        });
+      }
+
+      /* ───────── 2. REQUIRED FIELD VALIDATION ───────── */
+      if (!holiday_status_id || !date_from || !date_to) {
+        return res.status(400).json({
+          status: "error",
+          message: "Require fields missing: holiday_status_id, date_from, date_to"
+        });
+      }
+
+      const leaveTypeIdInt = parseInt(holiday_status_id);
+
+      /* ───────── 3. FETCH USER → COMPANY ───────── */
+      const userInfo = await odooService.searchRead(
+        "res.users",
+        [["id", "=", user_id]],
+        ["company_id"],
+        1
+      );
+
+      if (!userInfo.length || !userInfo[0].company_id) {
+        return res.status(404).json({
+          status: "error",
+          message: "User company not found."
+        });
+      }
+
+      /* ───────── 4. FETCH EMPLOYEE ───────── */
+      const employeeInfo = await odooService.searchRead(
+        "hr.employee",
+        [["user_id", "=", user_id]],
+        ["id", "name", "department_id", "company_id", "in_probation", "probation_end"],
+        1
+      );
+
+      if (!employeeInfo.length) {
+        return res.status(404).json({
+          status: "error",
+          message: "Employee not linked with this user."
+        });
+      }
+
+      const empData = employeeInfo[0];
+      const empIdInt = empData.id;
+
+      /* ───────── 4.1. CHECK PROBATION PERIOD ───────── */
+      if (empData.in_probation === true) {
+        const probationEndDate = empData.probation_end;
+        return res.status(400).json({
+          status: "error",
+          message: `You are in probation period so you can't apply for leave. Your probation ends on ${probationEndDate}.`
+        });
+      }
+
+      const department_name = empData.department_id
+        ? empData.department_id[1]
+        : "No Department Found";
+
+      const company_name = empData.company_id
+        ? empData.company_id[1]
+        : "No Company Found";
+
+      /* ───────── 5. FETCH LEAVE TYPE ───────── */
+      const leaveTypeInfo = await odooService.searchRead(
+        "hr.leave.type",
+        [["id", "=", leaveTypeIdInt]],
+        ["name"],
+        1
+      );
+
+      const leave_type_name =
+        leaveTypeInfo.length ? leaveTypeInfo[0].name : "Unknown Type";
+
+      /* ───────── 5.1. CHECK FUTURE DATE FOR SICK/MEDICAL LEAVE ───────── */
+      const leaveTypeNameLower = leave_type_name.toLowerCase().replace(/\s+/g, '');
+      const isSickOrMedical = 
+        leaveTypeNameLower.includes('sickleave') || 
+        leaveTypeNameLower.includes('medicalleave');
+
+      if (isSickOrMedical) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const requestFromDate = new Date(date_from);
+        requestFromDate.setHours(0, 0, 0, 0);
+
+        if (requestFromDate > today) {
+          return res.status(400).json({
+            status: "error",
+            message: `You can't apply ${leave_type_name} for future dates.`
+          });
+        }
+      }
+
+      /* ───────── 6. CREATE LEAVE REQUEST ───────── */
+      const vals = {
+        employee_id: empIdInt,
+        holiday_status_id: leaveTypeIdInt,
+        request_date_from: date_from,
+        request_date_to: date_to,
+        name: reason || false,
+        create_uid: user_id
+      };
+
+      console.log("Leave Creation Payload:", vals);
+
+      const leaveId = await odooService.create("hr.leave", vals);
+      console.log(`✅ Leave created. ID: ${leaveId}`);
+
+      /* ───────── 7. AUTO SUBMIT (UI BUTTON LOGIC) ───────── */
+      try {
+        console.log("Calling make_approval_request...");
+        await odooService.callMethod(
+          "hr.leave",
+          "make_approval_request",
+          [[leaveId]]
+        );
+        console.log("✅ Leave submit executed");
+      } catch (submitError) {
+        const msg = (submitError?.message || "").toLowerCase();
+
+        // Check for allocation error
+        if (msg.includes("allocation") || msg.includes("you do not have any allocation")) {
+          return res.status(400).json({
+            status: "error",
+            message: "You don't have any allocation for this time off type"
+          });
+        }
+
+        // ODOO KNOWN BEHAVIOR (TYPO SAFE)
+        if (
+          msg.includes("already") &&
+          (msg.includes("generated") || msg.includes("genrated"))
+        ) {
+          console.log("ℹ️ Approval request already generated by Odoo (safe to ignore)");
+        } else {
+          console.error("❌ Unexpected submit error:", submitError.message);
+          return res.status(500).json({
+            status: "error",
+            message: "Leave created but submit failed",
+            details: submitError.message
+          });
+        }
+      }
+
+      /* ───────── 8. SUCCESS RESPONSE ───────── */
+      return res.status(200).json({
+        status: "success",
+        message: "Leave request created and submitted successfully.",
+        data: {
+          request_id: leaveId,
+          employee_name: empData.name,
+          leave_type_name,
+          company_name,
+          department_name,
+          validity: {
+            from: date_from,
+            to: date_to
+          },
+          reason
+        }
+      });
+
+    } catch (error) {
+      console.error("========== CREATE LEAVE REQUEST FAILED ==========");
+
+      const rawError = error?.message || "";
+
+      // Check for allocation error
+      if (rawError.includes("allocation") || rawError.includes("You do not have any allocation")) {
+        return res.status(400).json({
+          status: "error",
+          message: "You don't have any allocation for this time off type"
+        });
+      }
+
+      // Check for overlap error
+      if (rawError.includes("overlaps with this period")) {
+        return res.status(409).json({
+          status: "error",
+          message: `Already requested for this date.`,
+          error_type: "LEAVE_OVERLAP"
+        });
+      }
+
+      return res.status(error.status || 500).json({
+        status: "error",
+        message: error.message || "Failed to create leave request."
+      });
+    }
+  }
 }
 
 module.exports = new LeaveController();
