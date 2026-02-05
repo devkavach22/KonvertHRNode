@@ -625,7 +625,6 @@ module.exports = {
       });
     }
   },
-
   //   async createSubscription(req, res) {
   //     console.log(".......Subscription Creation Process Started ........");
   //     try {
@@ -1188,6 +1187,18 @@ module.exports = {
   //           clientPlanData
   //         );
   //         console.log("✅ Client plan details stored:", clientPlanId);
+
+  //         // Update next invoice date after subscription and invoice creation
+  //         console.log("📅 Step 10.8: Updating next invoice date...");
+  //         try {
+  //           await odooService.callMethod("sale.order", "update_next_invoice_date_custom", [
+  //             sale_order_id,
+  //           ]);
+  //           console.log("✅ Next invoice date updated successfully");
+  //         } catch (dateUpdateError) {
+  //           console.error("⚠️ Next invoice date update error:", dateUpdateError.message);
+  //           // Don't fail the entire process for this
+  //         }
   //       } catch (paymentError) {
   //         console.error("❌ Payment/Email error:", paymentError);
   //       }
@@ -1255,6 +1266,7 @@ module.exports = {
         product_id,
         price_unit,
         transection_number,
+        plan_id, // ✅ Frontend se "Monthly" ya "Yearly" name aayega (but variable name plan_id hai)
       } = req.body;
 
       // Automatically set quantity to 1
@@ -1285,6 +1297,14 @@ module.exports = {
         return res.status(400).json({
           success: false,
           error: "transection_number is required",
+        });
+      }
+
+      // ✅ Validate plan_id (which contains plan name like "Monthly" or "Yearly")
+      if (!plan_id) {
+        return res.status(400).json({
+          success: false,
+          error: "plan_id is required (e.g., 'Monthly', 'Yearly')",
         });
       }
 
@@ -1382,12 +1402,12 @@ module.exports = {
 
       console.log("✅ Partner validated:", partner.name);
 
-      console.log("🔍 Step 4: Fetching product with subscription plan...");
+      console.log("🔍 Step 4: Fetching product details...");
 
       const productVariant = await odooService.searchRead(
         "product.product",
         [["id", "=", product_id]],
-        ["id", "name", "product_tmpl_id", "subscription_plan_id"]
+        ["id", "name", "product_tmpl_id"]
       );
 
       if (!productVariant.length) {
@@ -1400,39 +1420,30 @@ module.exports = {
       console.log("📦 Product found:", productVariant[0]);
 
       const product_template_id = productVariant[0].product_tmpl_id?.[0];
-      const subscription_plan_id = productVariant[0].subscription_plan_id?.[0];
 
-      if (!subscription_plan_id) {
-        return res.status(400).json({
-          success: false,
-          error: "Product does not have a subscription plan assigned. Please use products from the getProducts API.",
-          product_details: {
-            id: product_id,
-            name: productVariant[0].name,
-            template_id: product_template_id,
-            subscription_plan_id: productVariant[0].subscription_plan_id,
-          },
-        });
-      }
-
-      console.log("✅ Subscription Plan ID found:", subscription_plan_id);
       console.log("✅ Product validated:", productVariant[0].name);
 
-      console.log("🔍 Step 5: Validating recurring plan...");
+      // ✅✅✅ CRITICAL STEP: Find plan ID from plan name
+      console.log("🔍 Step 5: Finding subscription plan ID from plan name...");
+      console.log("🔍 Received plan name from frontend:", plan_id); // This is actually the plan name like "Monthly"
 
       const recurringPlan = await odooService.searchRead(
         "sale.subscription.plan",
-        [["id", "=", subscription_plan_id]],
+        [["name", "=", plan_id]], // ✅ Search by name (plan_id contains "Monthly" or "Yearly")
         ["id", "name"]
       );
 
       if (!recurringPlan.length) {
         return res.status(404).json({
           success: false,
-          error: "Recurring plan not found with ID: " + subscription_plan_id,
+          error: `Subscription plan not found with name: "${plan_id}". Please use 'Monthly' or 'Yearly'`,
         });
       }
-      console.log("✅ Recurring Plan validated:", recurringPlan[0].name);
+
+      const subscription_plan_id = recurringPlan[0].id; // ✅ Now we have the actual numeric ID
+      const subscription_plan_name = recurringPlan[0].name;
+
+      console.log("✅ Found Plan ID:", subscription_plan_id, "| Name:", subscription_plan_name);
 
       console.log("🔍 Step 6: Fetching pricelist...");
       const partnerPricelist = await odooService.searchRead(
@@ -1449,7 +1460,7 @@ module.exports = {
       console.log("📝 Step 7: Creating subscription sale order...");
       const saleOrderData = {
         partner_id: partner_id,
-        plan_id: subscription_plan_id,
+        plan_id: subscription_plan_id, // ✅ Using the numeric ID we found
         company_id: adminCompanyId,
         date_order: todayDate,
         pricelist_id: pricelist_id || false,
@@ -1565,17 +1576,15 @@ module.exports = {
         // ========== CRITICAL STEP: Link invoice lines to sale order lines ==========
         console.log("🔗 Step 10.3: Linking invoice lines to sale order lines...");
 
-        // Get invoice lines
         const invoiceLines = await odooService.execute("account.move.line", "search_read", [
           [
             ["move_id", "=", invoice_id],
-            ["product_id", "!=", false]  // Only product lines, not tax/total lines
+            ["product_id", "!=", false]
           ],
           ["id", "product_id", "quantity"]
         ]);
         console.log("   📋 Found invoice lines:", invoiceLines);
 
-        // Get sale order lines
         const saleOrderLines = subscription.order_line;
         console.log("   📋 Sale order line IDs:", saleOrderLines);
 
@@ -1586,7 +1595,6 @@ module.exports = {
           console.log("   🔸 Invoice Line ID:", invoiceLineId);
           console.log("   🔸 Sale Order Line ID:", saleOrderLineId);
 
-          // Link invoice line to sale order line
           try {
             const linkResult = await odooService.execute("account.move.line", "write", [
               [invoiceLineId],
@@ -1594,14 +1602,12 @@ module.exports = {
             ]);
             console.log("   ✅ Invoice line linked to sale order line! Result:", linkResult);
 
-            // Verify the link
             const verifyInvoiceLine = await odooService.execute("account.move.line", "read", [
               [invoiceLineId],
               ["sale_line_ids"]
             ]);
             console.log("   📋 Invoice line sale_line_ids:", verifyInvoiceLine[0].sale_line_ids);
 
-            // Now check if subscription's invoice_ids got updated automatically
             const verifySubscription = await odooService.execute("sale.order", "read", [
               [sale_order_id],
               ["invoice_ids"]
@@ -1745,7 +1751,7 @@ module.exports = {
                     <p style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #666;">SUBSCRIPTION DETAILS</p>
                     <table width="100%" cellpadding="8" cellspacing="0">
                       <tr><td style="font-size: 15px; color: #666;">Subscription:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${subscription.name}</td></tr>
-                      <tr><td style="font-size: 15px; color: #666;">Plan:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${recurringPlan[0].name}</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">Plan:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${subscription_plan_name}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Product:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${productVariant[0].name}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Invoice:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${invoice.name}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Transaction Number:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${transection_number}</td></tr>
@@ -1810,7 +1816,6 @@ module.exports = {
         );
         console.log("✅ Client plan details stored:", clientPlanId);
 
-        // Update next invoice date after subscription and invoice creation
         console.log("📅 Step 10.8: Updating next invoice date...");
         try {
           await odooService.callMethod("sale.order", "update_next_invoice_date_custom", [
@@ -1819,13 +1824,11 @@ module.exports = {
           console.log("✅ Next invoice date updated successfully");
         } catch (dateUpdateError) {
           console.error("⚠️ Next invoice date update error:", dateUpdateError.message);
-          // Don't fail the entire process for this
         }
       } catch (paymentError) {
         console.error("❌ Payment/Email error:", paymentError);
       }
 
-      // Final verification
       console.log("🔍 Step 11: Final verification...");
       const finalSubscription = await odooService.execute(
         "sale.order",
@@ -1843,8 +1846,8 @@ module.exports = {
           subscription_name: subscription.name,
           partner_id: partner_id,
           partner_name: partner.name,
-          plan_id: subscription_plan_id,
-          plan_name: recurringPlan[0].name,
+          plan_id: subscription_plan_id, // ✅ Returning the numeric ID
+          plan_name: subscription_plan_name, // ✅ Returning the name
           product_id: product_id,
           product_template_id: product_template_id,
           product_name: productVariant[0].name,

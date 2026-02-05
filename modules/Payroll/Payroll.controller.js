@@ -875,10 +875,19 @@ class PayrollController {
                 "code",
                 "sequence",
                 "condition_select",
+                "condition_range",
+                "condition_range_min",
+                "condition_range_max",
+                "condition_python",
+                "condition_other_input_id",
                 "quantity",
                 "partner_id",
                 "amount_fix",
                 "amount_select",
+                "amount_percentage_base",
+                "amount_percentage",
+                "amount_other_input_id",
+                "amount_python_compute",
                 "note",
                 "struct_id",
                 "client_id"
@@ -1283,7 +1292,6 @@ class PayrollController {
             console.log("API called for Contract creation");
             const {
                 name, // Contract Reference (MANDATORY)
-                employee_code,
                 employee_id,
                 job_id, // Job Position
                 date_start,
@@ -1291,13 +1299,13 @@ class PayrollController {
 
                 resource_calendar_id,
                 work_entry_source,
-                structure_type_id, // Salary Structure Type
+                structure_type_id, // Salary Structure Type (OPTIONAL)
                 department_id,
                 contract_type_id,
 
                 wage_type,
                 schedule_pay,
-                wage,
+                wage, // (OPTIONAL)
 
                 conveyance_allowances,
                 skill_allowances,
@@ -1335,12 +1343,10 @@ class PayrollController {
             /* ───────── 2. MANDATORY VALIDATION ───────── */
             const missingFields = [];
             if (!name) missingFields.push("name (Contract Reference)");
-            if (!employee_code) missingFields.push("employee_code");
             if (!employee_id) missingFields.push("employee_id");
             if (!date_start) missingFields.push("date_start");
-            if (!structure_type_id) missingFields.push("structure_type_id (Salary Structure Type)");
             if (!work_entry_source) missingFields.push("work_entry_source");
-            if (!wage) missingFields.push("wage");
+            // wage removed from mandatory check
 
             if (missingFields.length) {
                 return res.status(400).json({
@@ -1349,11 +1355,11 @@ class PayrollController {
                 });
             }
 
-            /* ───────── 3. VALIDATE EMPLOYEE (GET COMPANY & COUNTRY) ───────── */
+            /* ───────── 3. VALIDATE EMPLOYEE (FETCH EMPLOYEE CODE) ───────── */
             const employee = await odooService.searchRead(
                 "hr.employee",
                 [["id", "=", employee_id]],
-                ["id", "name"],
+                ["id", "name", "registration_number"],
                 1
             );
 
@@ -1364,8 +1370,7 @@ class PayrollController {
                 });
             }
 
-            // const employeeCompanyId = employee[0].company_id?.[0] || false;
-            // const employeeCountryId = employee[0].country_id?.[0] || false;
+            const employee_code = employee[0].registration_number || false;
 
             /* ───────── 4. VALIDATE JOB POSITION ───────── */
             if (job_id) {
@@ -1383,9 +1388,7 @@ class PayrollController {
                 }
             }
 
-            /* ───────── 5. VALIDATE SALARY STRUCTURE TYPE (CRITICAL FIX) ───────── */
-            // let validStructureTypeId = false;
-
+            /* ───────── 5. VALIDATE SALARY STRUCTURE TYPE (OPTIONAL) ───────── */
             if (structure_type_id) {
                 const structureType = await odooService.searchRead(
                     "hr.payroll.structure.type",
@@ -1393,25 +1396,13 @@ class PayrollController {
                     ["id", "name"],
                     1
                 );
-                // const structureType = await odooService.searchRead(
-                // "hr.payroll.structure.type",
-                // [
-                // ["id", "=", structure_type_id],
-                // "|", ["company_id", "=", false], ["company_id", "=", employeeCompanyId],
-                // "|", ["country_id", "=", false], ["country_id", "=", employeeCountryId]
-                // ],
-                // ["id", "name"],
-                // 1
-                // );
 
                 if (!structureType.length) {
                     return res.status(400).json({
                         status: "error",
-                        message: "Invalid Salary Structure Type for this employee"
+                        message: "Invalid Salary Structure Type"
                     });
                 }
-
-                // validStructureTypeId = structure_type_id;
             }
 
             /* ───────── 6. VALIDATE WORK ENTRY SOURCE ───────── */
@@ -1492,7 +1483,7 @@ class PayrollController {
             /* ───────── 9. CONSTRUCT PAYLOAD (ODOO FINAL) ───────── */
             const vals = {
                 name,
-                state: "draft", // New → Running → Expired → Cancelled
+                state: "draft",
                 client_id,
 
                 employee_code,
@@ -1511,7 +1502,7 @@ class PayrollController {
 
                 wage_type: wage_type || "monthly",
                 schedule_pay: schedule_pay || "monthly",
-                wage,
+                wage: wage || 0, // Now defaults to 0 if missing
 
                 conveyance_allowances: conveyance_allowances || 0,
                 skill_allowances: skill_allowances || 0,
@@ -1538,41 +1529,16 @@ class PayrollController {
                 "hr.contract",
                 [["id", "=", contractId]],
                 [
-                    "id",
-                    "name",
-                    "employee_code",
-                    "employee_id",
-                    "job_id",
-                    "department_id",
-                    "contract_type_id",
-                    "structure_type_id",
-                    "wage_type",
-                    "schedule_pay",
-                    "wage",
-                    "work_entry_source",
-                    "resource_calendar_id",
-                    "conveyance_allowances",
-                    "skill_allowances",
-                    "food_allowances",
-                    "washing_allowances",
-                    "special_allowances",
-                    "medical_allowances",
-                    "uniform_allowances",
-                    "child_eduction_allowances",
-                    "other_allowances",
-                    "variable_pay",
-                    "gratuity",
-                    "professional_tax",
-                    "lta",
-                    "date_start",
-                    "date_end",
-                    "state",
-                    "client_id"
+                    "id", "name", "employee_code", "employee_id", "job_id", "department_id",
+                    "contract_type_id", "structure_type_id", "wage_type", "schedule_pay",
+                    "wage", "work_entry_source", "resource_calendar_id", "conveyance_allowances",
+                    "skill_allowances", "food_allowances", "washing_allowances", "special_allowances",
+                    "medical_allowances", "uniform_allowances", "child_eduction_allowances",
+                    "other_allowances", "variable_pay", "gratuity", "professional_tax", "lta",
+                    "date_start", "date_end", "state", "client_id"
                 ],
                 1
             );
-
-            // const contractData = createdContract.length ? createdContract[0] : null;
 
             const c = rec[0];
 
@@ -1625,12 +1591,6 @@ class PayrollController {
                 }
             });
 
-            // return res.status(201).json({
-            // status: "success",
-            // message: "Contract created successfully",
-            // data: createdContract[0] || null
-            // });
-
         } catch (error) {
             console.error("❌ Create Contract Error:", error);
             return res.status(500).json({
@@ -1639,162 +1599,162 @@ class PayrollController {
             });
         }
     }
-    async getContracts(req, res) {
-        try {
-            console.log("API called for Get Contracts");
+    // async getContracts(req, res) {
+    //     try {
+    //         console.log("API called for Get Contracts");
 
-            const {
-                employee_id,
-                job_id,
-                state,
-                date_from,
-                date_to,
-                limit = 10,
-                offset = 0
-            } = req.query;
-            console.log(req.query);
+    //         const {
+    //             employee_id,
+    //             job_id,
+    //             state,
+    //             date_from,
+    //             date_to,
+    //             limit = 10,
+    //             offset = 0
+    //         } = req.query;
+    //         console.log(req.query);
 
-            /* ───────── 1. GET client_id FROM AUTH ───────── */
-            const { client_id } = await getClientFromRequest(req);
+    //         /* ───────── 1. GET client_id FROM AUTH ───────── */
+    //         const { client_id } = await getClientFromRequest(req);
 
-            /* ───────── 2. BUILD DOMAIN ───────── */
-            const domain = [["client_id", "=", client_id]];
+    //         /* ───────── 2. BUILD DOMAIN ───────── */
+    //         const domain = [["client_id", "=", client_id]];
 
-            if (employee_id) {
-                domain.push(["employee_id", "=", Number(employee_id)]);
-            }
+    //         if (employee_id) {
+    //             domain.push(["employee_id", "=", Number(employee_id)]);
+    //         }
 
-            if (job_id) {
-                domain.push(["job_id", "=", Number(job_id)]);
-            }
+    //         if (job_id) {
+    //             domain.push(["job_id", "=", Number(job_id)]);
+    //         }
 
-            if (state) {
-                domain.push(["state", "=", state]);
-            }
+    //         if (state) {
+    //             domain.push(["state", "=", state]);
+    //         }
 
-            if (date_from) {
-                domain.push(["date_start", ">=", date_from]);
-            }
+    //         if (date_from) {
+    //             domain.push(["date_start", ">=", date_from]);
+    //         }
 
-            if (date_to) {
-                domain.push(["date_start", "<=", date_to]);
-            }
+    //         if (date_to) {
+    //             domain.push(["date_start", "<=", date_to]);
+    //         }
 
-            /* ───────── 3. FETCH CONTRACTS ───────── */
-            const records = await odooService.searchRead(
-                "hr.contract",
-                domain,
-                [
-                    "id",
-                    "name",
-                    "state",
-                    "client_id",
+    //         /* ───────── 3. FETCH CONTRACTS ───────── */
+    //         const records = await odooService.searchRead(
+    //             "hr.contract",
+    //             domain,
+    //             [
+    //                 "id",
+    //                 "name",
+    //                 "state",
+    //                 "client_id",
 
-                    "employee_code",
-                    "employee_id",
-                    "job_id",
-                    "department_id",
-                    "contract_type_id",
+    //                 "employee_code",
+    //                 "employee_id",
+    //                 "job_id",
+    //                 "department_id",
+    //                 "contract_type_id",
 
-                    "date_start",
-                    "date_end",
+    //                 "date_start",
+    //                 "date_end",
 
-                    "structure_type_id",
-                    "wage_type",
-                    "schedule_pay",
-                    "wage",
+    //                 "structure_type_id",
+    //                 "wage_type",
+    //                 "schedule_pay",
+    //                 "wage",
 
-                    "work_entry_source",
-                    "resource_calendar_id",
+    //                 "work_entry_source",
+    //                 "resource_calendar_id",
 
-                    "conveyance_allowances",
-                    "skill_allowances",
-                    "food_allowances",
-                    "washing_allowances",
-                    "special_allowances",
-                    "medical_allowances",
-                    "uniform_allowances",
-                    "child_eduction_allowances",
-                    "other_allowances",
-                    "variable_pay",
-                    "gratuity",
-                    "professional_tax",
-                    "lta",
+    //                 "conveyance_allowances",
+    //                 "skill_allowances",
+    //                 "food_allowances",
+    //                 "washing_allowances",
+    //                 "special_allowances",
+    //                 "medical_allowances",
+    //                 "uniform_allowances",
+    //                 "child_eduction_allowances",
+    //                 "other_allowances",
+    //                 "variable_pay",
+    //                 "gratuity",
+    //                 "professional_tax",
+    //                 "lta",
 
-                    "create_date",
-                    "write_date"
-                ],
-                Number(limit),
-                Number(offset),
-                "create_date desc"
-            );
+    //                 "create_date",
+    //                 "write_date"
+    //             ],
+    //             Number(limit),
+    //             Number(offset),
+    //             "create_date desc"
+    //         );
 
-            /* ───────── 4. FORMAT RESPONSE ───────── */
-            const data = records.map(c => ({
-                contract_id: c.id,
-                name: c.name,
-                state: c.state,
-                client: c.client_id,
+    //         /* ───────── 4. FORMAT RESPONSE ───────── */
+    //         const data = records.map(c => ({
+    //             contract_id: c.id,
+    //             name: c.name,
+    //             state: c.state,
+    //             client: c.client_id,
 
-                employee_code: c.employee_code,
-                employee: c.employee_id,
-                job_position: c.job_id,
-                department: c.department_id,
-                contract_type: c.contract_type_id,
+    //             employee_code: c.employee_code,
+    //             employee: c.employee_id,
+    //             job_position: c.job_id,
+    //             department: c.department_id,
+    //             contract_type: c.contract_type_id,
 
-                date_start: c.date_start,
-                date_end: c.date_end,
+    //             date_start: c.date_start,
+    //             date_end: c.date_end,
 
-                salary_structure_type: c.structure_type_id,
-                wage_type: c.wage_type,
-                schedule_pay: c.schedule_pay,
-                wage: c.wage,
+    //             salary_structure_type: c.structure_type_id,
+    //             wage_type: c.wage_type,
+    //             schedule_pay: c.schedule_pay,
+    //             wage: c.wage,
 
-                work_entry_source: c.work_entry_source,
-                working_schedule: c.resource_calendar_id,
+    //             work_entry_source: c.work_entry_source,
+    //             working_schedule: c.resource_calendar_id,
 
-                allowances: {
-                    conveyance: c.conveyance_allowances,
-                    skill: c.skill_allowances,
-                    food: c.food_allowances,
-                    washing: c.washing_allowances,
-                    special: c.special_allowances,
-                    medical: c.medical_allowances,
-                    uniform: c.uniform_allowances,
-                    child_education: c.child_eduction_allowances,
-                    other: c.other_allowances,
-                    variable_pay: c.variable_pay,
-                    gratuity: c.gratuity,
-                    professional_tax: c.professional_tax,
-                    lta: c.lta
-                },
+    //             allowances: {
+    //                 conveyance: c.conveyance_allowances,
+    //                 skill: c.skill_allowances,
+    //                 food: c.food_allowances,
+    //                 washing: c.washing_allowances,
+    //                 special: c.special_allowances,
+    //                 medical: c.medical_allowances,
+    //                 uniform: c.uniform_allowances,
+    //                 child_education: c.child_eduction_allowances,
+    //                 other: c.other_allowances,
+    //                 variable_pay: c.variable_pay,
+    //                 gratuity: c.gratuity,
+    //                 professional_tax: c.professional_tax,
+    //                 lta: c.lta
+    //             },
 
-                meta: {
-                    created_at: c.create_date,
-                    updated_at: c.write_date
-                }
-            }));
+    //             meta: {
+    //                 created_at: c.create_date,
+    //                 updated_at: c.write_date
+    //             }
+    //         }));
+    //         console.log("Data ::::::::", data)
+    //         /* ───────── 5. RESPONSE ───────── */
+    //         return res.status(200).json({
+    //             status: "success",
+    //             message: "Contracts fetched successfully",
+    //             data,
+    //             meta: {
+    //                 total: data.length,
+    //                 limit: Number(limit),
+    //                 offset: Number(offset)
+    //             }
+    //         });
 
-            /* ───────── 5. RESPONSE ───────── */
-            return res.status(200).json({
-                status: "success",
-                message: "Contracts fetched successfully",
-                data,
-                meta: {
-                    total: data.length,
-                    limit: Number(limit),
-                    offset: Number(offset)
-                }
-            });
-
-        } catch (error) {
-            console.error("❌ Get Contracts Error:", error);
-            return res.status(500).json({
-                status: "error",
-                message: error.message || "Failed to fetch contracts"
-            });
-        }
-    }
+    //     } catch (error) {
+    //         console.error("❌ Get Contracts Error:", error);
+    //         return res.status(500).json({
+    //             status: "error",
+    //             message: error.message || "Failed to fetch contracts"
+    //         });
+    //     }
+    // }
 
     async createInputType(req, res) {
         try {
@@ -3388,6 +3348,789 @@ class PayrollController {
                 success: false,
                 error: "Failed to generate payslip PDF",
                 details: process.env.NODE_ENV === "development" ? error.message : undefined,
+            });
+        }
+    }
+
+    async updateSalaryRule(req, res) {
+        try {
+            const { id } = req.params;
+
+            if (!id) {
+                return res.status(400).json({ status: "error", message: "Rule ID is required" });
+            }
+
+            const {
+                name,
+                active,
+                appears_on_payslip,
+                appears_on_employee_cost_dashboard,
+                appears_on_payroll_report,
+                category_id,
+                code,
+                sequence,
+                condition_select,
+                condition_range,
+                condition_range_min,
+                condition_range_max,
+                condition_python,
+                condition_other_input_id,
+                quantity,
+                partner_id,
+                amount_fix,
+                amount_select,
+                amount_percentage_base,
+                amount_percentage,
+                amount_other_input_id,
+                amount_python_compute,
+                note,
+                struct_id
+            } = req.body;
+
+            let { client_id } = await getClientFromRequest(req);
+            if (typeof client_id === 'string') {
+                client_id = parseInt(client_id, 10);
+            }
+
+            // Check if rule exists and belongs to client
+            const existingRule = await odooService.searchRead(
+                "hr.salary.rule",
+                [
+                    ["id", "=", parseInt(id)],
+                    ["client_id", "=", client_id]
+                ],
+                ["id"],
+                1
+            );
+
+            if (!existingRule.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Salary Rule not found or does not belong to this client"
+                });
+            }
+
+            // Validate condition_select if provided
+            if (condition_select) {
+                const validConditions = ["none", "range", "input", "python"];
+                if (!validConditions.includes(condition_select)) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: `Invalid condition_select. Must be: ${validConditions.join(", ")}`
+                    });
+                }
+
+                if (condition_select === "range") {
+                    if (!condition_range || condition_range_min === undefined || condition_range_max === undefined) {
+                        return res.status(400).json({
+                            status: "error",
+                            message: "Range Based on, Minimum, and Maximum are required for 'Range' condition"
+                        });
+                    }
+                }
+
+                if (condition_select === "python" && !condition_python) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Python Condition code is required"
+                    });
+                }
+
+                if (condition_select === "input" && !condition_other_input_id) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Condition Other Input is required"
+                    });
+                }
+            }
+
+            // Validate amount_select if provided
+            if (amount_select) {
+                const validAmountTypes = ["percentage", "fix", "input", "code"];
+                if (!validAmountTypes.includes(amount_select)) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: `Invalid amount_select. Must be: ${validAmountTypes.join(", ")}`
+                    });
+                }
+
+                if (amount_select === "fix" && (amount_fix === undefined || amount_fix === null)) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Fixed amount is required"
+                    });
+                }
+
+                if (amount_select === "percentage") {
+                    if (!amount_percentage_base || amount_percentage === undefined) {
+                        return res.status(400).json({
+                            status: "error",
+                            message: "Percentage base and value are required"
+                        });
+                    }
+                }
+
+                if (amount_select === "input" && !amount_other_input_id) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Amount Other Input is required"
+                    });
+                }
+
+                if (amount_select === "code" && !amount_python_compute) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: "Python Code for computation is required"
+                    });
+                }
+            }
+
+            // Check if code is being updated and if it conflicts with existing
+            if (code) {
+                const existingCode = await odooService.searchRead(
+                    "hr.salary.rule",
+                    [
+                        ["code", "=", code],
+                        ["client_id", "=", client_id],
+                        ["id", "!=", parseInt(id)]
+                    ],
+                    ["id"],
+                    1
+                );
+
+                if (existingCode.length) {
+                    return res.status(409).json({
+                        status: "error",
+                        message: `Salary Rule with code '${code}' already exists for this client`
+                    });
+                }
+            }
+
+            // Build update values object
+            const vals = {};
+
+            if (name !== undefined) vals.name = name;
+            if (active !== undefined) vals.active = active;
+            if (appears_on_payslip !== undefined) vals.appears_on_payslip = appears_on_payslip;
+            if (appears_on_employee_cost_dashboard !== undefined) vals.appears_on_employee_cost_dashboard = appears_on_employee_cost_dashboard;
+            if (appears_on_payroll_report !== undefined) vals.appears_on_payroll_report = appears_on_payroll_report;
+            if (category_id !== undefined) vals.category_id = category_id;
+            if (code !== undefined) vals.code = code;
+            if (sequence !== undefined) vals.sequence = sequence;
+            if (condition_select !== undefined) vals.condition_select = condition_select;
+            if (amount_select !== undefined) vals.amount_select = amount_select;
+            if (struct_id !== undefined) vals.struct_id = struct_id;
+            if (note !== undefined) vals.note = note;
+
+            // Handle condition-specific fields
+            if (condition_select === "range") {
+                vals.condition_range = condition_range;
+                vals.condition_range_min = parseFloat(condition_range_min);
+                vals.condition_range_max = parseFloat(condition_range_max);
+                // Clear other condition fields
+                vals.condition_python = false;
+                vals.condition_other_input_id = false;
+            } else if (condition_select === "python") {
+                vals.condition_python = condition_python;
+                // Clear other condition fields
+                vals.condition_range = false;
+                vals.condition_range_min = false;
+                vals.condition_range_max = false;
+                vals.condition_other_input_id = false;
+            } else if (condition_select === "input") {
+                vals.condition_other_input_id = condition_other_input_id;
+                // Clear other condition fields
+                vals.condition_range = false;
+                vals.condition_range_min = false;
+                vals.condition_range_max = false;
+                vals.condition_python = false;
+            } else if (condition_select === "none") {
+                // Clear all condition fields
+                vals.condition_range = false;
+                vals.condition_range_min = false;
+                vals.condition_range_max = false;
+                vals.condition_python = false;
+                vals.condition_other_input_id = false;
+            }
+
+            // Handle amount-specific fields
+            if (amount_select && !["code", "input"].includes(amount_select)) {
+                if (quantity !== undefined) vals.quantity = quantity;
+            }
+
+            if (amount_select === "fix") {
+                vals.amount_fix = amount_fix;
+                // Clear other amount fields
+                vals.amount_percentage_base = false;
+                vals.amount_percentage = false;
+                vals.amount_other_input_id = false;
+                vals.amount_python_compute = false;
+            } else if (amount_select === "percentage") {
+                vals.amount_percentage_base = amount_percentage_base;
+                vals.amount_percentage = amount_percentage;
+                // Clear other amount fields
+                vals.amount_fix = false;
+                vals.amount_other_input_id = false;
+                vals.amount_python_compute = false;
+            } else if (amount_select === "input") {
+                vals.amount_other_input_id = amount_other_input_id;
+                // Clear other amount fields
+                vals.amount_fix = false;
+                vals.amount_percentage_base = false;
+                vals.amount_percentage = false;
+                vals.amount_python_compute = false;
+            } else if (amount_select === "code") {
+                vals.amount_python_compute = amount_python_compute;
+                // Clear other amount fields
+                vals.amount_fix = false;
+                vals.amount_percentage_base = false;
+                vals.amount_percentage = false;
+                vals.amount_other_input_id = false;
+            }
+
+            if (partner_id !== undefined) vals.partner_id = partner_id;
+
+            // Update the record
+            await odooService.execute(
+                "hr.salary.rule",
+                "write",
+                [[parseInt(id)], vals]
+            );
+
+            // Fetch updated record
+            const updatedRecord = await odooService.execute(
+                "hr.salary.rule",
+                "read",
+                [[parseInt(id)], [
+                    "id", "name", "code", "sequence", "condition_select",
+                    "condition_range", "condition_range_min", "condition_range_max",
+                    "condition_python", "condition_other_input_id",
+                    "amount_select", "amount_fix", "amount_percentage", "struct_id",
+                    "client_id", "active", "appears_on_payslip"
+                ]]
+            );
+
+            return res.status(200).json({
+                status: "success",
+                message: "Salary Rule updated successfully",
+                data: updatedRecord[0]
+            });
+
+        } catch (error) {
+            console.error("Update Salary Rule Error:", error);
+            console.error("Error stack:", error.stack);
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to update salary rule"
+            });
+        }
+    }
+
+    async updateSalaryStructure(req, res) {
+        try {
+            const { id } = req.params;
+
+            if (!id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Salary Structure ID is required",
+                });
+            }
+            const {
+                name,
+                typeId,
+                countryId,
+                hideBasicOnPdf,
+                schedulePay,
+                reportId,
+                useWorkedDayLines,
+                ytdComputation,
+                payslipName,
+            } = req.body;
+
+            console.log("📥 Update Salary Structure Request Body:", JSON.stringify(req.body, null, 2));
+
+            const { client_id } = await getClientFromRequest(req);
+            console.log("🏢 Client ID:", client_id);
+
+            if (!client_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Client ID not found",
+                });
+            }
+            const existingStructure = await odooService.searchRead(
+                "hr.payroll.structure",
+                [
+                    ["id", "=", parseInt(id)],
+                    ["client_id", "=", client_id]
+                ],
+                ["id", "name"]
+            );
+
+            console.log("🔍 Existing Salary Structure Check:", existingStructure);
+
+            if (!existingStructure.length) {
+                return res.status(404).json({
+                    status: "error",
+                    message: "Salary Structure not found or does not belong to this organization",
+                });
+            }
+            if (typeId !== undefined) {
+                const typeExists = await odooService.searchRead(
+                    "hr.payroll.structure.type",
+                    [
+                        ["id", "=", typeId],
+                        ["client_id", "=", client_id]
+                    ],
+                    ["id", "name"]
+                );
+
+                console.log("🔍 Payroll Structure Type Validation:", typeExists);
+
+                if (!typeExists.length) {
+                    return res.status(400).json({
+                        status: "error",
+                        message: `Invalid or unauthorized Payroll Structure Type ID: ${typeId}`,
+                    });
+                }
+            }
+
+            let safeCountryId = undefined;
+            if (countryId !== undefined) {
+                if (countryId === null || countryId === false || countryId === "") {
+                    safeCountryId = false;
+                } else {
+                    const countryExists = await odooService.searchRead(
+                        "res.country",
+                        [["id", "=", countryId]],
+                        ["id", "name"]
+                    );
+                    console.log("🌍 Country Validation:", countryExists);
+                    if (countryExists.length) {
+                        safeCountryId = countryId;
+                    } else {
+                        return res.status(400).json({
+                            status: "error",
+                            message: `Invalid Country ID: ${countryId}`,
+                        });
+                    }
+                }
+            }
+
+            let safeReportId = undefined;
+            if (reportId !== undefined) {
+                if (reportId === null || reportId === false || reportId === "") {
+                    safeReportId = false;
+                } else {
+                    const reportExists = await odooService.searchRead(
+                        "ir.actions.report",
+                        [["id", "=", reportId]],
+                        ["id", "name"]
+                    );
+                    console.log("📄 Report Template Validation:", reportExists);
+                    if (reportExists.length) {
+                        safeReportId = reportId;
+                    } else {
+                        return res.status(400).json({
+                            status: "error",
+                            message: `Invalid Report Template ID: ${reportId}`,
+                        });
+                    }
+                }
+            }
+
+            if (name !== undefined) {
+                const nameConflict = await odooService.searchRead(
+                    "hr.payroll.structure",
+                    [
+                        ["name", "=", name],
+                        ["client_id", "=", client_id],
+                        ["id", "!=", parseInt(id)]
+                    ],
+                    ["id", "name"]
+                );
+
+                console.log("🔍 Name Conflict Check:", nameConflict);
+
+                if (nameConflict.length) {
+                    return res.status(409).json({
+                        status: "error",
+                        message: `Salary Structure '${name}' already exists for this organization`,
+                        existing_id: nameConflict[0].id,
+                    });
+                }
+            }
+            const payload = {};
+
+            if (name !== undefined) payload.name = name;
+            if (typeId !== undefined) payload.type_id = typeId;
+            if (safeCountryId !== undefined) payload.country_id = safeCountryId;
+            if (hideBasicOnPdf !== undefined) payload.hide_basic_on_pdf = !!hideBasicOnPdf;
+            if (schedulePay !== undefined) payload.schedule_pay = schedulePay;
+            if (safeReportId !== undefined) payload.report_id = safeReportId;
+            if (useWorkedDayLines !== undefined) payload.use_worked_day_lines = useWorkedDayLines;
+            if (ytdComputation !== undefined) payload.ytd_computation = !!ytdComputation;
+            if (payslipName !== undefined) payload.payslip_name = payslipName || false;
+
+            console.log("📦 Update Payload:", JSON.stringify(payload, null, 2));
+
+            if (Object.keys(payload).length === 0) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "No fields provided for update",
+                });
+            }
+            await odooService.execute(
+                "hr.payroll.structure",
+                "write",
+                [[parseInt(id)], payload]
+            );
+
+            console.log("✅ Salary Structure Updated - ID:", id);
+
+            const updatedStructure = await odooService.searchRead(
+                "hr.payroll.structure",
+                [["id", "=", parseInt(id)]],
+                [
+                    "id",
+                    "name",
+                    "type_id",
+                    "country_id",
+                    "hide_basic_on_pdf",
+                    "schedule_pay",
+                    "report_id",
+                    "use_worked_day_lines",
+                    "ytd_computation",
+                    "payslip_name",
+                ]
+            );
+
+            console.log("📋 Updated Salary Structure Details:", JSON.stringify(updatedStructure, null, 2));
+
+            return res.status(200).json({
+                status: "success",
+                message: "Salary Structure updated successfully",
+                data: updatedStructure[0] || { id: parseInt(id) },
+            });
+
+        } catch (error) {
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to update Salary Structure",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            });
+        }
+    }
+
+    async updateContract(req, res) {
+        try {
+            const { id } = req.params; // Get contract ID from URL
+            const updateData = req.body;
+            console.log(`API called for Contract update: ID ${id}`);
+
+            if (!id) {
+                return res.status(400).json({ status: "error", message: "Contract ID is required" });
+            }
+
+            /* ───────── 1. VALIDATE CONTRACT EXISTENCE ───────── */
+            const existingContract = await odooService.searchRead(
+                "hr.contract",
+                [["id", "=", parseInt(id)]],
+                ["id"],
+                1
+            );
+
+            if (!existingContract.length) {
+                return res.status(404).json({ status: "error", message: "Contract not found" });
+            }
+
+            /* ───────── 2. SELECTIVE VALIDATION ───────── */
+            // We only validate fields IF they are provided in the request body
+
+            if (updateData.work_entry_source) {
+                const validSources = ["calendar", "attendance"];
+                if (!validSources.includes(updateData.work_entry_source)) {
+                    return res.status(400).json({ status: "error", message: "Invalid work_entry_source" });
+                }
+            }
+
+            // Validate relational IDs if provided
+            const many2oneChecks = [
+                { id: updateData.employee_id, model: "hr.employee", field: "employee_id" },
+                { id: updateData.job_id, model: "hr.job", field: "job_id" },
+                { id: updateData.department_id, model: "hr.department", field: "department_id" },
+                { id: updateData.resource_calendar_id, model: "resource.calendar", field: "resource_calendar_id" },
+                { id: updateData.structure_type_id, model: "hr.payroll.structure.type", field: "structure_type_id" }
+            ];
+
+            for (const item of many2oneChecks) {
+                if (item.id) {
+                    const record = await odooService.searchRead(item.model, [["id", "=", item.id]], ["id"], 1);
+                    if (!record.length) {
+                        return res.status(400).json({ status: "error", message: `Invalid ${item.field}` });
+                    }
+                }
+            }
+
+            /* ───────── 3. CONSTRUCT ODOO VALS ───────── */
+            // Only include fields that are present in req.body
+            const vals = {};
+            const fields = [
+                "name", "employee_id", "job_id", "date_start", "date_end",
+                "resource_calendar_id", "work_entry_source", "structure_type_id",
+                "department_id", "contract_type_id", "wage_type", "schedule_pay", "wage",
+                "conveyance_allowances", "skill_allowances", "food_allowances",
+                "washing_allowances", "special_allowances", "medical_allowances",
+                "uniform_allowances", "child_eduction_allowances", "other_allowances",
+                "variable_pay", "gratuity", "professional_tax", "lta", "state"
+            ];
+
+            fields.forEach(field => {
+                if (updateData[field] !== undefined) {
+                    vals[field] = updateData[field];
+                }
+            });
+
+            /* ───────── 4. EXECUTE UPDATE ───────── */
+            await odooService.write("hr.contract", [parseInt(id)], vals);
+
+            /* ───────── 5. FETCH UPDATED RECORD ───────── */
+            const updatedRec = await odooService.searchRead(
+                "hr.contract",
+                [["id", "=", parseInt(id)]],
+                [
+                    "id", "name", "employee_id", "wage", "state", "date_start", "date_end",
+                    "work_entry_source", "resource_calendar_id"
+                ],
+                1
+            );
+
+            return res.status(200).json({
+                status: "success",
+                message: "Contract updated successfully",
+                data: updatedRec[0]
+            });
+
+        } catch (error) {
+            console.error("❌ Update Contract Error:", error);
+            return res.status(500).json({
+                status: "error",
+                message: error.message || "Failed to update contract"
+            });
+        }
+    }
+
+    async getContracts(req, res) {
+        try {
+            const {
+                limit = 100,
+                offset = 0,
+                user_id,
+                employee_id,
+                state,
+                wage_type,
+                work_entry_source,
+                date_start,
+                date_end
+            } = req.query;
+
+            // ✅ Get client_id from request
+            const { client_id } = await getClientFromRequest(req);
+
+            // ✅ Validate user_id
+            if (!user_id) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "user_id is required"
+                });
+            }
+
+            // ✅ Fetch user details to check role
+            const user = await odooService.searchRead(
+                "res.users",
+                [["id", "=", parseInt(user_id)]],
+                ["id", "is_client_employee_admin", "is_client_employee_user", "employee_id"],
+                1
+            );
+
+            if (!user.length) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid user_id"
+                });
+            }
+
+            const userData = user[0];
+            const isAdmin = userData.is_client_employee_admin || false;
+            const isUser = userData.is_client_employee_user || false;
+            const userEmployeeId = userData.employee_id ? userData.employee_id[0] : null;
+
+            const fields = [
+                "id",
+                "name",
+                "employee_code",
+                "employee_id",
+                "job_id",
+                "department_id",
+                "contract_type_id",
+                "structure_type_id",
+                "wage_type",
+                "schedule_pay",
+                "wage",
+                "work_entry_source",
+                "resource_calendar_id",
+                "conveyance_allowances",
+                "skill_allowances",
+                "food_allowances",
+                "washing_allowances",
+                "special_allowances",
+                "medical_allowances",
+                "uniform_allowances",
+                "child_eduction_allowances",
+                "other_allowances",
+                "variable_pay",
+                "gratuity",
+                "professional_tax",
+                "lta",
+                "date_start",
+                "date_end",
+                "state",
+                "client_id",
+                "create_date",
+                "write_date"
+            ];
+
+            // ✅ Apply client_id filter in domain
+            const domain = [["client_id", "=", client_id]];
+
+            // ✅ Role-based filtering
+            if (isAdmin) {
+                // Admin can see all contracts belonging to their client
+                console.log(`User ${user_id} is Admin - Fetching all contracts for client ${client_id}`);
+            } else if (isUser) {
+                // Regular user can only see their own contracts
+                if (!userEmployeeId) {
+                    return res.status(403).json({
+                        status: "error",
+                        message: "User does not have an associated employee record"
+                    });
+                }
+                domain.push(["employee_id", "=", userEmployeeId]);
+                console.log(`User ${user_id} is Regular User - Fetching contracts only for employee ${userEmployeeId}`);
+            } else {
+                // User has neither admin nor user role
+                return res.status(403).json({
+                    status: "error",
+                    message: "User does not have permission to view contracts"
+                });
+            }
+
+            // ✅ Add optional filters (only if admin or if it matches user's own employee)
+            if (employee_id) {
+                if (isUser && parseInt(employee_id) !== userEmployeeId) {
+                    return res.status(403).json({
+                        status: "error",
+                        message: "You can only view your own contracts"
+                    });
+                }
+                domain.push(["employee_id", "=", parseInt(employee_id)]);
+            }
+            if (state) {
+                domain.push(["state", "=", state]);
+            }
+            if (wage_type) {
+                domain.push(["wage_type", "=", wage_type]);
+            }
+            if (work_entry_source) {
+                domain.push(["work_entry_source", "=", work_entry_source]);
+            }
+            if (date_start) {
+                domain.push(["date_start", ">=", date_start]);
+            }
+            if (date_end) {
+                domain.push(["date_end", "<=", date_end]);
+            }
+
+            const contracts = await odooService.searchRead(
+                "hr.contract",
+                domain,
+                fields,
+                parseInt(offset),
+                parseInt(limit),
+                "name asc"
+            );
+
+            // ✅ Count only for specific client and role
+            const totalCount = await odooService.searchCount(
+                "hr.contract",
+                domain
+            );
+
+            // ✅ Format response data to match create API structure
+            const formattedContracts = contracts.map(c => ({
+                contract_id: c.id,
+                name: c.name,
+                state: c.state,
+                client: c.client_id,
+
+                employee_code: c.employee_code,
+                employee: c.employee_id,
+                job_position: c.job_id,
+                department: c.department_id,
+                contract_type: c.contract_type_id,
+
+                date_start: c.date_start,
+                date_end: c.date_end,
+
+                salary_structure_type: c.structure_type_id,
+                wage_type: c.wage_type,
+                schedule_pay: c.schedule_pay,
+                wage: c.wage,
+
+                work_entry_source: c.work_entry_source,
+                working_schedule: c.resource_calendar_id,
+
+                allowances: {
+                    conveyance: c.conveyance_allowances,
+                    skill: c.skill_allowances,
+                    food: c.food_allowances,
+                    washing: c.washing_allowances,
+                    special: c.special_allowances,
+                    medical: c.medical_allowances,
+                    uniform: c.uniform_allowances,
+                    child_education: c.child_eduction_allowances,
+                    other: c.other_allowances,
+                    variable_pay: c.variable_pay,
+                    gratuity: c.gratuity,
+                    professional_tax: c.professional_tax,
+                    lta: c.lta
+                },
+
+                meta: {
+                    created_at: c.create_date,
+                    updated_at: c.write_date
+                }
+            }));
+
+            return res.status(200).json({
+                status: "success",
+                message: "Contracts fetched successfully",
+                data: formattedContracts,
+                meta: {
+                    total: totalCount,
+                    limit: parseInt(limit),
+                    offset: parseInt(offset),
+                    returned: formattedContracts.length,
+                },
+            });
+
+        } catch (error) {
+            console.error("❌ Get Contracts Error:", error);
+            return res.status(error.status || 500).json({
+                status: "error",
+                message: error.message || "Failed to fetch contracts",
+                error_details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
             });
         }
     }

@@ -659,6 +659,11 @@ router.post(
   authenticate,
   PayrollController.createContracts.bind(PayrollController)
 );
+router.put(
+  "/employee/Contract/:id", // :id is the Odoo contract_id
+  authenticate,
+  PayrollController.updateContract.bind(PayrollController)
+);
 router.get(
   "/employee/Contract",
   authenticate,
@@ -939,4 +944,25 @@ router.post(
   PayrollController.downloadPayslipPDFMobile.bind(PayrollController)
 );
 
+router.get(
+  "/employee/attendance/export/excel",
+  authenticate,
+  apiController.exportEmployeeAttendanceExcel.bind(apiController)
+);
+
+router.get(
+  "/employee/attendance/export/pdf",
+  authenticate,
+  apiController.exportEmployeeAttendancePDF.bind(apiController)
+);
+router.put(
+  "/update/salary-rule/:id",
+  authenticate,
+  PayrollController.updateSalaryRule.bind(PayrollController)
+);
+router.put(
+  "/update/salary-structure/:id",
+  authenticate,
+  PayrollController.updateSalaryStructure.bind(PayrollController)
+);
 module.exports = router;

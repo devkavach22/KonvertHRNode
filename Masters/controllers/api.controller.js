@@ -3,6 +3,10 @@ const mailService = require("../services/mail.service");
 const redisClient = require("../services/redisClient");
 const moment = require("moment-timezone");
 const otpStore = new Map();
+const ExcelJS = require("exceljs");
+const path = require("path");
+const fs = require("fs");
+const PDFDocument = require("pdfkit");
 
 const { getClientFromRequest, fetchOdooRecords } = require("../services/plan.helper");
 const jwt = require("jsonwebtoken");
@@ -522,6 +526,14 @@ class ApiController {
   //         });
   //       }
 
+  //       // --- 1.5. GST NUMBER FORMAT VALIDATION ---
+  //       if (gst_number && !/^[A-Z0-9]+$/.test(gst_number)) {
+  //         return res.status(400).json({
+  //           status: "error",
+  //           message: "GST number should contain only uppercase letters and numeric characters",
+  //         });
+  //       }
+
   //       // --- 2. UNIQUE EMAIL CHECK ---
   //       const existingUsers = await odooService.searchRead(
   //         "res.users",
@@ -646,16 +658,45 @@ class ApiController {
   //         customer_rank: 1,
   //       });
 
-  //       // --- UPDATED: UPDATE EMPLOYEE PASSWORD AND ADDRESS_ID ---
+  //       // --- UPDATED: UPDATE EMPLOYEE PASSWORD, ADDRESS_ID, WORK_PHONE AND PRIVATE_EMAIL ---
+  //       let employeeId = null;
   //       if (userData[0].employee_ids && userData[0].employee_ids.length > 0) {
-  //         const employeeId = userData[0].employee_ids[0];
+  //         employeeId = userData[0].employee_ids[0];
   //         try {
   //           await odooService.write("hr.employee", [employeeId], {
   //             employee_password: password,
-  //             address_id: companyPartnerId, // ADDED: Assign user's partner_id to employee's address_id
+  //             address_id: companyPartnerId,
+  //             work_phone: mobile,        // ✅ Set work_phone from mobile
+  //             mobile_phone: mobile,      // ✅ Set mobile_phone as well
+  //             private_email: email,      // ✅ Set private_email for email sending
   //           });
-  //           console.log(`Employee password and address_id set for employee ID: ${employeeId}`);
+  //           console.log(`Employee password, address_id, work_phone, and private_email set for employee ID: ${employeeId}`);
   //           console.log(`Partner ID ${companyPartnerId} assigned to employee address_id`);
+  //           console.log(`Work phone ${mobile} assigned to employee`);
+  //           console.log(`Private email ${email} assigned to employee`);
+
+  //           // --- SEND REGISTRATION CODE EMAIL TO EMPLOYEE ---
+  //           try {
+  //             console.log("==========================================");
+  //             console.log("SENDING REGISTRATION CODE EMAIL");
+  //             console.log("Employee ID:", employeeId);
+  //             console.log("==========================================");
+
+  //             await odooService.callMethod(
+  //               "hr.employee",
+  //               "send_registration_code_email",
+  //               [employeeId]
+  //             );
+
+  //             console.log("✓ Registration code email sent successfully!");
+  //             console.log("==========================================");
+  //           } catch (emailError) {
+  //             console.error("==========================================");
+  //             console.error("✗ ERROR sending registration code email:", emailError);
+  //             console.error("Error details:", emailError.message);
+  //             console.error("==========================================");
+  //             // Don't fail the entire request if email fails
+  //           }
   //         } catch (empError) {
   //           console.error("Error setting employee data:", empError);
   //         }
@@ -670,6 +711,7 @@ class ApiController {
   //         phone: mobile,
   //         phone_res: mobile,
   //         mobile: mobile,
+  //         function: designation,
   //       };
   //       await odooService.create("res.partner", childContactVals);
 
@@ -750,6 +792,7 @@ class ApiController {
   //         status: "OK",
   //         message: "User Is Registered, Email Sent",
   //         id: userId,
+  //         employee_id: employeeId,
   //       });
   //     } catch (error) {
   //       console.error("Create user error:", error);
@@ -759,6 +802,7 @@ class ApiController {
   //       });
   //     }
   //   }
+
   async createUser(req, res) {
     console.log("Register Called ");
     try {
@@ -805,10 +849,10 @@ class ApiController {
         });
       }
 
-      // --- 2. UNIQUE EMAIL CHECK ---
+      // --- 2. UNIQUE EMAIL CHECK (ONLY ACTIVE USERS) ---
       const existingUsers = await odooService.searchRead(
         "res.users",
-        [["login", "=", email]],
+        [["login", "=", email], ["active", "=", true]],
         ["id"]
       );
 
@@ -819,10 +863,10 @@ class ApiController {
         });
       }
 
-      // --- 3. UNIQUE GST (VAT) CHECK ---
+      // --- 3. UNIQUE GST (VAT) CHECK (ONLY ACTIVE PARTNERS) ---
       const existingGST = await odooService.searchRead(
         "res.partner",
-        [["vat", "=", gst_number]],
+        [["vat", "=", gst_number], ["active", "=", true]],
         ["id"]
       );
 
@@ -929,16 +973,45 @@ class ApiController {
         customer_rank: 1,
       });
 
-      // --- UPDATED: UPDATE EMPLOYEE PASSWORD AND ADDRESS_ID ---
+      // --- UPDATED: UPDATE EMPLOYEE PASSWORD, ADDRESS_ID, WORK_PHONE AND PRIVATE_EMAIL ---
+      let employeeId = null;
       if (userData[0].employee_ids && userData[0].employee_ids.length > 0) {
-        const employeeId = userData[0].employee_ids[0];
+        employeeId = userData[0].employee_ids[0];
         try {
           await odooService.write("hr.employee", [employeeId], {
             employee_password: password,
-            address_id: companyPartnerId, // ADDED: Assign user's partner_id to employee's address_id
+            address_id: companyPartnerId,
+            work_phone: mobile,        // ✅ Set work_phone from mobile
+            mobile_phone: mobile,      // ✅ Set mobile_phone as well
+            private_email: email,      // ✅ Set private_email for email sending
           });
-          console.log(`Employee password and address_id set for employee ID: ${employeeId}`);
+          console.log(`Employee password, address_id, work_phone, and private_email set for employee ID: ${employeeId}`);
           console.log(`Partner ID ${companyPartnerId} assigned to employee address_id`);
+          console.log(`Work phone ${mobile} assigned to employee`);
+          console.log(`Private email ${email} assigned to employee`);
+
+          // --- SEND REGISTRATION CODE EMAIL TO EMPLOYEE ---
+          try {
+            console.log("==========================================");
+            console.log("SENDING REGISTRATION CODE EMAIL");
+            console.log("Employee ID:", employeeId);
+            console.log("==========================================");
+
+            await odooService.callMethod(
+              "hr.employee",
+              "send_registration_code_email",
+              [employeeId]
+            );
+
+            console.log("✓ Registration code email sent successfully!");
+            console.log("==========================================");
+          } catch (emailError) {
+            console.error("==========================================");
+            console.error("✗ ERROR sending registration code email:", emailError);
+            console.error("Error details:", emailError.message);
+            console.error("==========================================");
+            // Don't fail the entire request if email fails
+          }
         } catch (empError) {
           console.error("Error setting employee data:", empError);
         }
@@ -1034,6 +1107,7 @@ class ApiController {
         status: "OK",
         message: "User Is Registered, Email Sent",
         id: userId,
+        employee_id: employeeId,
       });
     } catch (error) {
       console.error("Create user error:", error);
@@ -1229,6 +1303,7 @@ class ApiController {
   async loginMarketingPage(req, res) {
     try {
       console.log("🔥 Login API called");
+
       const { email, password } = req.body;
 
       // Validate input
@@ -1258,7 +1333,8 @@ class ApiController {
           "name",
           "first_name",
           "last_name",
-          "partner_id", // Added to get partner_id
+          "partner_id",
+          "is_client_employee_user"   // <-- ADDED FIELD
         ]
       );
 
@@ -1270,6 +1346,16 @@ class ApiController {
       }
 
       const user = userRecord[0];
+
+      // 🔥 NEW CHECK — ONLY CHANGE YOU REQUESTED
+      if (user.is_client_employee_user === true) {
+        return res.status(403).json({
+          status: "error",
+          message: "You are not Admin, sorry you can't login here.",
+        });
+      }
+      // ---------------------------------------------------------
+
       const userPartnerId = user.partner_id?.[0];
       const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
 
@@ -1307,9 +1393,10 @@ class ApiController {
         );
 
         if (partnerDetails && partnerDetails.length > 0) {
-          // state_id is a many2one field, returns [id, name]
-          state_name = partnerDetails[0].state_id ? partnerDetails[0].state_id[1] : null;
-          // city is a char field, returns directly
+          state_name = partnerDetails[0].state_id
+            ? partnerDetails[0].state_id[1]
+            : null;
+
           city_name = partnerDetails[0].city || null;
         }
       }
@@ -1347,6 +1434,7 @@ class ApiController {
       });
     }
   }
+
   async getStates(req, res) {
     try {
       const { country_id } = req.query;
@@ -1535,9 +1623,61 @@ class ApiController {
     }
   }
 
+  // async getJobPositions(req, res) {
+  //   try {
+  //     const { client_id } = await getClientFromRequest(req);
+
+  //     const jobs = await fetchOdooRecords(
+  //       "hr.job",
+  //       client_id,
+  //       [
+  //         "id",
+  //         "name",
+  //         "department_id",
+  //         "no_of_recruitment",
+  //         "industry_id",
+  //         "contract_type_id",
+  //         "skill_ids",
+  //       ]
+  //     );
+
+  //     const data = jobs.map((job) => ({
+  //       job_id: job.id,
+  //       name: job.name,
+  //       department_id: job.department_id?.[0] || null,
+  //       department_name: job.department_id?.[1] || null,
+  //       no_of_recruitment: job.no_of_recruitment,
+  //       industry_id: job.industry_id?.[0] || null,
+  //       industry_name: job.industry_id?.[1] || null,
+  //       contract_type_id: job.contract_type_id?.[0] || null,
+  //       contract_type_name: job.contract_type_id?.[1] || null,
+  //       skill_ids: job.skill_ids || [],
+  //     }));
+
+  //     return res.status(200).json({
+  //       status: "success",
+  //       message: "Job positions fetched successfully",
+  //       data,
+  //     });
+  //   } catch (error) {
+  //     console.error("❌ Get Job Positions Error:", error);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: error.message || "Failed to fetch job positions",
+  //     });
+  //   }
+  // }
+
   async getJobPositions(req, res) {
     try {
       const { client_id } = await getClientFromRequest(req);
+      const { department_id } = req.query; // Get department_id from query params
+
+      // Build domain filter
+      let domain = [];
+      if (department_id) {
+        domain.push(["department_id", "=", parseInt(department_id)]);
+      }
 
       const jobs = await fetchOdooRecords(
         "hr.job",
@@ -1550,7 +1690,8 @@ class ApiController {
           "industry_id",
           "contract_type_id",
           "skill_ids",
-        ]
+        ],
+        domain // Pass the filter
       );
 
       const data = jobs.map((job) => ({
@@ -3498,6 +3639,697 @@ class ApiController {
   //   }
   // }
 
+  // async planActivation(req, res) {
+  //   try {
+  //     const { email, secret_key } = req.body;
+  //     if (!email || !secret_key) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Email and secret_key are required",
+  //       });
+  //     }
+
+  //     const users = await odooService.searchRead(
+  //       "res.users",
+  //       [["login", "=", email]],
+  //       ["id", "partner_id"],
+  //       0,
+  //       1
+  //     );
+
+  //     if (!users || users.length === 0) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "User not found with this email",
+  //       });
+  //     }
+
+  //     const partnerId = users[0].partner_id?.[0];
+  //     if (!partnerId) {
+  //       return res.status(404).json({
+  //         status: "error",
+  //         message: "Partner not linked with user",
+  //       });
+  //     }
+
+  //     const planDetails = await odooService.searchRead(
+  //       "client.plan.details",
+  //       [
+  //         ["partner_id", "=", partnerId],
+  //         ["secret_key", "=", secret_key],
+  //       ],
+  //       ["id", "is_expier", "product_id", "start_date", "end_date"],
+  //       0,
+  //       1
+  //     );
+
+  //     if (!planDetails || planDetails.length === 0) {
+  //       return res.status(401).json({
+  //         status: "error",
+  //         message: "Invalid secret key or plan not found",
+  //       });
+  //     }
+
+  //     const plan = planDetails[0];
+  //     if (plan.is_expier) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "Plan has expired",
+  //       });
+  //     }
+
+  //     // --- AUTO CREATE SKILL TYPES AND SKILLS ---
+  //     const defaultSkillsData = [
+  //       {
+  //         skill_type: "Technical Skills",
+  //         skills: ["Python", "JavaScript", "SQL", "React"]
+  //       },
+  //       {
+  //         skill_type: "Soft Skills",
+  //         skills: ["Communication", "Leadership", "Problem Solving", "Time Management"]
+  //       },
+  //       {
+  //         skill_type: "Management Skills",
+  //         skills: ["Project Management", "Team Leadership", "Strategic Planning", "Budget Management"]
+  //       },
+  //       {
+  //         skill_type: "Customer Service Skills",
+  //         skills: ["Customer Support", "Complaint Handling", "Client Relationship", "Active Listening"]
+  //       }
+  //     ];
+
+  //     const createdSkillTypes = [];
+  //     const createdSkills = [];
+  //     const skillTypeMap = {}; // To store skill type name -> id mapping
+  //     const allSkillIds = []; // To collect all skill IDs for job positions
+
+  //     for (const skillTypeData of defaultSkillsData) {
+  //       try {
+  //         // Check if skill type exists
+  //         const existingSkillType = await odooService.searchRead(
+  //           "hr.skill.type",
+  //           [
+  //             ["name", "=", skillTypeData.skill_type],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         let skillTypeId;
+  //         if (existingSkillType.length === 0) {
+  //           skillTypeId = await odooService.create("hr.skill.type", {
+  //             name: skillTypeData.skill_type,
+  //             client_id: partnerId
+  //           });
+
+  //           createdSkillTypes.push({
+  //             id: skillTypeId,
+  //             name: skillTypeData.skill_type
+  //           });
+
+  //           console.log(`✓ Skill Type created: ${skillTypeData.skill_type} (ID: ${skillTypeId})`);
+  //         } else {
+  //           skillTypeId = existingSkillType[0].id;
+  //           console.log(`✓ Skill Type already exists: ${skillTypeData.skill_type}`);
+  //           createdSkillTypes.push({
+  //             id: skillTypeId,
+  //             name: skillTypeData.skill_type,
+  //             already_existed: true
+  //           });
+  //         }
+
+  //         skillTypeMap[skillTypeData.skill_type] = skillTypeId;
+
+  //         // Create skills under this skill type
+  //         for (const skillName of skillTypeData.skills) {
+  //           try {
+  //             const existingSkill = await odooService.searchRead(
+  //               "hr.skill",
+  //               [
+  //                 ["name", "=", skillName],
+  //                 ["skill_type_id", "=", skillTypeId]
+  //               ],
+  //               ["id"],
+  //               0,
+  //               1
+  //             );
+
+  //             let skillId;
+  //             if (existingSkill.length === 0) {
+  //               skillId = await odooService.create("hr.skill", {
+  //                 name: skillName,
+  //                 skill_type_id: skillTypeId
+  //               });
+
+  //               createdSkills.push({
+  //                 id: skillId,
+  //                 name: skillName,
+  //                 skill_type: skillTypeData.skill_type
+  //               });
+
+  //               allSkillIds.push(skillId);
+
+  //               console.log(`✓ Skill created: ${skillName} under ${skillTypeData.skill_type} (ID: ${skillId})`);
+  //             } else {
+  //               skillId = existingSkill[0].id;
+  //               console.log(`✓ Skill already exists: ${skillName}`);
+  //               createdSkills.push({
+  //                 id: skillId,
+  //                 name: skillName,
+  //                 skill_type: skillTypeData.skill_type,
+  //                 already_existed: true
+  //               });
+
+  //               allSkillIds.push(skillId);
+  //             }
+  //           } catch (skillError) {
+  //             console.error(`✗ Error creating skill ${skillName}:`, skillError);
+  //           }
+  //         }
+
+  //         // Create default skill level for this skill type
+  //         try {
+  //           const existingSkillLevel = await odooService.searchRead(
+  //             "hr.skill.level",
+  //             [
+  //               ["name", "=", "Intermediate"],
+  //               ["skill_type_id", "=", skillTypeId]
+  //             ],
+  //             ["id"],
+  //             0,
+  //             1
+  //           );
+
+  //           if (existingSkillLevel.length === 0) {
+  //             await odooService.create("hr.skill.level", {
+  //               name: "Intermediate",
+  //               skill_type_id: skillTypeId,
+  //               level_progress: 50,
+  //               default_level: true
+  //             });
+
+  //             console.log(`✓ Skill Level created: Intermediate for ${skillTypeData.skill_type}`);
+  //           } else {
+  //             console.log(`✓ Skill Level already exists: Intermediate for ${skillTypeData.skill_type}`);
+  //           }
+  //         } catch (levelError) {
+  //           console.error(`✗ Error creating skill level for ${skillTypeData.skill_type}:`, levelError);
+  //         }
+
+  //       } catch (skillTypeError) {
+  //         console.error(`✗ Error creating skill type ${skillTypeData.skill_type}:`, skillTypeError);
+  //       }
+  //     }
+
+  //     // --- AUTO CREATE 4 INDUSTRIES ---
+  //     const defaultIndustries = [
+  //       { name: "Human Resources & Recruitment", full_name: "Human Resources and Recruitment Services" },
+  //       { name: "Information Technology", full_name: "Information Technology and Software Services" },
+  //       { name: "Finance & Accounting", full_name: "Finance and Accounting Services" },
+  //       { name: "Customer Service", full_name: "Customer Service and Support" }
+  //     ];
+
+  //     const createdIndustries = [];
+  //     const industryMap = {};
+
+  //     for (const industryData of defaultIndustries) {
+  //       try {
+  //         const existingIndustry = await odooService.searchRead(
+  //           "res.partner.industry",
+  //           [
+  //             ["name", "=", industryData.name],
+  //             ["client_id", "=", partnerId],
+  //             ["active", "=", true]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         let industryId;
+  //         if (existingIndustry.length === 0) {
+  //           industryId = await odooService.create("res.partner.industry", {
+  //             name: industryData.name,
+  //             full_name: industryData.full_name,
+  //             client_id: partnerId,
+  //             active: true
+  //           });
+
+  //           createdIndustries.push({
+  //             id: industryId,
+  //             name: industryData.name
+  //           });
+
+  //           console.log(`✓ Industry created: ${industryData.name} (ID: ${industryId})`);
+  //         } else {
+  //           industryId = existingIndustry[0].id;
+  //           console.log(`✓ Industry already exists: ${industryData.name}`);
+  //           createdIndustries.push({
+  //             id: industryId,
+  //             name: industryData.name,
+  //             already_existed: true
+  //           });
+  //         }
+
+  //         industryMap[industryData.name] = industryId;
+  //       } catch (industryError) {
+  //         console.error(`✗ Error creating industry ${industryData.name}:`, industryError);
+  //       }
+  //     }
+
+  //     // --- AUTO CREATE 4 HR CONTRACT TYPES ---
+  //     const defaultContractTypes = [
+  //       { name: "Permanent", code: "PERM" },
+  //       { name: "Contract", code: "CONTRACT" },
+  //       { name: "Temporary", code: "TEMP" },
+  //       { name: "Internship", code: "INTERN" }
+  //     ];
+
+  //     const createdContractTypes = [];
+  //     const contractTypeMap = {};
+
+  //     for (const contractData of defaultContractTypes) {
+  //       try {
+  //         const existingContract = await odooService.searchRead(
+  //           "hr.contract.type",
+  //           [
+  //             ["name", "=", contractData.name],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         let contractTypeId;
+  //         if (existingContract.length === 0) {
+  //           contractTypeId = await odooService.create("hr.contract.type", {
+  //             name: contractData.name,
+  //             code: contractData.code,
+  //             client_id: partnerId,
+  //             country_id: null
+  //           });
+
+  //           createdContractTypes.push({
+  //             id: contractTypeId,
+  //             name: contractData.name,
+  //             code: contractData.code
+  //           });
+
+  //           console.log(`✓ Contract Type created: ${contractData.name} (ID: ${contractTypeId})`);
+  //         } else {
+  //           contractTypeId = existingContract[0].id;
+  //           console.log(`✓ Contract Type already exists: ${contractData.name}`);
+  //           createdContractTypes.push({
+  //             id: contractTypeId,
+  //             name: contractData.name,
+  //             already_existed: true
+  //           });
+  //         }
+
+  //         contractTypeMap[contractData.name] = contractTypeId;
+  //       } catch (contractError) {
+  //         console.error(`✗ Error creating contract type ${contractData.name}:`, contractError);
+  //       }
+  //     }
+
+  //     // --- AUTO CREATE 4 DEPARTMENTS ---
+  //     const defaultDepartments = [
+  //       "Human Resources (HR)",
+  //       "Information Technology (IT)",
+  //       "Finance & Accounting",
+  //       "Customer Support / Service"
+  //     ];
+
+  //     const createdDepartments = [];
+  //     const departmentMap = {};
+
+  //     for (const deptName of defaultDepartments) {
+  //       try {
+  //         const existingDept = await odooService.searchRead(
+  //           "hr.department",
+  //           [
+  //             ["name", "=", deptName],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         let deptId;
+  //         if (existingDept.length === 0) {
+  //           deptId = await odooService.create("hr.department", {
+  //             name: deptName,
+  //             client_id: partnerId
+  //           });
+
+  //           createdDepartments.push({
+  //             id: deptId,
+  //             name: deptName
+  //           });
+
+  //           console.log(`✓ Department created: ${deptName} (ID: ${deptId})`);
+  //         } else {
+  //           deptId = existingDept[0].id;
+  //           console.log(`✓ Department already exists: ${deptName}`);
+  //           createdDepartments.push({
+  //             id: deptId,
+  //             name: deptName,
+  //             already_existed: true
+  //           });
+  //         }
+
+  //         departmentMap[deptName] = deptId;
+  //       } catch (deptError) {
+  //         console.error(`✗ Error creating department ${deptName}:`, deptError);
+  //       }
+  //     }
+
+  //     // --- AUTO CREATE 4 BANKS WITH COMPLETE DETAILS ---
+  //     const defaultBanks = [
+  //       {
+  //         name: "State Bank of India",
+  //         bic: "SBININBB",
+  //         swift_code: "SBININBB",
+  //         micr_code: "400002002",
+  //         phone: "1800-425-3800",
+  //         street: "Corporate Centre",
+  //         city: "Mumbai",
+  //         zip: "400021",
+  //         email: "contact@sbi.co.in"
+  //       },
+  //       {
+  //         name: "HDFC Bank",
+  //         bic: "HDFCINBB",
+  //         swift_code: "HDFCINBB",
+  //         micr_code: "400240002",
+  //         phone: "1800-202-6161",
+  //         street: "HDFC Bank House",
+  //         city: "Mumbai",
+  //         zip: "400013",
+  //         email: "support@hdfcbank.com"
+  //       },
+  //       {
+  //         name: "ICICI Bank",
+  //         bic: "ICICINBB",
+  //         swift_code: "ICICINBB",
+  //         micr_code: "400229002",
+  //         phone: "1860-120-7777",
+  //         street: "ICICI Bank Towers",
+  //         city: "Mumbai",
+  //         zip: "400051",
+  //         email: "customer.care@icicibank.com"
+  //       },
+  //       {
+  //         name: "Punjab National Bank",
+  //         bic: "PUNBINBB",
+  //         swift_code: "PUNBINBB",
+  //         micr_code: "110024046",
+  //         phone: "1800-180-2222",
+  //         street: "7 Bhikaji Cama Place",
+  //         city: "New Delhi",
+  //         zip: "110066",
+  //         email: "pnbho@pnb.co.in"
+  //       }
+  //     ];
+
+  //     const createdBanks = [];
+
+  //     for (const bankData of defaultBanks) {
+  //       try {
+  //         const existingBank = await odooService.searchRead(
+  //           "res.bank",
+  //           [
+  //             ["name", "=", bankData.name],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         if (existingBank.length === 0) {
+  //           const data = {
+  //             name: bankData.name,
+  //             bic: bankData.bic || "",
+  //             swift_code: bankData.swift_code || "",
+  //             micr_code: bankData.micr_code || "",
+  //             phone: bankData.phone || "",
+  //             street: bankData.street || "",
+  //             street2: "",
+  //             city: bankData.city || "",
+  //             state: null,
+  //             zip: bankData.zip || "",
+  //             country: null,
+  //             email: bankData.email || "",
+  //             client_id: partnerId
+  //           };
+
+  //           const bankId = await odooService.create("res.bank", data);
+
+  //           createdBanks.push({
+  //             id: bankId,
+  //             name: bankData.name
+  //           });
+
+  //           console.log(`✓ Bank created: ${bankData.name} (ID: ${bankId})`);
+  //         } else {
+  //           console.log(`✓ Bank already exists: ${bankData.name}`);
+  //           createdBanks.push({
+  //             id: existingBank[0].id,
+  //             name: bankData.name,
+  //             already_existed: true
+  //           });
+  //         }
+  //       } catch (bankError) {
+  //         console.error(`✗ Error creating bank ${bankData.name}:`, bankError);
+  //       }
+  //     }
+
+  //     // --- AUTO CREATE 4 JOB POSITIONS WITH SKILLS ---
+  //     const defaultJobPositions = [
+  //       {
+  //         name: "HR Manager",
+  //         department: "Human Resources (HR)",
+  //         industry: "Human Resources & Recruitment",
+  //         contract_type: "Permanent",
+  //         no_of_recruitment: 1,
+  //         skill_names: ["Communication", "Leadership", "Team Leadership", "Project Management"] // Soft & Management Skills
+  //       },
+  //       {
+  //         name: "Software Developer",
+  //         department: "Information Technology (IT)",
+  //         industry: "Information Technology",
+  //         contract_type: "Permanent",
+  //         no_of_recruitment: 5,
+  //         skill_names: ["Python", "JavaScript", "SQL", "React"] // Technical Skills
+  //       },
+  //       {
+  //         name: "Accountant",
+  //         department: "Finance & Accounting",
+  //         industry: "Finance & Accounting",
+  //         contract_type: "Permanent",
+  //         no_of_recruitment: 2,
+  //         skill_names: ["Problem Solving", "Time Management", "Strategic Planning", "Budget Management"] // Soft & Management Skills
+  //       },
+  //       {
+  //         name: "Customer Support Executive",
+  //         department: "Customer Support / Service",
+  //         industry: "Customer Service",
+  //         contract_type: "Contract",
+  //         no_of_recruitment: 3,
+  //         skill_names: ["Customer Support", "Complaint Handling", "Client Relationship", "Active Listening"] // Customer Service Skills
+  //       }
+  //     ];
+
+  //     const createdJobPositions = [];
+
+  //     for (const jobData of defaultJobPositions) {
+  //       try {
+  //         const department_id = departmentMap[jobData.department];
+  //         const industry_id = industryMap[jobData.industry];
+  //         const contract_type_id = contractTypeMap[jobData.contract_type];
+
+  //         if (!department_id) {
+  //           console.log(`✗ Department not found for job: ${jobData.name}`);
+  //           continue;
+  //         }
+
+  //         // Get skill IDs for this job position
+  //         const jobSkillIds = [];
+  //         for (const skillName of jobData.skill_names) {
+  //           const skillObj = createdSkills.find(s => s.name === skillName);
+  //           if (skillObj && skillObj.id) {
+  //             jobSkillIds.push(skillObj.id);
+  //           }
+  //         }
+
+  //         // Check if job position already exists
+  //         const existingJob = await odooService.searchRead(
+  //           "hr.job",
+  //           [
+  //             ["name", "=", jobData.name],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         if (existingJob.length === 0) {
+  //           const vals = {
+  //             name: jobData.name,
+  //             client_id: partnerId,
+  //             department_id: department_id,
+  //             no_of_recruitment: jobData.no_of_recruitment || 0,
+  //             skill_ids: [[6, 0, jobSkillIds]], // Link skills to job position
+  //             industry_id: industry_id || false,
+  //             contract_type_id: contract_type_id || false,
+  //           };
+
+  //           const jobId = await odooService.create("hr.job", vals);
+
+  //           createdJobPositions.push({
+  //             id: jobId,
+  //             name: jobData.name,
+  //             department: jobData.department,
+  //             skills: jobData.skill_names
+  //           });
+
+  //           console.log(`✓ Job Position created: ${jobData.name} with ${jobSkillIds.length} skills (ID: ${jobId})`);
+  //         } else {
+  //           console.log(`✓ Job Position already exists: ${jobData.name}`);
+  //           createdJobPositions.push({
+  //             id: existingJob[0].id,
+  //             name: jobData.name,
+  //             department: jobData.department,
+  //             already_existed: true
+  //           });
+  //         }
+  //       } catch (jobError) {
+  //         console.error(`✗ Error creating job position ${jobData.name}:`, jobError);
+  //       }
+  //     }
+
+  //     // --- AUTO CREATE 3 DEFAULT LEAVE TYPES ---
+  //     const defaultLeaveTypes = [
+  //       {
+  //         name: "Casual Leave",
+  //         leave_type_code: "CL",
+  //         leave_category: "non_statutory",
+  //         request_unit: "day",
+  //         leave_validation_type: "manager",
+  //         allocation_validation_type: "hr",
+  //         requires_allocation: "yes",
+  //         employee_requests: "yes",
+  //         include_public_holidays_in_duration: false,
+  //         overtime_deductible: false,
+  //         is_earned_leave: false
+  //       },
+  //       {
+  //         name: "Medical Leave",
+  //         leave_type_code: "ML",
+  //         leave_category: "non_statutory",
+  //         request_unit: "day",
+  //         leave_validation_type: "hr",
+  //         allocation_validation_type: "hr",
+  //         requires_allocation: "yes",
+  //         employee_requests: "yes",
+  //         include_public_holidays_in_duration: false,
+  //         overtime_deductible: false,
+  //         is_earned_leave: false
+  //       },
+  //       {
+  //         name: "Annual Leave",
+  //         leave_type_code: "AL",
+  //         leave_category: "statutory",
+  //         request_unit: "day",
+  //         leave_validation_type: "manager",
+  //         allocation_validation_type: "hr",
+  //         requires_allocation: "yes",
+  //         employee_requests: "yes",
+  //         include_public_holidays_in_duration: true,
+  //         overtime_deductible: false,
+  //         is_earned_leave: true
+  //       }
+  //     ];
+
+  //     const createdLeaveTypes = [];
+
+  //     for (const leaveTypeData of defaultLeaveTypes) {
+  //       try {
+  //         const existingLeaveType = await odooService.searchRead(
+  //           "hr.leave.type",
+  //           [
+  //             ["name", "=", leaveTypeData.name],
+  //             ["client_id", "=", partnerId]
+  //           ],
+  //           ["id"],
+  //           0,
+  //           1
+  //         );
+
+  //         if (existingLeaveType.length === 0) {
+  //           const vals = {
+  //             name: leaveTypeData.name,
+  //             client_id: partnerId,
+  //             leave_type_code: leaveTypeData.leave_type_code,
+  //             leave_category: leaveTypeData.leave_category,
+  //             request_unit: leaveTypeData.request_unit,
+  //             leave_validation_type: leaveTypeData.leave_validation_type,
+  //             allocation_validation_type: leaveTypeData.allocation_validation_type,
+  //             requires_allocation: leaveTypeData.requires_allocation,
+  //             employee_requests: leaveTypeData.employee_requests,
+  //             include_public_holidays_in_duration: leaveTypeData.include_public_holidays_in_duration,
+  //             overtime_deductible: leaveTypeData.overtime_deductible,
+  //             is_earned_leave: leaveTypeData.is_earned_leave,
+  //             active: true
+  //           };
+
+  //           const leaveTypeId = await odooService.create("hr.leave.type", vals);
+
+  //           createdLeaveTypes.push({
+  //             id: leaveTypeId,
+  //             name: leaveTypeData.name,
+  //             code: leaveTypeData.leave_type_code
+  //           });
+
+  //           console.log(`✓ Leave Type created: ${leaveTypeData.name} (ID: ${leaveTypeId})`);
+  //         } else {
+  //           console.log(`✓ Leave Type already exists: ${leaveTypeData.name}`);
+  //           createdLeaveTypes.push({
+  //             id: existingLeaveType[0].id,
+  //             name: leaveTypeData.name,
+  //             already_existed: true
+  //           });
+  //         }
+  //       } catch (leaveTypeError) {
+  //         console.error(`✗ Error creating leave type ${leaveTypeData.name}:`, leaveTypeError);
+  //       }
+  //     }
+
+  //     return res.status(200).json({
+  //       status: "OK",
+  //       message: "Plan verified successfully",
+  //       data: {
+  //         partner_id: partnerId,
+  //         plan_id: plan.id,
+  //         product_id: plan.product_id,
+  //         start_date: plan.start_date,
+  //         end_date: plan.end_date
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("Plan Activation Error:", error);
+  //     return res.status(500).json({
+  //       status: "error",
+  //       message: "Failed to verify plan activation",
+  //     });
+  //   }
+  // }
   async planActivation(req, res) {
     try {
       const { email, secret_key } = req.body;
@@ -4167,6 +4999,56 @@ class ApiController {
           }
         } catch (leaveTypeError) {
           console.error(`✗ Error creating leave type ${leaveTypeData.name}:`, leaveTypeError);
+        }
+      }
+
+      // --- AUTO CREATE 4 WORK LOCATIONS ---
+      const defaultWorkLocations = [
+        { name: "Ahmedabad", location_type: "office" },
+        { name: "Gandhinagar", location_type: "office" },
+        { name: "Vadodara", location_type: "office" },
+        { name: "Surat", location_type: "office" }
+      ];
+
+      const createdWorkLocations = [];
+
+      for (const locationData of defaultWorkLocations) {
+        try {
+          const existingLocation = await odooService.searchRead(
+            "hr.work.location",
+            [
+              ["name", "=", locationData.name],
+              ["client_id", "=", partnerId]
+            ],
+            ["id"],
+            0,
+            1
+          );
+
+          if (existingLocation.length === 0) {
+            const workLocationId = await odooService.create("hr.work.location", {
+              name: locationData.name,
+              location_type: locationData.location_type,
+              client_id: partnerId
+            });
+
+            createdWorkLocations.push({
+              id: workLocationId,
+              name: locationData.name,
+              location_type: locationData.location_type
+            });
+
+            console.log(`✓ Work Location created: ${locationData.name} (ID: ${workLocationId})`);
+          } else {
+            console.log(`✓ Work Location already exists: ${locationData.name}`);
+            createdWorkLocations.push({
+              id: existingLocation[0].id,
+              name: locationData.name,
+              already_existed: true
+            });
+          }
+        } catch (locationError) {
+          console.error(`✗ Error creating work location ${locationData.name}:`, locationError);
         }
       }
 
@@ -5813,7 +6695,6 @@ class ApiController {
     try {
       console.log("API Called getPartners Branches .......");
       const { client_id } = await getClientFromRequest(req);
-
       const partners = await odooService.searchRead(
         "res.partner",
         [["parent_id", "=", client_id]],
@@ -5822,7 +6703,6 @@ class ApiController {
           "name",
           "mobile",
           "email",
-          "l10n_in_pan",
           "vat",
           "l10n_in_gst_treatment",
           "street",
@@ -5832,18 +6712,45 @@ class ApiController {
           "zip",
           "country_id",
           "company_type",
-          "is_from_konvert_hr_portal",
+          "parent_id"
         ]
       );
+      const formatted = partners.map(p => {
+        const addressParts = [
+          p.street,
+          p.street2,
+          p.city,
+          p.state_id ? p.state_id[1] : null,
+          p.zip,
+          p.country_id ? p.country_id[1] : null
+        ]
+          .filter(Boolean)
+          .map(part => part.toString().trim().replace(/,+$/, ''));
+
+        const fullAddress = addressParts.join(', ');
+
+        return {
+          ...p,
+          RegisteredCompnany: p.parent_id ? p.parent_id[1] : null,
+          address: fullAddress || null,
+          parent_id: undefined
+        };
+      });
+      const cleaned = formatted.map(record => {
+        const obj = {};
+        for (const key in record) {
+          if (record[key] !== undefined) obj[key] = record[key];
+        }
+        return obj;
+      });
 
       return res.status(200).json({
         status: "success",
         message: "Branches fetched successfully",
-        data: partners,
+        data: cleaned
       });
     } catch (error) {
       console.error("Get Branch Error:", error);
-
       return res.status(error.status || 500).json({
         status: "error",
         message: error.message || "Failed to fetch Branchs",
@@ -7054,7 +7961,6 @@ class ApiController {
     }
   }
 
-
   // async getAdminAttendances(req, res) {
   //   try {
   //     const {
@@ -7077,22 +7983,47 @@ class ApiController {
 
   //     console.log("🔍 Admin Attendance Fetch - user_id:", user_id);
 
-  //     const partner = await odooService.searchRead(
+  //     // -----------------------------
+  //     // 1. Check if user is admin
+  //     // -----------------------------
+  //     const userInfo = await odooService.searchRead(
   //       "res.users",
   //       [["id", "=", parseInt(user_id)]],
-  //       ["id", "partner_id"]
+  //       ["id", "partner_id", "is_client_employee_admin", "is_client_employee_user"]
   //     );
-  //     console.log("👤 Partner Data:", partner);
+  //     console.log("👤 User Data:", userInfo);
 
-  //     if (!partner.length) {
+  //     if (!userInfo.length) {
   //       return res.status(404).json({
   //         success: false,
   //         status: "error",
-  //         errorMessage: `Partner not found for user_id: ${user_id}`,
+  //         errorMessage: `User not found for user_id: ${user_id}`,
   //       });
   //     }
 
-  //     const partnerId = partner[0].partner_id?.[0];
+  //     const user = userInfo[0];
+
+  //     // Check if both fields are false - plan expired or not purchased
+  //     if (!user.is_client_employee_admin && !user.is_client_employee_user) {
+  //       return res.status(403).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: "Your plan expired or you didn't Buy",
+  //       });
+  //     }
+
+  //     // Check if user is admin
+  //     if (!user.is_client_employee_admin) {
+  //       return res.status(403).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: "You are not admin ,you are Employee",
+  //       });
+  //     }
+
+  //     console.log("✅ User is admin. Proceeding...");
+
+  //     const partnerId = user.partner_id?.[0];
   //     console.log("🆔 Partner ID:", partnerId);
 
   //     const adminEmployee = await odooService.searchRead(
@@ -7370,13 +8301,15 @@ class ApiController {
   //     });
   //   }
   // }
-
   async getAdminAttendances(req, res) {
     try {
       const {
         user_id,
         date_from,
         date_to,
+        month,
+        year,
+        employee_id,
         limit = 100,
         offset = 0,
       } = req.query;
@@ -7496,20 +8429,77 @@ class ApiController {
       );
       console.log("✅ Approved Leave Employees:", ApprovedLeaveOfEmployee);
 
+      // ===== NEW: Handle month/year filtering =====
+      let finalDateFrom = date_from;
+      let finalDateTo = date_to;
+      const timezone = "Asia/Kolkata";
+      const currentYear = moment().tz(timezone).year();
+
+      if (month || year) {
+        const selectedYear = year || currentYear;
+        if (month) {
+          finalDateFrom = moment
+            .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+            .startOf("month")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+          finalDateTo = moment
+            .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+            .endOf("month")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+        } else {
+          finalDateFrom = moment
+            .tz(`${selectedYear}-01-01`, timezone)
+            .startOf("year")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+          finalDateTo = moment
+            .tz(`${selectedYear}-12-31`, timezone)
+            .endOf("year")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+        }
+      } else if (!date_from && !date_to) {
+        // Default to current month if no filters provided
+        finalDateFrom = moment
+          .tz(timezone)
+          .startOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+        finalDateTo = moment
+          .tz(timezone)
+          .endOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+      }
+      // ===== END: month/year filtering =====
+
       console.log("\n👥 Fetching All Employees for client_id:", client_id);
+
+      // ===== NEW: Filter by specific employee if employee_id provided =====
+      let employeeDomain = [["address_id", "=", client_id]];
+      if (employee_id) {
+        employeeDomain.push(["id", "=", parseInt(employee_id)]);
+      }
+
       const allEmployees = await odooService.searchRead(
         "hr.employee",
-        [["address_id", "=", client_id]],
+        employeeDomain,
         ["id", "name", "job_id"]
       );
       console.log("📋 All Employees Count:", allEmployees.length);
       console.log("📋 All Employees Data:", JSON.stringify(allEmployees, null, 2));
 
       if (!allEmployees.length) {
+        const errorMsg = employee_id
+          ? `No employee found for employee_id: ${employee_id}`
+          : "No employees found for this client_id";
+
         return res.status(404).json({
           success: false,
           status: "error",
-          errorMessage: "No employees found for this client_id",
+          errorMessage: errorMsg,
         });
       }
 
@@ -7517,8 +8507,8 @@ class ApiController {
       console.log("🔢 Employee IDs:", employeeIds);
 
       let domain = [["employee_id", "in", employeeIds]];
-      if (date_from) domain.push(["check_in", ">=", date_from]);
-      if (date_to) domain.push(["check_in", "<=", date_to]);
+      if (finalDateFrom) domain.push(["check_in", ">=", finalDateFrom]);
+      if (finalDateTo) domain.push(["check_in", "<=", finalDateTo]);
       console.log("🔍 Attendance Domain:", JSON.stringify(domain));
 
       const FIELDS = [
@@ -7550,6 +8540,47 @@ class ApiController {
       );
       console.log("📊 Attendance Records Count:", attendances.length);
       console.log("📊 First 3 Attendance Records:", JSON.stringify(attendances.slice(0, 3), null, 2));
+
+      // ===== NEW: Check if no attendance records found =====
+      if (attendances.length === 0) {
+        let noDataMessage = "No attendance records found";
+
+        if (employee_id && month) {
+          const empName = allEmployees[0]?.name || `Employee ${employee_id}`;
+          const monthName = moment().month(parseInt(month) - 1).format("MMMM");
+          noDataMessage = `No attendance records found for ${empName} in ${monthName} ${year || currentYear}`;
+        } else if (employee_id) {
+          const empName = allEmployees[0]?.name || `Employee ${employee_id}`;
+          noDataMessage = `No attendance records found for ${empName}`;
+        } else if (month) {
+          const monthName = moment().month(parseInt(month) - 1).format("MMMM");
+          noDataMessage = `No attendance records found for ${monthName} ${year || currentYear}`;
+        } else if (finalDateFrom && finalDateTo) {
+          noDataMessage = `No attendance records found for the selected date range`;
+        }
+
+        return res.status(200).json({
+          success: true,
+          status: "success",
+          successMessage: noDataMessage,
+          data: [],
+          meta: {
+            total_Attendace_records: 0,
+            total_employees: allEmployees.length,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            admin_partner_id: partnerId,
+            admin_address_id: client_id,
+            TotalEmployee: totalEmployees,
+            Presentemployee: Presentemployee,
+            TotalLateemployee: TotalLateemployee,
+            Ununiformendemployee: Ununiformendemployee,
+            TodayAbsetEmployee: TodayAbsetEmployee,
+            ApprovedLeaveOfEmployee: ApprovedLeaveOfEmployee,
+          },
+        });
+      }
+      // ===== END: No data check =====
 
       const convertToIST = (utcDateStr) => {
         if (!utcDateStr) return null;
@@ -7711,6 +8742,7 @@ class ApiController {
       });
     }
   }
+
   async updateAdminAttendance(req, res) {
     try {
       const { id } = req.params;
@@ -7921,12 +8953,471 @@ class ApiController {
   }
 
 
+  // async getEmployeeAttendanceComplete(req, res) {
+  //   try {
+  //     const {
+  //       user_id,
+  //       date_from,
+  //       date_to,
+  //       date,
+  //       limit = 100,
+  //       offset = 0,
+  //     } = req.query;
+
+  //     if (!user_id) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: "user_id is required",
+  //         successMessage: "",
+  //         statuscode: 400,
+  //       });
+  //     }
+
+  //     console.log("🔍 Searching employee for user_id:", user_id);
+
+  //     const formatDatetime = (datetime) => {
+  //       if (!datetime) return null;
+  //       return moment
+  //         .utc(datetime)
+  //         .tz("Asia/Kolkata")
+  //         .format("YYYY-MM-DD HH:mm:ss");
+  //     };
+
+  //     const employee = await odooService.searchRead(
+  //       "hr.employee",
+  //       [["user_id", "=", parseInt(user_id)]],
+  //       ["id", "name", "resource_calendar_id"]
+  //     );
+
+  //     if (!employee.length) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         status: "error",
+  //         errorMessage: `No employee found for user_id: ${user_id}`,
+  //         successMessage: "",
+  //         statuscode: 404,
+  //       });
+  //     }
+
+  //     const employeeData = employee[0];
+  //     const employeeId = employeeData.id;
+
+  //     let domain = [["employee_id", "=", employeeId]];
+  //     if (date_from) domain.push(["check_in", ">=", date_from]);
+  //     if (date_to) domain.push(["check_in", "<=", date_to]);
+
+  //     const REQUIRED_FIELDS = [
+  //       "employee_id",
+  //       "check_in",
+  //       "check_out",
+  //       "checkin_lat",
+  //       "checkin_lon",
+  //       "checkout_lat",
+  //       "checkout_lon",
+  //       "total_working_hours",
+  //       "total_productive_hours",
+  //       "early_out_minutes",
+  //       "overtime_hours",
+  //       "is_early_out",
+  //       "validated_overtime_hours",
+  //       "is_late_in",
+  //       "late_time_display",
+  //       "status_code",
+  //       "overtime_start",
+  //       "overtime_end",
+  //     ];
+
+  //     const attendances = await odooService.searchRead(
+  //       "hr.attendance",
+  //       domain,
+  //       REQUIRED_FIELDS,
+  //       parseInt(offset),
+  //       parseInt(limit),
+  //       "check_in desc"
+  //     );
+
+  //     const totalCount = await odooService.search("hr.attendance", domain);
+
+  //     const todayDate = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
+
+  //     const attendanceIds = attendances.map((att) => att.id);
+  //     let attendanceLinesByAttendance = {};
+
+  //     if (attendanceIds.length > 0) {
+  //       const allAttendanceLines = await odooService.searchRead(
+  //         "hr.attendance.line",
+  //         [["attendance_id", "in", attendanceIds]],
+  //         [
+  //           "attendance_id",
+  //           "check_in",
+  //           "check_out",
+  //           "break_start",
+  //           "break_end",
+  //           "break_hours",
+  //           "productive_hours",
+  //         ]
+  //       );
+
+  //       allAttendanceLines.forEach((line) => {
+  //         const attId = line.attendance_id?.[0];
+  //         if (attId) {
+  //           if (!attendanceLinesByAttendance[attId]) {
+  //             attendanceLinesByAttendance[attId] = [];
+  //           }
+  //           attendanceLinesByAttendance[attId].push(line);
+  //         }
+  //       });
+  //     }
+
+  //     const finalAttendance = attendances.map((att) => {
+  //       const checkInDate = moment
+  //         .utc(att.check_in)
+  //         .tz("Asia/Kolkata")
+  //         .format("YYYY-MM-DD");
+  //       const isToday = checkInDate === todayDate;
+
+  //       const formatted = {
+  //         id: att.id,
+  //         employee_id: att.employee_id,
+  //         checkin_lat: att.checkin_lat,
+  //         checkin_lon: att.checkin_lon,
+  //         checkout_lat: att.checkout_lat,
+  //         checkout_lon: att.checkout_lon,
+  //         total_working_hours: att.total_working_hours,
+  //         total_productive_hours: att.total_productive_hours,
+  //         early_out_minutes: att.early_out_minutes,
+  //         overtime_hours: att.overtime_hours,
+  //         is_early_out: att.is_early_out,
+  //         is_late_in: att.is_late_in,
+  //         late_time_display: att.late_time_display,
+  //         status_code: att.status_code,
+  //         overtime_start: formatDatetime(att.overtime_start),
+  //         overtime_end: formatDatetime(att.overtime_end),
+  //       };
+
+  //       const attendanceLines = attendanceLinesByAttendance[att.id] || [];
+
+  //       if (attendanceLines.length > 0) {
+  //         const firstLine = attendanceLines[0];
+  //         const lastLine = attendanceLines[attendanceLines.length - 1];
+  //         formatted.check_in = formatDatetime(firstLine.check_in);
+  //         formatted.check_out = formatDatetime(lastLine.check_out);
+  //       } else {
+  //         formatted.check_in = formatDatetime(att.check_in);
+  //         formatted.check_out = formatDatetime(att.check_out);
+  //       }
+
+  //       return formatted;
+  //     });
+  //     let workingHoursSummary = null;
+
+  //     if (employeeData.resource_calendar_id) {
+  //       const calendarId = Array.isArray(employeeData.resource_calendar_id)
+  //         ? employeeData.resource_calendar_id[0]
+  //         : employeeData.resource_calendar_id;
+
+  //       const calendar = await odooService.searchRead(
+  //         "resource.calendar",
+  //         [["id", "=", calendarId]],
+  //         ["id", "name", "hours_per_day", "total_overtime_hours_allowed"]
+  //       );
+
+  //       if (calendar.length) {
+  //         const allowedHoursPerDay = calendar[0].hours_per_day || 0;
+  //         const allowedOvertimePerDay =
+  //           calendar[0].total_overtime_hours_allowed || 0;
+  //         const targetDate =
+  //           date || moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
+
+  //         const getDateRanges = (dateString) => {
+  //           const tz = "Asia/Kolkata";
+  //           const todayStart = moment
+  //             .tz(dateString, tz)
+  //             .startOf("day")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+  //           const todayEnd = moment
+  //             .tz(dateString, tz)
+  //             .endOf("day")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+
+  //           const weekStart = moment
+  //             .tz(dateString, tz)
+  //             .startOf("week")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+  //           const weekEnd = moment
+  //             .tz(dateString, tz)
+  //             .endOf("week")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+
+  //           const monthStart = moment
+  //             .tz(dateString, tz)
+  //             .startOf("month")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+  //           const monthEnd = moment
+  //             .tz(dateString, tz)
+  //             .endOf("month")
+  //             .utc()
+  //             .format("YYYY-MM-DD HH:mm:ss");
+
+  //           return {
+  //             todayStart,
+  //             todayEnd,
+  //             weekStart,
+  //             weekEnd,
+  //             monthStart,
+  //             monthEnd,
+  //           };
+  //         };
+
+  //         const getWorkingDaysInMonth = (dateString) => {
+  //           const tz = "Asia/Kolkata";
+  //           const start = moment.tz(dateString, tz).startOf("month");
+  //           const end = moment.tz(dateString, tz).endOf("month");
+
+  //           let workingDays = 0;
+  //           let current = start.clone();
+
+  //           while (current.isSameOrBefore(end)) {
+  //             const day = current.day();
+  //             if (day !== 0 && day !== 6) {
+  //               workingDays++;
+  //             }
+  //             current.add(1, "day");
+  //           }
+
+  //           return workingDays;
+  //         };
+
+  //         const ranges = getDateRanges(targetDate);
+
+  //         const [todayLogs, weekLogs, monthLogs] = await Promise.all([
+  //           odooService.searchRead(
+  //             "hr.attendance",
+  //             [
+  //               ["employee_id", "=", employeeId],
+  //               ["check_in", ">=", ranges.todayStart],
+  //               ["check_in", "<=", ranges.todayEnd],
+  //             ],
+  //             ["id", "total_working_hours"]
+  //           ),
+  //           odooService.searchRead(
+  //             "hr.attendance",
+  //             [
+  //               ["employee_id", "=", employeeId],
+  //               ["check_in", ">=", ranges.weekStart],
+  //               ["check_in", "<=", ranges.weekEnd],
+  //             ],
+  //             ["id", "total_working_hours"]
+  //           ),
+  //           odooService.searchRead(
+  //             "hr.attendance",
+  //             [
+  //               ["employee_id", "=", employeeId],
+  //               ["check_in", ">=", ranges.monthStart],
+  //               ["check_in", "<=", ranges.monthEnd],
+  //             ],
+  //             ["id", "total_working_hours"]
+  //           ),
+  //         ]);
+
+  //         const sumWorkingHours = (records) =>
+  //           records.reduce(
+  //             (sum, rec) => sum + (parseFloat(rec.total_working_hours) || 0),
+  //             0
+  //           );
+
+  //         const workedToday = sumWorkingHours(todayLogs);
+  //         const workedWeek = sumWorkingHours(weekLogs);
+  //         const workedMonth = sumWorkingHours(monthLogs);
+
+  //         let breakHoursToday = 0;
+  //         let todayAttendanceLineDetails = [];
+
+  //         if (todayLogs.length > 0) {
+  //           const todayIds = todayLogs.map((att) => att.id);
+  //           const breakLines = await odooService.searchRead(
+  //             "hr.attendance.line",
+  //             [["attendance_id", "in", todayIds]],
+  //             [
+  //               "attendance_id",
+  //               "check_in",
+  //               "check_out",
+  //               "break_start",
+  //               "break_end",
+  //               "break_hours",
+  //               "productive_hours",
+  //             ]
+  //           );
+
+  //           breakHoursToday = breakLines.reduce(
+  //             (sum, brk) => sum + (parseFloat(brk.break_hours) || 0),
+  //             0
+  //           );
+
+  //           todayAttendanceLineDetails = breakLines.map((line) => ({
+  //             attendance_id: line.attendance_id?.[0] || null,
+  //             check_in: formatDatetime(line.check_in),
+  //             check_out: formatDatetime(line.check_out),
+  //             break_start: formatDatetime(line.break_start),
+  //             break_end: formatDatetime(line.break_end),
+  //             break_hours: parseFloat((line.break_hours || 0).toFixed(2)),
+  //             productive_hours: parseFloat(
+  //               (line.productive_hours || 0).toFixed(2)
+  //             ),
+  //           }));
+  //         }
+  //         const workingDaysInMonth = getWorkingDaysInMonth(targetDate);
+  //         const allowedWeek = allowedHoursPerDay * 5;
+  //         const allowedMonth = allowedHoursPerDay * workingDaysInMonth;
+  //         const allowedOvertimeWeek = allowedOvertimePerDay * 5;
+  //         const allowedOvertimeMonth =
+  //           allowedOvertimePerDay * workingDaysInMonth;
+  //         const sumOvertimeHours = (records) =>
+  //           records.reduce(
+  //             (sum, rec) =>
+  //               sum + (parseFloat(rec.validated_overtime_hours) || 0),
+  //             0
+  //           );
+  //         const [todayOvertimeLogs, weekOvertimeLogs, monthOvertimeLogs] =
+  //           await Promise.all([
+  //             odooService.searchRead(
+  //               "hr.attendance",
+  //               [
+  //                 ["employee_id", "=", employeeId],
+  //                 ["check_in", ">=", ranges.todayStart],
+  //                 ["check_in", "<=", ranges.todayEnd],
+  //               ],
+  //               ["id", "validated_overtime_hours"]
+  //             ),
+  //             odooService.searchRead(
+  //               "hr.attendance",
+  //               [
+  //                 ["employee_id", "=", employeeId],
+  //                 ["check_in", ">=", ranges.weekStart],
+  //                 ["check_in", "<=", ranges.weekEnd],
+  //               ],
+  //               ["id", "validated_overtime_hours"]
+  //             ),
+  //             odooService.searchRead(
+  //               "hr.attendance",
+  //               [
+  //                 ["employee_id", "=", employeeId],
+  //                 ["check_in", ">=", ranges.monthStart],
+  //                 ["check_in", "<=", ranges.monthEnd],
+  //               ],
+  //               ["id", "validated_overtime_hours"]
+  //             ),
+  //           ]);
+  //         const overtimeToday = sumOvertimeHours(todayOvertimeLogs);
+  //         const overtimeWeek = sumOvertimeHours(weekOvertimeLogs);
+  //         const overtimeMonth = sumOvertimeHours(monthOvertimeLogs);
+  //         workingHoursSummary = {
+  //           resource_calendar_id: calendarId,
+  //           calendar_name: calendar[0].name,
+  //           allowed_hours_per_day: allowedHoursPerDay,
+
+  //           today: {
+  //             date: targetDate,
+  //             worked_hours: parseFloat(workedToday.toFixed(2)),
+  //             allowed_hours: allowedHoursPerDay,
+  //             remaining_hours: parseFloat(
+  //               Math.max(0, allowedHoursPerDay - workedToday).toFixed(2)
+  //             ),
+  //             percentage: parseFloat(
+  //               Math.min(100, (workedToday / allowedHoursPerDay) * 100).toFixed(
+  //                 2
+  //               )
+  //             ),
+  //             is_completed: workedToday >= allowedHoursPerDay,
+  //             attendance_records: todayLogs.length,
+  //             total_break_hours: parseFloat(breakHoursToday.toFixed(2)),
+  //             total_overtime_hours_allowed: parseFloat(
+  //               allowedOvertimePerDay.toFixed(2)
+  //             ),
+  //             total_overtime_hours_worked: parseFloat(overtimeToday.toFixed(2)),
+  //             attendance_line_details: todayAttendanceLineDetails,
+  //             message:
+  //               todayLogs.length === 0 ? "Not checked in till now" : null,
+  //           },
+
+  //           week: {
+  //             worked_hours: parseFloat(workedWeek.toFixed(2)),
+  //             allowed_hours: allowedWeek,
+  //             remaining_hours: parseFloat(
+  //               Math.max(0, allowedWeek - workedWeek).toFixed(2)
+  //             ),
+  //             percentage: parseFloat(
+  //               Math.min(100, (workedWeek / allowedWeek) * 100).toFixed(2)
+  //             ),
+  //             attendance_records: weekLogs.length,
+  //             total_overtime_hours_allowed: parseFloat(
+  //               allowedOvertimeWeek.toFixed(2)
+  //             ),
+  //             total_overtime_hours_worked: parseFloat(overtimeWeek.toFixed(2)),
+  //           },
+
+  //           month: {
+  //             worked_hours: parseFloat(workedMonth.toFixed(2)),
+  //             allowed_hours: allowedMonth,
+  //             remaining_hours: parseFloat(
+  //               Math.max(0, allowedMonth - workedMonth).toFixed(2)
+  //             ),
+  //             percentage: parseFloat(
+  //               Math.min(100, (workedMonth / allowedMonth) * 100).toFixed(2)
+  //             ),
+  //             attendance_records: monthLogs.length,
+  //             total_overtime_hours_allowed: parseFloat(
+  //               allowedOvertimeMonth.toFixed(2)
+  //             ),
+  //             total_overtime_hours_worked: parseFloat(overtimeMonth.toFixed(2)),
+  //           },
+  //         };
+  //       }
+  //     }
+
+  //     return res.status(200).json({
+  //       success: true,
+  //       status: "success",
+  //       successMessage: "Employee attendance data fetched successfully",
+  //       statuscode: 200,
+  //       data: {
+  //         employee: {
+  //           employee_id: employeeId,
+  //           employee_name: employeeData.name,
+  //         },
+  //         attendance_records: finalAttendance,
+  //         working_hours_summary: workingHoursSummary,
+  //       },
+  //       meta: {
+  //         total_attendance_records: totalCount.length,
+  //         limit: parseInt(limit),
+  //         offset: parseInt(offset),
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("🔥 Error fetching employee attendance data:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       status: "error",
+  //       errorMessage: error.message || "Internal Server Error",
+  //       statuscode: 500,
+  //     });
+  //   }
+  // }
   async getEmployeeAttendanceComplete(req, res) {
     try {
       const {
         user_id,
         date_from,
         date_to,
+        month,
+        year,
         date,
         limit = 100,
         offset = 0,
@@ -7971,9 +9462,56 @@ class ApiController {
       const employeeData = employee[0];
       const employeeId = employeeData.id;
 
+      // ===== NEW: Handle month/year filtering =====
+      let finalDateFrom = date_from;
+      let finalDateTo = date_to;
+      const timezone = "Asia/Kolkata";
+      const currentYear = moment().tz(timezone).year();
+      const currentMonth = moment().tz(timezone).month() + 1;
+
+      if (month || year) {
+        const selectedYear = year || currentYear;
+        if (month) {
+          finalDateFrom = moment
+            .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+            .startOf("month")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+          finalDateTo = moment
+            .tz(`${selectedYear}-${String(month).padStart(2, "0")}-01`, timezone)
+            .endOf("month")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+        } else {
+          finalDateFrom = moment
+            .tz(`${selectedYear}-01-01`, timezone)
+            .startOf("year")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+          finalDateTo = moment
+            .tz(`${selectedYear}-12-31`, timezone)
+            .endOf("year")
+            .utc()
+            .format("YYYY-MM-DD HH:mm:ss");
+        }
+      } else if (!date_from && !date_to) {
+        // Default to current month if no filters provided
+        finalDateFrom = moment
+          .tz(timezone)
+          .startOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+        finalDateTo = moment
+          .tz(timezone)
+          .endOf("month")
+          .utc()
+          .format("YYYY-MM-DD HH:mm:ss");
+      }
+
       let domain = [["employee_id", "=", employeeId]];
-      if (date_from) domain.push(["check_in", ">=", date_from]);
-      if (date_to) domain.push(["check_in", "<=", date_to]);
+      if (finalDateFrom) domain.push(["check_in", ">=", finalDateFrom]);
+      if (finalDateTo) domain.push(["check_in", "<=", finalDateTo]);
+      // ===== END: month/year filtering =====
 
       const REQUIRED_FIELDS = [
         "employee_id",
@@ -8006,6 +9544,44 @@ class ApiController {
       );
 
       const totalCount = await odooService.search("hr.attendance", domain);
+
+      // ===== NEW: Check if no attendance records found =====
+      if (attendances.length === 0) {
+        let noDataMessage = "No attendance records found";
+
+        if (month && year) {
+          const monthName = moment().month(parseInt(month) - 1).format("MMMM");
+          noDataMessage = `No data for ${monthName} ${year}`;
+        } else if (month) {
+          const monthName = moment().month(parseInt(month) - 1).format("MMMM");
+          noDataMessage = `No data for ${monthName} ${currentYear}`;
+        } else if (year) {
+          noDataMessage = `No data for ${year}`;
+        } else if (finalDateFrom && finalDateTo) {
+          noDataMessage = `No data for the selected date range`;
+        }
+
+        return res.status(200).json({
+          success: true,
+          status: "success",
+          successMessage: noDataMessage,
+          statuscode: 200,
+          data: {
+            employee: {
+              employee_id: employeeId,
+              employee_name: employeeData.name,
+            },
+            attendance_records: [],
+            working_hours_summary: null,
+          },
+          meta: {
+            total_attendance_records: 0,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+          },
+        });
+      }
+      // ===== END: No data check =====
 
       const todayDate = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
 
@@ -8378,8 +9954,6 @@ class ApiController {
       });
     }
   }
-
-
   async getUserContacts(req, res) {
     try {
       const { user_id } = req.query;
@@ -9917,6 +11491,474 @@ class ApiController {
 
     } catch (error) {
       return res.status(500).json({ status: "error", message: error.message });
+    }
+  }
+
+  async _fetchEmployeeAttendanceData(user_id, date_from, date_to, limit = 1000, offset = 0) {
+    const employee = await odooService.searchRead(
+      "hr.employee",
+      [["user_id", "=", parseInt(user_id)]],
+      ["id", "name", "job_id", "department_id"]
+    );
+
+    if (!employee.length) {
+      throw { status: 404, message: `No employee found for user_id: ${user_id}` };
+    }
+
+    const employeeData = employee[0];
+    const employeeId = employeeData.id;
+
+    let domain = [["employee_id", "=", employeeId]];
+    if (date_from) domain.push(["check_in", ">=", date_from]);
+    if (date_to) domain.push(["check_in", "<=", date_to]);
+
+    const FIELDS = [
+      "employee_id",
+      "check_in",
+      "checkin_lat",
+      "checkin_lon",
+      "check_out",
+      "checkout_lat",
+      "checkout_lon",
+      "worked_hours",
+      "early_out_minutes",
+      "overtime_hours",
+      "is_early_out",
+      "validated_overtime_hours",
+      "is_late_in",
+      "late_time_display",
+      "status_code",
+    ];
+
+    const attendances = await odooService.searchRead(
+      "hr.attendance",
+      domain,
+      FIELDS,
+      parseInt(offset),
+      parseInt(limit),
+      "check_in desc"
+    );
+
+    const convertToIST = (utcDateStr) => {
+      if (!utcDateStr) return null;
+      const utcDate = new Date(utcDateStr + " UTC");
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(utcDate.getTime() + istOffset);
+      return istDate.toISOString().slice(0, 19).replace("T", " ");
+    };
+
+    const attendanceIds = attendances.map((a) => a.id);
+
+    let breakLines = [];
+    if (attendanceIds.length > 0) {
+      breakLines = await odooService.searchRead(
+        "hr.attendance.line",
+        [["attendance_id", "in", attendanceIds]],
+        ["attendance_id", "break_start", "break_end", "break_hours"]
+      );
+    }
+
+    const breakMap = {};
+    breakLines.forEach((line) => {
+      const attId = line.attendance_id?.[0];
+      breakMap[attId] = line;
+    });
+
+    const finalData = attendances.map((att) => {
+      const breakLine = breakMap[att.id];
+      return {
+        id: att.id,
+        employee_name: att.employee_id?.[1] || employeeData.name,
+        check_in: convertToIST(att.check_in),
+        checkin_lat: att.checkin_lat,
+        checkin_lon: att.checkin_lon,
+        check_out: convertToIST(att.check_out),
+        checkout_lat: att.checkout_lat,
+        checkout_lon: att.checkout_lon,
+        worked_hours: att.worked_hours,
+        early_out_minutes: att.early_out_minutes,
+        overtime_hours: att.overtime_hours,
+        validated_overtime_hours: att.validated_overtime_hours,
+        is_late_in: att.is_late_in,
+        late_time_display: att.late_time_display,
+        is_early_out: att.is_early_out,
+        status_code: att.status_code,
+        break_start: convertToIST(breakLine?.break_start),
+        break_end: convertToIST(breakLine?.break_end),
+        break_hours: breakLine?.break_hours || null,
+      };
+    });
+
+    return {
+      data: finalData,
+      employee: {
+        id: employeeData.id,
+        name: employeeData.name,
+        job: employeeData.job_id ? employeeData.job_id[1] : null,
+        department: employeeData.department_id ? employeeData.department_id[1] : null,
+      },
+    };
+  }
+
+  async exportEmployeeAttendanceExcel(req, res) {
+    try {
+      const { user_id, date_from, date_to } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          success: false,
+          status: "error",
+          errorMessage: "user_id is required",
+        });
+      }
+
+      console.log("📊 Employee Excel Export - user_id:", user_id, "date_from:", date_from, "date_to:", date_to);
+
+      let data, employee;
+      try {
+        const result = await this._fetchEmployeeAttendanceData(user_id, date_from, date_to);
+        data = result.data;
+        employee = result.employee;
+      } catch (fetchError) {
+        console.error("Data fetch error:", fetchError);
+        return res.status(fetchError.status || 500).json({
+          success: false,
+          status: "error",
+          errorMessage: fetchError.message || "Failed to fetch attendance data",
+        });
+      }
+
+      console.log("📊 Employee Excel Export - Records fetched:", data.length);
+
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "KonvertHR";
+      workbook.created = new Date();
+
+      const worksheet = workbook.addWorksheet("My Attendance");
+
+      // Add employee info header
+      worksheet.mergeCells("A1:R1");
+      worksheet.getCell("A1").value = `Attendance Report - ${employee.name}`;
+      worksheet.getCell("A1").font = { bold: true, size: 14 };
+      worksheet.getCell("A1").alignment = { horizontal: "center" };
+
+      worksheet.mergeCells("A2:R2");
+      worksheet.getCell("A2").value = `Department: ${employee.department || "N/A"} | Job: ${employee.job || "N/A"} | Period: ${date_from || "All"} to ${date_to || "Present"}`;
+      worksheet.getCell("A2").alignment = { horizontal: "center" };
+
+      // Add empty row
+      worksheet.addRow([]);
+
+      // Define columns starting from row 4
+      worksheet.columns = [
+        { header: "Date", key: "date", width: 12 },
+        { header: "Check In", key: "check_in", width: 20 },
+        { header: "Check Out", key: "check_out", width: 20 },
+        { header: "Worked Hours", key: "worked_hours", width: 15 },
+        { header: "Late In", key: "is_late_in", width: 10 },
+        { header: "Late Time", key: "late_time_display", width: 15 },
+        { header: "Early Out", key: "is_early_out", width: 12 },
+        { header: "Early Out (Min)", key: "early_out_minutes", width: 15 },
+        { header: "Overtime Hours", key: "overtime_hours", width: 15 },
+        { header: "Break Start", key: "break_start", width: 20 },
+        { header: "Break End", key: "break_end", width: 20 },
+        { header: "Break Hours", key: "break_hours", width: 12 },
+        { header: "Status", key: "status_code", width: 12 },
+        { header: "Check-in Lat", key: "checkin_lat", width: 15 },
+        { header: "Check-in Lon", key: "checkin_lon", width: 15 },
+        { header: "Check-out Lat", key: "checkout_lat", width: 15 },
+        { header: "Check-out Lon", key: "checkout_lon", width: 15 },
+      ];
+
+      // Add header row at row 4
+      const headerRow = worksheet.getRow(4);
+      headerRow.values = ["Date", "Check In", "Check Out", "Worked Hours", "Late In", "Late Time", "Early Out", "Early Out (Min)", "Overtime Hours", "Break Start", "Break End", "Break Hours", "Status", "Check-in Lat", "Check-in Lon", "Check-out Lat", "Check-out Lon"];
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      headerRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF4472C4" },
+      };
+      headerRow.alignment = { horizontal: "center", vertical: "middle" };
+
+      // Add data rows starting from row 5
+      data.forEach((record, index) => {
+        const dateOnly = record.check_in ? record.check_in.split(" ")[0] : "-";
+        const row = worksheet.addRow({
+          date: dateOnly,
+          check_in: record.check_in || "Not Checked In",
+          check_out: record.check_out || "Not Checked Out",
+          worked_hours: record.worked_hours ? Number(record.worked_hours).toFixed(2) : "0.00",
+          is_late_in: record.is_late_in ? "Yes" : "No",
+          late_time_display: record.late_time_display || "-",
+          is_early_out: record.is_early_out ? "Yes" : "No",
+          early_out_minutes: record.early_out_minutes || 0,
+          overtime_hours: record.overtime_hours ? Number(record.overtime_hours).toFixed(2) : "0.00",
+          break_start: record.break_start || "-",
+          break_end: record.break_end || "-",
+          break_hours: record.break_hours ? Number(record.break_hours).toFixed(2) : "-",
+          status_code: record.status_code || "-",
+          checkin_lat: record.checkin_lat || "-",
+          checkin_lon: record.checkin_lon || "-",
+          checkout_lat: record.checkout_lat || "-",
+          checkout_lon: record.checkout_lon || "-",
+        });
+
+        // Alternating row colors
+        if (index % 2 === 0) {
+          row.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFE9EFF7" },
+          };
+        }
+      });
+
+      // Add borders to all data cells
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber >= 4) {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: "thin" },
+              left: { style: "thin" },
+              bottom: { style: "thin" },
+              right: { style: "thin" },
+            };
+          });
+        }
+      });
+
+      // Create exports directory if it doesn't exist
+      const exportsDir = path.join(__dirname, "../../exports");
+      if (!fs.existsSync(exportsDir)) {
+        fs.mkdirSync(exportsDir, { recursive: true });
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const safeName = employee.name.replace(/[^a-zA-Z0-9]/g, "_");
+      const filename = `employee_attendance_${safeName}_${date_from || "all"}_to_${date_to || "all"}_${timestamp}.xlsx`;
+      const filePath = path.join(exportsDir, filename);
+
+      // Write to file
+      await workbook.xlsx.writeFile(filePath);
+
+      console.log("✅ Employee Excel file created:", filePath);
+
+      // Generate download URL
+      const baseUrl = process.env.BASE_URL || `http://${req.get("host")}`;
+      const downloadUrl = `${baseUrl}/exports/${filename}`;
+
+      return res.status(200).json({
+        success: true,
+        status: "success",
+        message: "Excel report generated successfully",
+        data: {
+          filename: filename,
+          download_url: downloadUrl,
+          total_records: data.length,
+          employee_name: employee.name,
+        },
+      });
+    } catch (error) {
+      console.error("Employee Excel Export Error:", error);
+      return res.status(500).json({
+        success: false,
+        status: "error",
+        errorMessage: error.message || "Failed to export attendance to Excel",
+      });
+    }
+  }
+
+  async exportEmployeeAttendancePDF(req, res) {
+    try {
+      const { user_id, date_from, date_to } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({
+          success: false,
+          status: "error",
+          errorMessage: "user_id is required",
+        });
+      }
+
+      console.log("📄 Employee PDF Export - user_id:", user_id, "date_from:", date_from, "date_to:", date_to);
+
+      let data, employee;
+      try {
+        const result = await this._fetchEmployeeAttendanceData(user_id, date_from, date_to);
+        data = result.data;
+        employee = result.employee;
+      } catch (fetchError) {
+        console.error("🔥 Data fetch error:", fetchError);
+        return res.status(fetchError.status || 500).json({
+          success: false,
+          status: "error",
+          errorMessage: fetchError.message || "Failed to fetch attendance data",
+        });
+      }
+
+      console.log("📄 Employee PDF Export - Records fetched:", data.length);
+
+      // Create exports directory if it doesn't exist
+      const exportsDir = path.join(__dirname, "../../exports");
+      if (!fs.existsSync(exportsDir)) {
+        fs.mkdirSync(exportsDir, { recursive: true });
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const safeName = employee.name.replace(/[^a-zA-Z0-9]/g, "_");
+      const filename = `employee_attendance_${safeName}_${date_from || "all"}_to_${date_to || "all"}_${timestamp}.pdf`;
+      const filePath = path.join(exportsDir, filename);
+
+      // Create PDF document (landscape for better table fit)
+      const doc = new PDFDocument({
+        margin: 30,
+        size: "A4",
+        layout: "landscape",
+        bufferPages: true
+      });
+
+      // Pipe to file
+      const writeStream = fs.createWriteStream(filePath);
+      doc.pipe(writeStream);
+
+      // Title
+      doc.fontSize(18).font("Helvetica-Bold").text("My Attendance Report", { align: "center" });
+      doc.moveDown(0.3);
+
+      // Employee info
+      doc.fontSize(12).font("Helvetica-Bold").text(employee.name, { align: "center" });
+      doc.fontSize(10).font("Helvetica");
+      doc.text(`Department: ${employee.department || "N/A"} | Job: ${employee.job || "N/A"}`, { align: "center" });
+      doc.text(`Generated: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`, { align: "center" });
+      if (date_from || date_to) {
+        doc.text(`Period: ${date_from || "Start"} to ${date_to || "Present"}`, { align: "center" });
+      }
+      doc.text(`Total Records: ${data.length}`, { align: "center" });
+      doc.moveDown(1);
+
+      // Table configuration
+      const tableLeft = 30;
+      const colWidths = [70, 90, 90, 60, 45, 55, 50, 55, 55, 60];
+      const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+      const headers = [
+        "Date",
+        "Check In",
+        "Check Out",
+        "Worked Hrs",
+        "Late",
+        "Late Time",
+        "Early",
+        "Break Hrs",
+        "Overtime",
+        "Status",
+      ];
+
+      // Function to draw header
+      const drawHeader = (yPosition) => {
+        doc.save();
+        doc.rect(tableLeft, yPosition, tableWidth, 20).fill("#4472C4");
+        doc.fillColor("white").font("Helvetica-Bold").fontSize(8);
+        let xPos = tableLeft;
+        headers.forEach((header, i) => {
+          doc.text(header, xPos + 2, yPosition + 6, { width: colWidths[i] - 4, align: "left" });
+          xPos += colWidths[i];
+        });
+        doc.restore();
+        return yPosition + 20;
+      };
+
+      let tableTop = doc.y;
+      let yPos = drawHeader(tableTop);
+      const rowHeight = 16;
+      const pageHeight = doc.page.height - 50;
+
+      // Draw data rows
+      data.forEach((record, index) => {
+        // Check if we need a new page
+        if (yPos + rowHeight > pageHeight) {
+          doc.addPage();
+          yPos = drawHeader(30);
+        }
+
+        // Alternating row background
+        doc.save();
+        if (index % 2 === 0) {
+          doc.rect(tableLeft, yPos, tableWidth, rowHeight).fill("#E9EFF7");
+        } else {
+          doc.rect(tableLeft, yPos, tableWidth, rowHeight).fill("#FFFFFF");
+        }
+        doc.restore();
+
+        // Row data
+        doc.fillColor("black").font("Helvetica").fontSize(7);
+        let xPos = tableLeft;
+        const dateOnly = record.check_in ? record.check_in.split(" ")[0] : "-";
+        const timeIn = record.check_in ? record.check_in.split(" ")[1] : "-";
+        const timeOut = record.check_out ? record.check_out.split(" ")[1] : "-";
+        const workedHrs = record.worked_hours ? Number(record.worked_hours).toFixed(2) : "0.00";
+        const breakHrs = record.break_hours ? Number(record.break_hours).toFixed(2) : "-";
+        const overtimeHrs = record.overtime_hours ? Number(record.overtime_hours).toFixed(2) : "-";
+
+        const rowData = [
+          dateOnly,
+          timeIn,
+          timeOut,
+          workedHrs,
+          record.is_late_in ? "Yes" : "No",
+          (record.late_time_display || "-").substring(0, 8),
+          record.is_early_out ? "Yes" : "No",
+          breakHrs,
+          overtimeHrs,
+          (record.status_code || "-").substring(0, 8),
+        ];
+
+        rowData.forEach((cellData, i) => {
+          doc.text(String(cellData), xPos + 2, yPos + 4, {
+            width: colWidths[i] - 4,
+            align: "left",
+          });
+          xPos += colWidths[i];
+        });
+
+        yPos += rowHeight;
+      });
+
+      // Finalize PDF
+      doc.end();
+
+      // Wait for filten
+      new Promise((resolve, reject) => {
+        writeStream.on("finish", resolve);
+        writeStream.on("error", reject);
+      });
+
+      console.log("✅ Employee PDF file created:", filePath);
+
+      // Generate download URL
+      const baseUrl = process.env.BASE_URL || `http://${req.get("host")}`;
+      const downloadUrl = `${baseUrl}/exports/${filename}`;
+
+      return res.status(200).json({
+        success: true,
+        status: "success",
+        message: "PDF report generated successfully",
+        data: {
+          filename: filename,
+          download_url: downloadUrl,
+          total_records: data.length,
+          employee_name: employee.name,
+        },
+      });
+    } catch (error) {
+      console.error("🔥 Employee PDF Export Error:", error);
+      return res.status(500).json({
+        success: false,
+        status: "error",
+        errorMessage: error.message || "Failed to export attendance to PDF",
+      });
     }
   }
 }

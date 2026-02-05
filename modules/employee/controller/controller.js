@@ -573,18 +573,22 @@ const createAttendancePolicy = async (req, res) => {
       });
     }
 
+    // ✅ CHECK: Policy name exists for THIS client_id
     const existing = await odooService.searchRead(
       "attendance.policy",
-      [["name", "=", data.name.trim()]],
+      [
+        ["name", "=", data.name.trim()],
+        ["client_id", "=", client_id]  // ⭐ Added client_id check
+      ],
       ["id"],
       1
     );
 
     if (existing.length > 0) {
-      console.log(`⚠️ Conflict: Policy '${data.name}' already exists`);
+      console.log(`⚠️ Conflict: Policy '${data.name}' already exists for client ${client_id}`);
       return res.status(409).json({
         status: "error",
-        message: "Attendance Policy with this name already exists",
+        message: "Attendance Policy with this name already exists for this client",
       });
     }
 
@@ -3311,7 +3315,7 @@ const createEmployee = async (req, res) => {
           phone: work_phone || "",
           mobile: work_phone || "",
           password: employee_password,
-          is_client_employee_user: true,
+          // is_client_employee_user: true,
           first_name: trimmedName, // Employee ka name as first_name
           state_id: state_id ? parseInt(state_id) : undefined,
           city: district_id ? parseInt(district_id) : undefined, // district_id ko city field mein
@@ -3322,6 +3326,11 @@ const createEmployee = async (req, res) => {
 
         userId = await odooHelpers.create("res.users", userData);
         console.log("User created with ID:", userId);
+
+        await odooHelpers.write("res.users", userId, {
+          is_client_employee_user: true,
+        });
+        console.log("✓ Updated is_client_employee_user to true for user:", userId);
 
         // Get the partner_id of the newly created user
         const newUser = await odooHelpers.searchRead(
@@ -3615,13 +3624,12 @@ const getEmployees = async (req, res) => {
         status: "success",
         count: cachedData.length,
         data: cachedData,
-        response_time_ms: totalTime,
-        cached: true
       });
     }
 
     let employeeSearchDomain;
 
+    // ✅ Added ["active", "=", true] to both domains below
     if (
       currentUser.is_client_employee_user &&
       !currentUser.is_client_employee_admin
@@ -3629,12 +3637,16 @@ const getEmployees = async (req, res) => {
       employeeSearchDomain = [
         ["address_id", "=", client_id],
         ["user_id", "=", currentUser.id],
+        ["active", "=", true], 
       ];
     } else {
-      employeeSearchDomain = [["address_id", "=", client_id]];
+      employeeSearchDomain = [
+        ["address_id", "=", client_id],
+        ["active", "=", true],
+      ];
     }
 
-    // ✅ Get employee IDs only (super fast)
+    // ✅ Get employee IDs only
     const employeeIds = await odooHelpers.searchRead(
       "hr.employee",
       employeeSearchDomain,
@@ -3650,21 +3662,16 @@ const getEmployees = async (req, res) => {
       });
     }
 
-    // ✅ Fetch all approvals in ONE batch call
     const allApprovalsPromise = odooHelpers.searchRead(
       "employee.approval.user.details",
       [["employee_id", "in", employeeIds.map(e => e.id)]],
       ["employee_id", "group_id", "user_id", "approval_sequance", "model"]
     );
 
-    // ✅ Process employees with limited concurrency (avoid overwhelming Odoo)
-    const BATCH_SIZE = 5; // Process 5 employees at a time
+    const BATCH_SIZE = 5; 
     const validEmployees = [];
-
-    // Wait for approvals to be fetched
     const allApprovals = await allApprovalsPromise;
 
-    // Create approvals lookup map
     const approvalsMap = {};
     allApprovals.forEach(approval => {
       const empId = Array.isArray(approval.employee_id)
@@ -3683,14 +3690,12 @@ const getEmployees = async (req, res) => {
       });
     });
 
-    // Process in batches
     for (let i = 0; i < employeeIds.length; i += BATCH_SIZE) {
       const batch = employeeIds.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.all(
         batch.map(async (emp) => {
           try {
-            // ✅ Fetch employee data with minimal fields first
             const employeeData = await odooHelpers.searchRead(
               "hr.employee",
               [["id", "=", emp.id]],
@@ -3725,14 +3730,12 @@ const getEmployees = async (req, res) => {
 
             const employee = employeeData[0];
 
-            // Cleanup
             Object.keys(employee).forEach((key) => {
               if (employee[key] === false || employee[key] === null) {
                 employee[key] = "";
               }
             });
 
-            // ✅ Parallel: Images + Bank Account
             const imagePromises = [];
 
             if (employee.image_1920) {
@@ -3756,7 +3759,6 @@ const getEmployees = async (req, res) => {
               );
             }
 
-            // Bank account fetch
             const bankPromise = (employee.bank_account_id && Array.isArray(employee.bank_account_id) && employee.bank_account_id.length > 0)
               ? odooHelpers.searchRead(
                 "res.partner.bank",
@@ -3766,13 +3768,11 @@ const getEmployees = async (req, res) => {
               )
               : Promise.resolve([]);
 
-            // Wait for all parallel operations
             const [imageResults, bankAccountData] = await Promise.all([
               Promise.all(imagePromises),
               bankPromise
             ]);
 
-            // Set image URLs
             employee.image_url = "";
             employee.driving_license_url = "";
             employee.passbook_url = "";
@@ -3783,15 +3783,12 @@ const getEmployees = async (req, res) => {
               if (result.type === 'passbook') employee.passbook_url = result.url;
             });
 
-            // Clean up base64
             delete employee.image_1920;
             delete employee.driving_license;
             delete employee.upload_passbook;
 
-            // ✅ Get approvals from pre-fetched map (instant!)
             employee.approvals = approvalsMap[employee.id] || [];
 
-            // ✅ Get bank account details
             if (bankAccountData.length > 0) {
               const bank = bankAccountData[0];
               employee.bank_account_details = {
@@ -3821,20 +3818,15 @@ const getEmployees = async (req, res) => {
       validEmployees.push(...batchResults.filter(emp => emp !== null));
     }
 
-    // ✅ Cache the results
     cacheManager.set(cacheKey, validEmployees);
 
     const endTime = Date.now();
     const totalTime = endTime - startTime;
 
-    console.log(`⏱️ Total API Time: ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s)`);
-
     return res.status(200).json({
       status: "success",
       count: validEmployees.length,
       data: validEmployees,
-      response_time_ms: totalTime,
-      cached: false
     });
   } catch (error) {
     console.error("Error fetching employees:", error);
@@ -5275,7 +5267,7 @@ const updateEmployee = async (req, res) => {
 const deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-
+    
     if (!id) {
       return res.status(400).json({
         status: "error",
@@ -5285,9 +5277,19 @@ const deleteEmployee = async (req, res) => {
 
     const { client_id } = await getClientFromRequest(req);
 
-    const existingEmployee = await odooHelpers.searchRead(
+    // Parse and validate employee ID
+    const employeeIdInt = parseInt(id, 10);
+    if (isNaN(employeeIdInt)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid Employee ID format",
+      });
+    }
+
+    // Fetch employee details
+    const existingEmployee = await odooService.searchRead(
       "hr.employee",
-      [["id", "=", parseInt(id)]],
+      [["id", "=", employeeIdInt]],
       ["id", "name", "user_id"]
     );
 
@@ -5300,17 +5302,29 @@ const deleteEmployee = async (req, res) => {
 
     const employee = existingEmployee[0];
 
-    /** 🔥 STEP 1 — Soft delete employee */
-    await odooHelpers.write("hr.employee", parseInt(id), { active: false });
+    // Extract clean employee ID from response
+    const cleanEmployeeId = Array.isArray(employee.id) 
+      ? employee.id[0] 
+      : employee.id;
 
-    /** 🔥 STEP 2 — Soft delete linked user (optional) */
+    console.log(`Deleting employee ID: ${cleanEmployeeId}`);
+
+    // 🔥 STEP 1 — Soft delete employee using dedicated function
+    await odooService.writeEmployee(cleanEmployeeId, { active: false });
+
+    // 🔥 STEP 2 — Soft delete linked user
     let userDeleteStatus = null;
-
     if (employee.user_id) {
       try {
-        await odooHelpers.write("res.users", employee.user_id, {
-          active: false,
-        });
+        // Extract user ID (comes as [id, "name"] from Odoo)
+        const userIdInt = Array.isArray(employee.user_id)
+          ? employee.user_id[0]
+          : employee.user_id;
+
+        console.log(`Deleting user ID: ${userIdInt}`);
+
+        // Use dedicated user write function
+        await odooService.writeUser(userIdInt, { active: false });
         userDeleteStatus = "soft-deleted";
       } catch (err) {
         console.error("User soft delete failed:", err);
@@ -5320,10 +5334,9 @@ const deleteEmployee = async (req, res) => {
 
     return res.status(200).json({
       status: "success",
-      message: "Employee soft deleted successfully",
-      id: parseInt(id),
+      message: "Employee  deleted successfully",
+      id: cleanEmployeeId,
       user_id: employee.user_id,
-      user_delete_status: userDeleteStatus,
     });
   } catch (error) {
     console.error("Error deleting employee:", error);
@@ -5333,203 +5346,203 @@ const deleteEmployee = async (req, res) => {
     });
   }
 };
-const getEmployeeDashboard = async (req, res) => {
-  try {
-    console.log("===== [START] EMPLOYEE DASHBOARD (SCOPED) =====");
-    console.log("Trace: Incoming Request Query:", JSON.stringify(req.query, null, 2));
+// const getEmployeeDashboard = async (req, res) => {
+//   try {
+//     console.log("===== [START] EMPLOYEE DASHBOARD (SCOPED) =====");
+//     console.log("Trace: Incoming Request Query:", JSON.stringify(req.query, null, 2));
 
-    const {
-      user_id,
-      leave_type_id,
-      state,
-      date_from,
-      date_to,
-      limit = 10,
-      offset = 0,
-    } = req.query;
+//     const {
+//       user_id,
+//       leave_type_id,
+//       state,
+//       date_from,
+//       date_to,
+//       limit = 10,
+//       offset = 0,
+//     } = req.query;
 
-    /* ───────── VALIDATION ───────── */
-    if (!user_id) {
-      console.error("Validation Error: user_id is missing from request");
-      return res.status(400).json({
-        success: false,
-        errorMessage: "user_id is required",
-      });
-    }
+//     /* ───────── VALIDATION ───────── */
+//     if (!user_id) {
+//       console.error("Validation Error: user_id is missing from request");
+//       return res.status(400).json({
+//         success: false,
+//         errorMessage: "user_id is required",
+//       });
+//     }
 
-    /* ───────── STEP 1: RESOLVE ODOO USER ───────── */
-    console.log(`Trace: Searching Odoo User (res.users) for ID: ${user_id}`);
-    const user = await odooService.searchRead(
-      "res.users",
-      [["id", "=", Number(user_id)]],
-      ["partner_id"],
-      1
-    );
+//     /* ───────── STEP 1: RESOLVE ODOO USER ───────── */
+//     console.log(`Trace: Searching Odoo User (res.users) for ID: ${user_id}`);
+//     const user = await odooService.searchRead(
+//       "res.users",
+//       [["id", "=", Number(user_id)]],
+//       ["partner_id"],
+//       1
+//     );
 
-    if (!user || user.length === 0) {
-      console.error(`Error: Odoo user with ID ${user_id} does not exist`);
-      throw new Error("Odoo user record not found");
-    }
+//     if (!user || user.length === 0) {
+//       console.error(`Error: Odoo user with ID ${user_id} does not exist`);
+//       throw new Error("Odoo user record not found");
+//     }
 
-    const partnerId = user[0]?.partner_id?.[0];
-    console.log(`Trace: Resolved Partner ID: ${partnerId}`);
+//     const partnerId = user[0]?.partner_id?.[0];
+//     console.log(`Trace: Resolved Partner ID: ${partnerId}`);
 
-    /* ───────── STEP 2: RESOLVE EMPLOYEE LINKED TO USER ───────── */
-    // We prioritize the direct link via 'user_id' field on the employee record
-    console.log(`Trace: Searching hr.employee linked to user_id: ${user_id}`);
-    let employeeRecord = await odooService.searchRead(
-      "hr.employee",
-      [["user_id", "=", Number(user_id)]],
-      ["id", "name", "address_id"],
-      1
-    );
+//     /* ───────── STEP 2: RESOLVE EMPLOYEE LINKED TO USER ───────── */
+//     // We prioritize the direct link via 'user_id' field on the employee record
+//     console.log(`Trace: Searching hr.employee linked to user_id: ${user_id}`);
+//     let employeeRecord = await odooService.searchRead(
+//       "hr.employee",
+//       [["user_id", "=", Number(user_id)]],
+//       ["id", "name", "address_id"],
+//       1
+//     );
 
-    // Fallback: search by address_id (partner) if user_id link isn't explicitly set
-    if (!employeeRecord || employeeRecord.length === 0) {
-      console.log(`Trace: Direct user_id link not found. Falling back to search by address_id: ${partnerId}`);
-      employeeRecord = await odooService.searchRead(
-        "hr.employee",
-        [["address_id", "=", partnerId]],
-        ["id", "name", "address_id"],
-        1
-      );
-    }
+//     // Fallback: search by address_id (partner) if user_id link isn't explicitly set
+//     if (!employeeRecord || employeeRecord.length === 0) {
+//       console.log(`Trace: Direct user_id link not found. Falling back to search by address_id: ${partnerId}`);
+//       employeeRecord = await odooService.searchRead(
+//         "hr.employee",
+//         [["address_id", "=", partnerId]],
+//         ["id", "name", "address_id"],
+//         1
+//       );
+//     }
 
-    if (!employeeRecord || employeeRecord.length === 0) {
-      console.error(`Error: No employee record found for user_id: ${user_id}`);
-      throw new Error("Root employee not found. Please ensure the user is correctly linked to an Employee profile.");
-    }
+//     if (!employeeRecord || employeeRecord.length === 0) {
+//       console.error(`Error: No employee record found for user_id: ${user_id}`);
+//       throw new Error("Root employee not found. Please ensure the user is correctly linked to an Employee profile.");
+//     }
 
-    const targetEmployeeId = employeeRecord[0].id;
-    const employeeName = employeeRecord[0].name;
-    console.log(`Trace: Target Employee Resolved -> Name: ${employeeName}, ID: ${targetEmployeeId}`);
+//     const targetEmployeeId = employeeRecord[0].id;
+//     const employeeName = employeeRecord[0].name;
+//     console.log(`Trace: Target Employee Resolved -> Name: ${employeeName}, ID: ${targetEmployeeId}`);
 
-    /* ───────── STEP 3: LEAVE TYPES CATEGORIZATION ───────── */
-    console.log("Trace: Fetching Leave Types for mapping...");
-    const leaveTypes = await odooService.searchRead(
-      "hr.leave.type",
-      [],
-      ["id", "name"]
-    );
+//     /* ───────── STEP 3: LEAVE TYPES CATEGORIZATION ───────── */
+//     console.log("Trace: Fetching Leave Types for mapping...");
+//     const leaveTypes = await odooService.searchRead(
+//       "hr.leave.type",
+//       [],
+//       ["id", "name"]
+//     );
 
-    const leaveTypeCategoryMap = {};
-    leaveTypes.forEach((t) => {
-      const name = t.name ? t.name.toLowerCase() : "";
-      if (name.includes("annual")) leaveTypeCategoryMap[t.id] = "annual";
-      else if (name.includes("medical")) leaveTypeCategoryMap[t.id] = "medical";
-      else if (name.includes("casual")) leaveTypeCategoryMap[t.id] = "casual";
-      else leaveTypeCategoryMap[t.id] = "other";
-    });
+//     const leaveTypeCategoryMap = {};
+//     leaveTypes.forEach((t) => {
+//       const name = t.name ? t.name.toLowerCase() : "";
+//       if (name.includes("annual")) leaveTypeCategoryMap[t.id] = "annual";
+//       else if (name.includes("medical")) leaveTypeCategoryMap[t.id] = "medical";
+//       else if (name.includes("casual")) leaveTypeCategoryMap[t.id] = "casual";
+//       else leaveTypeCategoryMap[t.id] = "other";
+//     });
 
-    /* ───────── STEP 4: FETCH DATA FOR SPECIFIC EMPLOYEE ───────── */
-    console.log(`Trace: Fetching Allocations for Employee ID: ${targetEmployeeId}`);
-    const allocations = await odooService.searchRead(
-      "hr.leave.allocation",
-      [
-        ["employee_id", "=", targetEmployeeId],
-        ["state", "=", "validate"],
-      ],
-      ["holiday_status_id", "number_of_days"]
-    );
+//     /* ───────── STEP 4: FETCH DATA FOR SPECIFIC EMPLOYEE ───────── */
+//     console.log(`Trace: Fetching Allocations for Employee ID: ${targetEmployeeId}`);
+//     const allocations = await odooService.searchRead(
+//       "hr.leave.allocation",
+//       [
+//         ["employee_id", "=", targetEmployeeId],
+//         ["state", "=", "validate"],
+//       ],
+//       ["holiday_status_id", "number_of_days"]
+//     );
 
-    console.log(`Trace: Fetching Approved Leaves for Employee ID: ${targetEmployeeId}`);
-    const approvedLeaves = await odooService.searchRead(
-      "hr.leave",
-      [
-        ["employee_id", "=", targetEmployeeId],
-        ["state", "=", "validate"],
-      ],
-      ["holiday_status_id", "number_of_days"]
-    );
+//     console.log(`Trace: Fetching Approved Leaves for Employee ID: ${targetEmployeeId}`);
+//     const approvedLeaves = await odooService.searchRead(
+//       "hr.leave",
+//       [
+//         ["employee_id", "=", targetEmployeeId],
+//         ["state", "=", "validate"],
+//       ],
+//       ["holiday_status_id", "number_of_days"]
+//     );
 
-    /* ───────── STEP 5: CALCULATE CARD TOTALS ───────── */
-    const cards = {
-      annual: { leave_type: "Annual Leave", total: 0, used: 0, remaining: 0 },
-      medical: { leave_type: "Medical Leave", total: 0, used: 0, remaining: 0 },
-      casual: { leave_type: "Casual Leave", total: 0, used: 0, remaining: 0 },
-      other: { leave_type: "Other Leave", total: 0, used: 0, remaining: 0 },
-    };
+//     /* ───────── STEP 5: CALCULATE CARD TOTALS ───────── */
+//     const cards = {
+//       annual: { leave_type: "Annual Leave", total: 0, used: 0, remaining: 0 },
+//       medical: { leave_type: "Medical Leave", total: 0, used: 0, remaining: 0 },
+//       casual: { leave_type: "Casual Leave", total: 0, used: 0, remaining: 0 },
+//       other: { leave_type: "Other Leave", total: 0, used: 0, remaining: 0 },
+//     };
 
-    allocations.forEach((a) => {
-      const typeId = a.holiday_status_id?.[0];
-      const category = leaveTypeCategoryMap[typeId] || "other";
-      cards[category].total += (a.number_of_days || 0);
-    });
+//     allocations.forEach((a) => {
+//       const typeId = a.holiday_status_id?.[0];
+//       const category = leaveTypeCategoryMap[typeId] || "other";
+//       cards[category].total += (a.number_of_days || 0);
+//     });
 
-    approvedLeaves.forEach((l) => {
-      const typeId = l.holiday_status_id?.[0];
-      const category = leaveTypeCategoryMap[typeId] || "other";
-      cards[category].used += (l.number_of_days || 0);
-    });
+//     approvedLeaves.forEach((l) => {
+//       const typeId = l.holiday_status_id?.[0];
+//       const category = leaveTypeCategoryMap[typeId] || "other";
+//       cards[category].used += (l.number_of_days || 0);
+//     });
 
-    Object.values(cards).forEach((c) => {
-      c.remaining = c.total - c.used;
-    });
+//     Object.values(cards).forEach((c) => {
+//       c.remaining = c.total - c.used;
+//     });
 
-    console.log("Trace: Card calculations completed.");
+//     console.log("Trace: Card calculations completed.");
 
-    /* ───────── STEP 6: TABLE DATA (LEAVE HISTORY) ───────── */
-    let domain = [["employee_id", "=", targetEmployeeId]];
+//     /* ───────── STEP 6: TABLE DATA (LEAVE HISTORY) ───────── */
+//     let domain = [["employee_id", "=", targetEmployeeId]];
 
-    if (leave_type_id) domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
-    if (state) domain.push(["state", "=", state]);
-    if (date_from) domain.push(["request_date_from", ">=", date_from]);
-    if (date_to) domain.push(["request_date_to", "<=", date_to]);
+//     if (leave_type_id) domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
+//     if (state) domain.push(["state", "=", state]);
+//     if (date_from) domain.push(["request_date_from", ">=", date_from]);
+//     if (date_to) domain.push(["request_date_to", "<=", date_to]);
 
-    console.log(`Trace: Fetching history for employee. Domain: ${JSON.stringify(domain)}`);
-    const totalCount = await odooService.searchCount("hr.leave", domain);
+//     console.log(`Trace: Fetching history for employee. Domain: ${JSON.stringify(domain)}`);
+//     const totalCount = await odooService.searchCount("hr.leave", domain);
 
-    const leaves = await odooService.searchRead(
-      "hr.leave",
-      domain,
-      [
-        "id",
-        "employee_id",
-        "holiday_status_id",
-        "request_date_from",
-        "request_date_to",
-        "number_of_days",
-        "state",
-      ],
-      Number(offset),
-      Number(limit),
-      "request_date_from desc"
-    );
+//     const leaves = await odooService.searchRead(
+//       "hr.leave",
+//       domain,
+//       [
+//         "id",
+//         "employee_id",
+//         "holiday_status_id",
+//         "request_date_from",
+//         "request_date_to",
+//         "number_of_days",
+//         "state",
+//       ],
+//       Number(offset),
+//       Number(limit),
+//       "request_date_from desc"
+//     );
 
-    const tableData = leaves.map((l) => ({
-      id: l.id,
-      employee_id: l.employee_id?.[0] || null,
-      employee_name: l.employee_id?.[1] || "Unknown",
-      leave_type_id: l.holiday_status_id?.[0] || null,
-      leave_type: l.holiday_status_id?.[1] || "Unknown",
-      from: l.request_date_from,
-      to: l.request_date_to,
-      no_of_days: l.number_of_days,
-      status: l.state,
-    }));
+//     const tableData = leaves.map((l) => ({
+//       id: l.id,
+//       employee_id: l.employee_id?.[0] || null,
+//       employee_name: l.employee_id?.[1] || "Unknown",
+//       leave_type_id: l.holiday_status_id?.[0] || null,
+//       leave_type: l.holiday_status_id?.[1] || "Unknown",
+//       from: l.request_date_from,
+//       to: l.request_date_to,
+//       no_of_days: l.number_of_days,
+//       status: l.state,
+//     }));
 
-    console.log(`Trace: Dashboard successfully built for ${employeeName}`);
-    console.log("===== [SUCCESS] EMPLOYEE DASHBOARD END =====");
+//     console.log(`Trace: Dashboard successfully built for ${employeeName}`);
+//     console.log("===== [SUCCESS] EMPLOYEE DASHBOARD END =====");
 
-    return res.status(200).json({
-      success: true,
-      cards: Object.values(cards),
-      tableData,
-      meta: {
-        total: totalCount,
-        limit: Number(limit),
-        offset: Number(offset),
-      },
-    });
+//     return res.status(200).json({
+//       success: true,
+//       cards: Object.values(cards),
+//       tableData,
+//       meta: {
+//         total: totalCount,
+//         limit: Number(limit),
+//         offset: Number(offset),
+//       },
+//     });
 
-  } catch (error) {
-    console.error("❌ Employee Dashboard Controller Error:", error);
-    return res.status(500).json({
-      success: false,
-      errorMessage: error.message || "Failed to load dashboard data.",
-    });
-  }
-};
+//   } catch (error) {
+//     console.error("❌ Employee Dashboard Controller Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       errorMessage: error.message || "Failed to load dashboard data.",
+//     });
+//   }
+// };
 const createExpense = async (req, res) => {
   try {
     const user_id = req.body.user_id || req.query.user_id;
@@ -7744,6 +7757,207 @@ const deleteExpenseCategory = async (req, res) => {
     return res.status(400).json({
       status: "error",
       message: `Odoo Restriction: ${errMsg.split('\n')[0]}`,
+    });
+  }
+};
+
+const getEmployeeDashboard = async (req, res) => {
+  try {
+    console.log("===== [START] EMPLOYEE DASHBOARD (SCOPED) =====");
+    console.log("Trace: Incoming Request Query:", JSON.stringify(req.query, null, 2));
+
+    const {
+      user_id,
+      leave_type_id,
+      state,
+      date_from,
+      date_to,
+      limit = 10,
+      offset = 0,
+    } = req.query;
+
+    /* ───────── VALIDATION ───────── */
+    if (!user_id) {
+      console.error("Validation Error: user_id is missing from request");
+      return res.status(400).json({
+        success: false,
+        errorMessage: "user_id is required",
+      });
+    }
+
+    /* ───────── STEP 1: RESOLVE ODOO USER ───────── */
+    console.log(`Trace: Searching Odoo User (res.users) for ID: ${user_id}`);
+    const user = await odooService.searchRead(
+      "res.users",
+      [["id", "=", Number(user_id)]],
+      ["partner_id"],
+      1
+    );
+
+    if (!user || user.length === 0) {
+      console.error(`Error: Odoo user with ID ${user_id} does not exist`);
+      throw new Error("Odoo user record not found");
+    }
+
+    const partnerId = user[0]?.partner_id?.[0];
+    console.log(`Trace: Resolved Partner ID: ${partnerId}`);
+
+    /* ───────── STEP 2: RESOLVE EMPLOYEE LINKED TO USER ───────── */
+    console.log(`Trace: Searching hr.employee linked to user_id: ${user_id}`);
+    let employeeRecord = await odooService.searchRead(
+      "hr.employee",
+      [["user_id", "=", Number(user_id)]],
+      ["id", "name", "address_id"],
+      1
+    );
+
+    if (!employeeRecord || employeeRecord.length === 0) {
+      console.log(`Trace: Direct user_id link not found. Falling back to search by address_id: ${partnerId}`);
+      employeeRecord = await odooService.searchRead(
+        "hr.employee",
+        [["address_id", "=", partnerId]],
+        ["id", "name", "address_id"],
+        1
+      );
+    }
+
+    if (!employeeRecord || employeeRecord.length === 0) {
+      console.error(`Error: No employee record found for user_id: ${user_id}`);
+      throw new Error("Root employee not found. Please ensure the user is correctly linked to an Employee profile.");
+    }
+
+    const targetEmployeeId = employeeRecord[0].id;
+    const employeeName = employeeRecord[0].name;
+    console.log(`Trace: Target Employee Resolved -> Name: ${employeeName}, ID: ${targetEmployeeId}`);
+
+    /* ───────── STEP 3: FETCH DATA FOR SPECIFIC EMPLOYEE ───────── */
+    console.log(`Trace: Fetching Allocations for Employee ID: ${targetEmployeeId}`);
+    const allocations = await odooService.searchRead(
+      "hr.leave.allocation",
+      [
+        ["employee_id", "=", targetEmployeeId],
+        ["state", "=", "validate"],
+      ],
+      ["holiday_status_id", "number_of_days"]
+    );
+
+    console.log(`Trace: Fetching Approved Leaves for Employee ID: ${targetEmployeeId}`);
+    const approvedLeaves = await odooService.searchRead(
+      "hr.leave",
+      [
+        ["employee_id", "=", targetEmployeeId],
+        ["state", "=", "validate"],
+      ],
+      ["holiday_status_id", "number_of_days"]
+    );
+
+    /* ───────── STEP 4: BUILD DYNAMIC CARDS BASED ON ALLOCATIONS ───────── */
+    const cardsMap = {};
+
+    // Build cards from allocations
+    allocations.forEach((a) => {
+      const typeId = a.holiday_status_id?.[0];
+      const typeName = a.holiday_status_id?.[1] || "Unknown Leave Type";
+
+      if (!cardsMap[typeId]) {
+        cardsMap[typeId] = {
+          leave_type_id: typeId,
+          leave_type: typeName,
+          total: 0,
+          used: 0,
+          remaining: 0
+        };
+      }
+
+      cardsMap[typeId].total += (a.number_of_days || 0);
+    });
+
+    // Add used leave days to the corresponding cards
+    approvedLeaves.forEach((l) => {
+      const typeId = l.holiday_status_id?.[0];
+      const typeName = l.holiday_status_id?.[1] || "Unknown Leave Type";
+
+      if (cardsMap[typeId]) {
+        cardsMap[typeId].used += (l.number_of_days || 0);
+      } else {
+        // If leave was taken but no allocation exists, still show it
+        cardsMap[typeId] = {
+          leave_type_id: typeId,
+          leave_type: typeName,
+          total: 0,
+          used: (l.number_of_days || 0),
+          remaining: 0
+        };
+      }
+    });
+
+    // Calculate remaining days
+    Object.values(cardsMap).forEach((card) => {
+      card.remaining = card.total - card.used;
+    });
+
+    const cards = Object.values(cardsMap);
+    console.log("Trace: Dynamic card calculations completed.");
+
+    /* ───────── STEP 5: TABLE DATA (LEAVE HISTORY) ───────── */
+    let domain = [["employee_id", "=", targetEmployeeId]];
+
+    if (leave_type_id) domain.push(["holiday_status_id", "=", Number(leave_type_id)]);
+    if (state) domain.push(["state", "=", state]);
+    if (date_from) domain.push(["request_date_from", ">=", date_from]);
+    if (date_to) domain.push(["request_date_to", "<=", date_to]);
+
+    console.log(`Trace: Fetching history for employee. Domain: ${JSON.stringify(domain)}`);
+    const totalCount = await odooService.searchCount("hr.leave", domain);
+
+    const leaves = await odooService.searchRead(
+      "hr.leave",
+      domain,
+      [
+        "id",
+        "employee_id",
+        "holiday_status_id",
+        "request_date_from",
+        "request_date_to",
+        "number_of_days",
+        "state",
+      ],
+      Number(offset),
+      Number(limit),
+      "request_date_from desc"
+    );
+
+    const tableData = leaves.map((l) => ({
+      id: l.id,
+      employee_id: l.employee_id?.[0] || null,
+      employee_name: l.employee_id?.[1] || "Unknown",
+      leave_type_id: l.holiday_status_id?.[0] || null,
+      leave_type: l.holiday_status_id?.[1] || "Unknown",
+      from: l.request_date_from,
+      to: l.request_date_to,
+      no_of_days: l.number_of_days,
+      status: l.state,
+    }));
+
+    console.log(`Trace: Dashboard successfully built for ${employeeName}`);
+    console.log("===== [SUCCESS] EMPLOYEE DASHBOARD END =====");
+
+    return res.status(200).json({
+      success: true,
+      cards,
+      tableData,
+      meta: {
+        total: totalCount,
+        limit: Number(limit),
+        offset: Number(offset),
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Employee Dashboard Controller Error:", error);
+    return res.status(500).json({
+      success: false,
+      errorMessage: error.message || "Failed to load dashboard data.",
     });
   }
 };
