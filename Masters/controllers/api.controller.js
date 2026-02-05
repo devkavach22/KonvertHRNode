@@ -1952,13 +1952,22 @@ class ApiController {
 
   async createWorkLocation(req, res) {
     try {
-      // 1. Added branch_id to the destructuring
-      const { name, location_type, branch_id } = req.body;
+      // 1. Get branch_id from params and name/type from body
+      const { branch_id } = req.params;
+      const { name, location_type } = req.body;
 
       if (!name || name.trim() === "") {
         return res.status(400).json({
           status: "error",
           message: "Work Location name is required",
+        });
+      }
+
+      // Optional: Validate that branch_id is provided and is a number
+      if (!branch_id || isNaN(branch_id)) {
+        return res.status(400).json({
+          status: "error",
+          message: "A valid branch_id parameter is required",
         });
       }
 
@@ -1981,12 +1990,12 @@ class ApiController {
         });
       }
 
-      // 2. Map branch_id into the Odoo values object
+      // 2. Use branch_id from params in the Odoo values object
       const vals = {
         name: name.trim(),
         location_type: location_type || "office",
         client_id,
-        branch_id: branch_id ? parseInt(branch_id) : false, // Odoo expects an ID (integer) or false
+        branch_id: parseInt(branch_id), // Parsing from string param to integer
       };
 
       const locationId = await odooService.create("hr.work.location", vals);
