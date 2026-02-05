@@ -5005,7 +5005,7 @@ class ApiController {
       // --- AUTO CREATE 4 WORK LOCATIONS ---
       const defaultWorkLocations = [
         { name: "Ahmedabad", location_type: "office" },
-        { name: "Gandhi Nagar", location_type: "office" },
+        { name: "Gandhinagar", location_type: "office" },
         { name: "Vadodara", location_type: "office" },
         { name: "Surat", location_type: "office" }
       ];
