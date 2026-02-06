@@ -488,6 +488,7 @@ class ApiController {
       });
     }
   }
+
   //   async createUser(req, res) {
   //     console.log("Register Called ");
   //     try {
@@ -534,10 +535,10 @@ class ApiController {
   //         });
   //       }
 
-  //       // --- 2. UNIQUE EMAIL CHECK ---
+  //       // --- 2. UNIQUE EMAIL CHECK (ONLY ACTIVE USERS) ---
   //       const existingUsers = await odooService.searchRead(
   //         "res.users",
-  //         [["login", "=", email]],
+  //         [["login", "=", email], ["active", "=", true]],
   //         ["id"]
   //       );
 
@@ -548,10 +549,10 @@ class ApiController {
   //         });
   //       }
 
-  //       // --- 3. UNIQUE GST (VAT) CHECK ---
+  //       // --- 3. UNIQUE GST (VAT) CHECK (ONLY ACTIVE PARTNERS) ---
   //       const existingGST = await odooService.searchRead(
   //         "res.partner",
-  //         [["vat", "=", gst_number]],
+  //         [["vat", "=", gst_number], ["active", "=", true]],
   //         ["id"]
   //       );
 
@@ -802,7 +803,6 @@ class ApiController {
   //       });
   //     }
   //   }
-
   async createUser(req, res) {
     console.log("Register Called ");
     try {
@@ -849,7 +849,61 @@ class ApiController {
         });
       }
 
-      // --- 2. UNIQUE EMAIL CHECK (ONLY ACTIVE USERS) ---
+      // --- 2. CHECK AND DELETE ARCHIVED USER IF EXISTS ---
+      const archivedUser = await odooService.searchRead(
+        "res.users",
+        [["login", "=", email], ["active", "=", false]],
+        ["id", "employee_ids", "partner_id"]
+      );
+
+      if (archivedUser && archivedUser.length > 0) {
+        console.log(`Found archived user with email ${email}, deleting to allow new registration...`);
+        const archivedUserId = archivedUser[0].id;
+        const archivedPartnerId = archivedUser[0].partner_id ? archivedUser[0].partner_id[0] : null;
+
+        try {
+          // --- EMPLOYEE DELETE BLOCK REMOVED AS REQUESTED ---
+
+          // Step 2: Delete child contacts (if any)
+          if (archivedPartnerId) {
+            const childContacts = await odooService.searchRead(
+              "res.partner",
+              [["parent_id", "=", archivedPartnerId], ["active", "in", [true, false]]],
+              ["id"]
+            );
+
+            if (childContacts && childContacts.length > 0) {
+              const childContactIds = childContacts.map(c => c.id);
+              console.log(`Deleting ${childContactIds.length} child contact(s)...`);
+              await odooService.execute("res.partner", "unlink", [childContactIds]);
+              console.log(`Child contacts deleted successfully`);
+            }
+          }
+
+          // Step 3: Now delete the user
+          console.log(`Deleting user...`);
+          await odooService.execute("res.users", "unlink", [[archivedUserId]]);
+          console.log(`Archived user deleted successfully. Proceeding with new user creation...`);
+        } catch (deleteError) {
+          // --- ERROR HIDDEN: XML-RPC error console me show nahi hoga ---
+          // console.error("Error deleting archived user:", deleteError); <-- Is line ko hata diya hai
+
+          // FALLBACK: If deletion still fails due to Odoo restrictions, rename the login so email is freed
+          try {
+            console.log("Attempting fallback: Renaming archived user login...");
+            await odooService.write("res.users", [archivedUserId], {
+              login: `${email}_archived_${Date.now()}`
+            });
+          } catch (renameError) {
+            return res.status(500).json({
+              status: "error",
+              message: "Failed to clean up archived user. Please contact support.",
+            });
+          }
+        }
+      }
+
+      // --- 3. UNIQUE EMAIL CHECK (ONLY ACTIVE USERS) ---
       const existingUsers = await odooService.searchRead(
         "res.users",
         [["login", "=", email], ["active", "=", true]],
@@ -863,7 +917,7 @@ class ApiController {
         });
       }
 
-      // --- 3. UNIQUE GST (VAT) CHECK (ONLY ACTIVE PARTNERS) ---
+      // --- 4. UNIQUE GST (VAT) CHECK (ONLY ACTIVE PARTNERS) ---
       const existingGST = await odooService.searchRead(
         "res.partner",
         [["vat", "=", gst_number], ["active", "=", true]],
@@ -877,7 +931,7 @@ class ApiController {
         });
       }
 
-      // --- 4. GST VALIDATION (Autocomplete Check) ---
+      // --- 5. GST VALIDATION (Autocomplete Check) ---
       const gstValidation = await odooService.execute(
         "res.partner",
         "autocomplete_by_vat",
@@ -892,13 +946,13 @@ class ApiController {
         });
       }
 
-      // --- 5. IMAGE CLEANING ---
+      // --- 6. IMAGE CLEANING ---
       let cleanImage = null;
       if (client_image) {
         cleanImage = client_image.replace(/^data:image\/\w+;base64,/, "");
       }
 
-      // --- 6. FETCH SUPERADMIN COMPANY ---
+      // --- 7. FETCH SUPERADMIN COMPANY ---
       const superadminUser = await odooService.searchRead(
         "res.users",
         [["id", "=", 2]],
@@ -911,7 +965,7 @@ class ApiController {
 
       const superadminCompanyId = superadminUser[0].company_id[0];
 
-      // --- 7. PREPARE USER VALUES ---
+      // --- 8. PREPARE USER VALUES ---
       const userVals = {
         name: company_name,
         company_name: company_name,
@@ -936,26 +990,23 @@ class ApiController {
         image_1920: cleanImage,
       };
 
-      // --- 8. CREATE USER AND UPDATE PARTNER ---
+      // --- 9. CREATE USER AND UPDATE PARTNER ---
       let userId;
       try {
         userId = await odooService.create("res.users", userVals);
       } catch (createError) {
-        // Check if it's a duplicate login error
         if (createError.message && createError.message.includes('same login')) {
           return res.status(409).json({
             status: "error",
             message: "Already Registered Email",
           });
         }
-        // Check if it's a duplicate GST error
         if (createError.message && createError.message.includes('vat')) {
           return res.status(409).json({
             status: "error",
             message: "GST Number already registered with another account",
           });
         }
-        // Re-throw other errors
         throw createError;
       }
 
@@ -981,39 +1032,25 @@ class ApiController {
           await odooService.write("hr.employee", [employeeId], {
             employee_password: password,
             address_id: companyPartnerId,
-            work_phone: mobile,        // ✅ Set work_phone from mobile
-            mobile_phone: mobile,      // ✅ Set mobile_phone as well
-            private_email: email,      // ✅ Set private_email for email sending
+            work_phone: mobile,
+            mobile_phone: mobile,
+            private_email: email,
           });
-          console.log(`Employee password, address_id, work_phone, and private_email set for employee ID: ${employeeId}`);
-          console.log(`Partner ID ${companyPartnerId} assigned to employee address_id`);
-          console.log(`Work phone ${mobile} assigned to employee`);
-          console.log(`Private email ${email} assigned to employee`);
+          console.log(`Employee data updated for ID: ${employeeId}`);
 
           // --- SEND REGISTRATION CODE EMAIL TO EMPLOYEE ---
           try {
-            console.log("==========================================");
-            console.log("SENDING REGISTRATION CODE EMAIL");
-            console.log("Employee ID:", employeeId);
-            console.log("==========================================");
-
             await odooService.callMethod(
               "hr.employee",
               "send_registration_code_email",
               [employeeId]
             );
-
             console.log("✓ Registration code email sent successfully!");
-            console.log("==========================================");
           } catch (emailError) {
-            console.error("==========================================");
-            console.error("✗ ERROR sending registration code email:", emailError);
-            console.error("Error details:", emailError.message);
-            console.error("==========================================");
-            // Don't fail the entire request if email fails
+            // Hide email error console if you want
           }
         } catch (empError) {
-          console.error("Error setting employee data:", empError);
+          // Hide employee update error console if you want
         }
       }
 
@@ -1030,7 +1067,7 @@ class ApiController {
       };
       await odooService.create("res.partner", childContactVals);
 
-      // --- 9. SEND WELCOME MAIL ---
+      // --- 10. SEND WELCOME MAIL ---
       await mailService.sendMail(
         email,
         "Welcome to Kavach Global",
@@ -1084,16 +1121,6 @@ class ApiController {
           
           <tr>
             <td style="background-color: #5f5cc4; height: 8px;"></td>
-          </tr>
-        </table>
-        
-        <table width="600" cellpadding="0" cellspacing="0" style="margin-top: 20px;">
-          <tr>
-            <td style="padding: 0 60px; text-align: center;">
-              <p style="margin: 0; font-size: 13px; color: #999999; line-height: 1.6;">
-                This email was sent to ${email}. If you did not create an account, please contact our support team immediately.
-              </p>
-            </td>
           </tr>
         </table>
       </td>
