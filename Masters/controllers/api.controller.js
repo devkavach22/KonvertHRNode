@@ -2687,7 +2687,7 @@ class ApiController {
           JSON.parse(savedTempData);
 
         if (savedTempPassword !== temp_password) {
-          return res.status(401).json({
+          return res.status(400).json({
             status: "error",
             message: "Incorrect temporary password",
           });
@@ -2883,14 +2883,14 @@ class ApiController {
 
       const user = partner[0];
       if (!user.password) {
-        return res.status(401).json({
+        return res.status(400).json({
           status: "error",
           message: "Password not set for this account",
         });
       }
 
       if (user.password !== password) {
-        return res.status(401).json({
+        return res.status(400).json({
           status: "error",
           message: "Incorrect password",
         });
@@ -2935,7 +2935,7 @@ class ApiController {
         }
 
         if (!userEmail) {
-          return res.status(401).json({
+          return res.status(400).json({
             status: "error",
             message: "Invalid or expired OTP",
           });
@@ -3876,7 +3876,7 @@ class ApiController {
       );
 
       if (!planDetails || planDetails.length === 0) {
-        return res.status(401).json({
+        return res.status(400).json({
           status: "error",
           message: "Invalid secret key or plan not found",
         });

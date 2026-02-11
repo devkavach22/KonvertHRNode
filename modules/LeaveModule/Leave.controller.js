@@ -365,7 +365,7 @@ class LeaveController {
         if (errorMessage.includes("password") ||
           errorMessage.includes("credentials") ||
           errorMessage.includes("authentication")) {
-          return res.status(401).json({
+          return res.status(400).json({
             status: "error",
             message: "Invalid credentials"
           });
