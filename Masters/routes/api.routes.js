@@ -116,7 +116,7 @@ router.delete(
 );
 
 router.post(
-  "/create/work-location",
+  "/create/work-location/:branch_id", // branch_id is now a URL param
   authenticate,
   apiController.createWorkLocation.bind(apiController)
 );
