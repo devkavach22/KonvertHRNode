@@ -3090,6 +3090,7 @@ class ApiController {
       });
     }
   }
+
   // async planActivation(req, res) {
   //   try {
   //     const { email, secret_key } = req.body;
@@ -3135,7 +3136,7 @@ class ApiController {
   //     );
 
   //     if (!planDetails || planDetails.length === 0) {
-  //       return res.status(401).json({
+  //       return res.status(400).json({
   //         status: "error",
   //         message: "Invalid secret key or plan not found",
   //       });
@@ -3759,56 +3760,6 @@ class ApiController {
   //         }
   //       } catch (leaveTypeError) {
   //         console.error(`✗ Error creating leave type ${leaveTypeData.name}:`, leaveTypeError);
-  //       }
-  //     }
-
-  //     // --- AUTO CREATE 4 WORK LOCATIONS ---
-  //     const defaultWorkLocations = [
-  //       { name: "Ahmedabad", location_type: "office" },
-  //       { name: "Gandhinagar", location_type: "office" },
-  //       { name: "Vadodara", location_type: "office" },
-  //       { name: "Surat", location_type: "office" }
-  //     ];
-
-  //     const createdWorkLocations = [];
-
-  //     for (const locationData of defaultWorkLocations) {
-  //       try {
-  //         const existingLocation = await odooService.searchRead(
-  //           "hr.work.location",
-  //           [
-  //             ["name", "=", locationData.name],
-  //             ["client_id", "=", partnerId]
-  //           ],
-  //           ["id"],
-  //           0,
-  //           1
-  //         );
-
-  //         if (existingLocation.length === 0) {
-  //           const workLocationId = await odooService.create("hr.work.location", {
-  //             name: locationData.name,
-  //             location_type: locationData.location_type,
-  //             client_id: partnerId
-  //           });
-
-  //           createdWorkLocations.push({
-  //             id: workLocationId,
-  //             name: locationData.name,
-  //             location_type: locationData.location_type
-  //           });
-
-  //           console.log(`✓ Work Location created: ${locationData.name} (ID: ${workLocationId})`);
-  //         } else {
-  //           console.log(`✓ Work Location already exists: ${locationData.name}`);
-  //           createdWorkLocations.push({
-  //             id: existingLocation[0].id,
-  //             name: locationData.name,
-  //             already_existed: true
-  //           });
-  //         }
-  //       } catch (locationError) {
-  //         console.error(`✗ Error creating work location ${locationData.name}:`, locationError);
   //       }
   //     }
 
@@ -4503,6 +4454,135 @@ class ApiController {
         }
       }
 
+      // --- AUTO CREATE 4 DEFAULT WORKING SCHEDULES ---
+      const defaultWorkingSchedules = [
+        {
+          name: "Standard 40 Hours/Week",
+          flexible_hours: false,
+          is_night_shift: false,
+          full_time_required_hours: 40,
+          tz: "Asia/Kolkata",
+          total_overtime_hours_allowed: 10,
+          attendance_ids: [
+            { name: "Monday Morning", dayofweek: "0", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Monday Afternoon", dayofweek: "0", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 },
+            { name: "Tuesday Morning", dayofweek: "1", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Tuesday Afternoon", dayofweek: "1", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 },
+            { name: "Wednesday Morning", dayofweek: "2", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Wednesday Afternoon", dayofweek: "2", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 },
+            { name: "Thursday Morning", dayofweek: "3", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Thursday Afternoon", dayofweek: "3", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 },
+            { name: "Friday Morning", dayofweek: "4", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Friday Afternoon", dayofweek: "4", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 }
+          ]
+        },
+        {
+          name: "Flexible Hours (38 Hours/Week)",
+          flexible_hours: true,
+          is_night_shift: false,
+          full_time_required_hours: 38,
+          hours_per_day: 7.6,
+          tz: "Asia/Kolkata",
+          total_overtime_hours_allowed: 12
+        },
+        {
+          name: "Night Shift (40 Hours/Week)",
+          flexible_hours: false,
+          is_night_shift: true,
+          full_time_required_hours: 40,
+          tz: "Asia/Kolkata",
+          total_overtime_hours_allowed: 8,
+          attendance_ids: [
+            { name: "Monday Night", dayofweek: "0", day_period: "morning", hour_from: 22.0, hour_to: 6.0 },
+            { name: "Tuesday Night", dayofweek: "1", day_period: "morning", hour_from: 22.0, hour_to: 6.0 },
+            { name: "Wednesday Night", dayofweek: "2", day_period: "morning", hour_from: 22.0, hour_to: 6.0 },
+            { name: "Thursday Night", dayofweek: "3", day_period: "morning", hour_from: 22.0, hour_to: 6.0 },
+            { name: "Friday Night", dayofweek: "4", day_period: "morning", hour_from: 22.0, hour_to: 6.0 }
+          ]
+        },
+        {
+          name: "Part-Time (20 Hours/Week)",
+          flexible_hours: false,
+          is_night_shift: false,
+          full_time_required_hours: 20,
+          tz: "Asia/Kolkata",
+          total_overtime_hours_allowed: 5,
+          attendance_ids: [
+            { name: "Monday Morning", dayofweek: "0", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Tuesday Morning", dayofweek: "1", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Wednesday Morning", dayofweek: "2", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Thursday Morning", dayofweek: "3", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Friday Morning", dayofweek: "4", day_period: "morning", hour_from: 9.0, hour_to: 13.0 }
+          ]
+        }
+      ];
+
+      const createdWorkingSchedules = [];
+
+      for (const scheduleData of defaultWorkingSchedules) {
+        try {
+          const existingSchedule = await odooService.searchRead(
+            "resource.calendar",
+            [
+              ["name", "=", scheduleData.name],
+              ["client_id", "=", partnerId]
+            ],
+            ["id"],
+            0,
+            1
+          );
+
+          if (existingSchedule.length === 0) {
+            const vals = {
+              name: scheduleData.name,
+              client_id: partnerId,
+              flexible_hours: scheduleData.flexible_hours,
+              is_night_shift: scheduleData.is_night_shift,
+              full_time_required_hours: scheduleData.full_time_required_hours,
+              tz: scheduleData.tz || false,
+              total_overtime_hours_allowed: scheduleData.total_overtime_hours_allowed || 0.0
+            };
+
+            // Add hours_per_day only if flexible_hours is true
+            if (scheduleData.flexible_hours && scheduleData.hours_per_day) {
+              vals.hours_per_day = scheduleData.hours_per_day;
+            }
+
+            // Add attendance_ids ONLY if flexible_hours is false
+            if (!scheduleData.flexible_hours && scheduleData.attendance_ids && scheduleData.attendance_ids.length > 0) {
+              vals.attendance_ids = scheduleData.attendance_ids.map(attendance => {
+                return [0, 0, {
+                  name: attendance.name,
+                  dayofweek: attendance.dayofweek,
+                  day_period: attendance.day_period,
+                  hour_from: parseFloat(attendance.hour_from),
+                  hour_to: parseFloat(attendance.hour_to),
+                  work_entry_type_id: attendance.work_entry_type_id || false
+                }];
+              });
+            }
+
+            const scheduleId = await odooService.create("resource.calendar", vals);
+
+            createdWorkingSchedules.push({
+              id: scheduleId,
+              name: scheduleData.name
+            });
+
+            console.log(`✓ Working Schedule created: ${scheduleData.name} (ID: ${scheduleId})`);
+          } else {
+            console.log(`✓ Working Schedule already exists: ${scheduleData.name}`);
+            createdWorkingSchedules.push({
+              id: existingSchedule[0].id,
+              name: scheduleData.name,
+              already_existed: true
+            });
+          }
+        } catch (scheduleError) {
+          console.error(`✗ Error creating working schedule ${scheduleData.name}:`, scheduleError);
+        }
+      }
+
       return res.status(200).json({
         status: "OK",
         message: "Plan verified successfully",
@@ -4522,6 +4602,9 @@ class ApiController {
       });
     }
   }
+
+
+
   async getTimezones(req, res) {
     try {
       const fields = await odooService.execute(
