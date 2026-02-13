@@ -1030,6 +1030,7 @@ class ApiController {
         employeeId = userData[0].employee_ids[0];
         try {
           await odooService.write("hr.employee", [employeeId], {
+            name: `${first_name} ${last_name}`,
             employee_password: password,
             address_id: companyPartnerId,
             work_phone: mobile,
