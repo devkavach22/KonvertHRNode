@@ -1145,6 +1145,189 @@ class ApiController {
       });
     }
   }
+  // async loginUser(req, res) {
+  //   try {
+  //     const { email, password } = req.body;
+  //     if (!email || !password) {
+  //       return res.status(400).json({ status: "error", message: "Email and Password are required" });
+  //     }
+
+  //     const userRecord = await odooService.searchRead(
+  //       "res.users",
+  //       [["login", "=", email]],
+  //       ["id", "login", "name", "first_name", "last_name", "partner_id", "unique_user_id", "is_client_employee_user", "is_client_employee_admin"]
+  //     );
+
+  //     if (!userRecord || userRecord.length === 0) {
+  //       return res.status(404).json({ status: "error", message: "User not found. Please signup." });
+  //     }
+
+  //     let user = userRecord[0];
+  //     const userPartnerId = user.partner_id?.[0];
+
+  //     const commonClient = odooService.createClient("/xmlrpc/2/common");
+
+  //     let uid;
+  //     try {
+  //       uid = await new Promise((resolve, reject) => {
+  //         commonClient.methodCall("authenticate", [odooService.db, email, password, {}], (err, authUid) => {
+  //           if (err || !authUid) reject(new Error("Incorrect password"));
+  //           else resolve(authUid);
+  //         });
+  //       });
+  //     } catch (authError) {
+  //       return res.status(400).json({ status: "error", message: "Incorrect password" });
+  //     }
+
+  //     if (!uid) return;
+
+  //     let planCheckPartnerId = userPartnerId;
+  //     let employeeId = null;
+  //     let adminUserIdFromEmployee = null;
+
+  //     if (user.is_client_employee_user) {
+  //       const employeeRecord = await odooService.searchRead(
+  //         "hr.employee",
+  //         [["user_id", "=", user.id]],
+  //         ["id", "address_id"],
+  //         0,
+  //         1
+  //       );
+
+  //       if (employeeRecord && employeeRecord.length > 0) {
+  //         employeeId = employeeRecord[0].id;
+  //         if (employeeRecord[0].address_id && employeeRecord[0].address_id[0]) {
+  //           planCheckPartnerId = employeeRecord[0].address_id[0];
+
+  //           const adminUser = await odooService.searchRead(
+  //             "res.users",
+  //             [["partner_id", "=", planCheckPartnerId], ["is_client_employee_admin", "=", true]],
+  //             ["id"],
+  //             0,
+  //             1
+  //           );
+  //           if (adminUser && adminUser.length > 0) adminUserIdFromEmployee = adminUser[0].id;
+  //         }
+  //       }
+  //     }
+
+  //     // Fetch partner details with state and city
+  //     const partnerDetails = await odooService.searchRead(
+  //       "res.partner",
+  //       [["id", "=", userPartnerId]],
+  //       ["state_id", "city"],
+  //       0,
+  //       1
+  //     );
+
+  //     let state_name = null;
+  //     let city_name = null;
+
+  //     if (partnerDetails && partnerDetails.length > 0) {
+  //       // state_id is a many2one field, returns [id, name]
+  //       state_name = partnerDetails[0].state_id ? partnerDetails[0].state_id[1] : null;
+  //       // city is a char field, returns directly
+  //       city_name = partnerDetails[0].city || null;
+  //     }
+
+  //     // Check if user has ever bought any plan (active or expired)
+  //     const anyPlan = await odooService.searchRead(
+  //       "client.plan.details",
+  //       [["partner_id", "=", planCheckPartnerId]],
+  //       ["id"],
+  //       0,
+  //       1
+  //     );
+
+  //     if (!anyPlan || anyPlan.length === 0) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "Sorry, you didn't buy any plan. Please purchase a plan to continue.",
+  //         plan_status: "NOT_PURCHASED"
+  //       });
+  //     }
+
+  //     // Check for active plan
+  //     const plan = await odooService.searchRead(
+  //       "client.plan.details",
+  //       [
+  //         ["partner_id", "=", planCheckPartnerId],
+  //         ["is_expier", "=", true]
+  //       ],
+  //       ["id", "product_id", "start_date", "end_date"],
+  //       0,
+  //       1
+  //     );
+
+  //     let planData = (plan && plan.length > 0) ? plan[0] : null;
+
+  //     if (planData && userPartnerId === planCheckPartnerId && !user.is_client_employee_admin) {
+  //       await odooService.write("res.users", [user.id], { is_client_employee_admin: true });
+  //       user.is_client_employee_admin = true;
+  //     }
+
+  //     const isAdminUser = user.is_client_employee_admin === true;
+  //     const isEmployeeUser = user.is_client_employee_user === true;
+  //     const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+  //     const token = jwt.sign({ userId: uid, email }, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+  //     if (isAdminUser) {
+  //       if (!planData) {
+  //         return res.status(403).json({
+  //           status: "error",
+  //           message: "Your plan has expired. Please renew.",
+  //           plan_status: "EXPIRED"
+  //         });
+  //       }
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Logged in as Admin. Plan is active.",
+  //         unique_user_id: user.unique_user_id,
+  //         user_id: uid,
+  //         email,
+  //         full_name,
+  //         state: state_name,
+  //         city: city_name,
+  //         user_role: "REGISTER_ADMIN",
+  //         plan_status: "ACTIVE",
+  //         plan_id: planData.id,
+  //         product_id: planData.product_id,
+  //         plan_start_date: planData.start_date,
+  //         plan_end_date: planData.end_date,
+  //       });
+  //     }
+  //     else if (isEmployeeUser) {
+  //       if (!planData) {
+  //         return res.status(403).json({
+  //           status: "error",
+  //           message: "Sorry, you can't login because your plan is expired.",
+  //           plan_status: "EXPIRED"
+  //         });
+  //       }
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Logged in as Employee. Plan is Active",
+  //         user_id: uid,
+  //         email,
+  //         full_name,
+  //         state: state_name,
+  //         city: city_name,
+  //         user_role: "EMPLOYEE_RELATED_OWN_USER",
+  //         plan_status: "ACTIVE",
+  //         is_client_employee_user: true,
+  //         employee_id: employeeId,
+  //         admin_user_id: adminUserIdFromEmployee,
+  //       });
+  //     }
+  //     else {
+  //       return res.status(403).json({ status: "error", message: "You are not authorized. Please signup first." });
+  //     }
+
+  //   } catch (error) {
+  //     console.error("Login error:", error);
+  //     return res.status(500).json({ status: "error", message: "Internal Server Error" });
+  //   }
+  // }
   async loginUser(req, res) {
     try {
       const { email, password } = req.body;
@@ -1184,6 +1367,7 @@ class ApiController {
       let planCheckPartnerId = userPartnerId;
       let employeeId = null;
       let adminUserIdFromEmployee = null;
+      let companyName = null;
 
       if (user.is_client_employee_user) {
         const employeeRecord = await odooService.searchRead(
@@ -1198,6 +1382,18 @@ class ApiController {
           employeeId = employeeRecord[0].id;
           if (employeeRecord[0].address_id && employeeRecord[0].address_id[0]) {
             planCheckPartnerId = employeeRecord[0].address_id[0];
+
+            // Fetch company name from address_id (partner)
+            const companyPartner = await odooService.searchRead(
+              "res.partner",
+              [["id", "=", employeeRecord[0].address_id[0]]],
+              ["name"],
+              0,
+              1
+            );
+            if (companyPartner && companyPartner.length > 0) {
+              companyName = companyPartner[0].name;
+            }
 
             const adminUser = await odooService.searchRead(
               "res.users",
@@ -1215,7 +1411,7 @@ class ApiController {
       const partnerDetails = await odooService.searchRead(
         "res.partner",
         [["id", "=", userPartnerId]],
-        ["state_id", "city"],
+        ["state_id", "city", "name"],
         0,
         1
       );
@@ -1228,6 +1424,11 @@ class ApiController {
         state_name = partnerDetails[0].state_id ? partnerDetails[0].state_id[1] : null;
         // city is a char field, returns directly
         city_name = partnerDetails[0].city || null;
+
+        // If admin user, get company name from partner_id
+        if (user.is_client_employee_admin) {
+          companyName = partnerDetails[0].name;
+        }
       }
 
       // Check if user has ever bought any plan (active or expired)
@@ -1288,6 +1489,7 @@ class ApiController {
           full_name,
           state: state_name,
           city: city_name,
+          company_name: companyName,
           user_role: "REGISTER_ADMIN",
           plan_status: "ACTIVE",
           plan_id: planData.id,
@@ -1312,6 +1514,7 @@ class ApiController {
           full_name,
           state: state_name,
           city: city_name,
+          company_name: companyName,
           user_role: "EMPLOYEE_RELATED_OWN_USER",
           plan_status: "ACTIVE",
           is_client_employee_user: true,
@@ -1328,6 +1531,7 @@ class ApiController {
       return res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
   }
+
   async loginMarketingPage(req, res) {
     try {
       console.log("🔥 Login API called");
