@@ -903,6 +903,12 @@ router.post(
   PayrollController.createPayslip.bind(PayrollController)
 );
 
+router.get(
+  "/payslip",
+  authenticate,
+  PayrollController.getPayslip.bind(PayrollController)
+);
+
 router.post(
   "/compute/payslip/:id",
   authenticate,

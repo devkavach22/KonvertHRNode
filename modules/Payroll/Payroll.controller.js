@@ -2500,6 +2500,92 @@ class PayrollController {
         }
     }
 
+    async getPayslip(req, res) {
+    try {
+        const {
+            employee_id,
+            payslip_id,
+            date_from,
+            date_to,
+            limit = 20,
+            offset = 0,
+        } = req.query;
+
+        // Get client_id from logged-in user
+        let client_id;
+        try {
+            const clientData = await getClientFromRequest(req);
+            client_id = clientData.client_id;
+        } catch (error) {
+            return res.status(400).json({
+                status: "error",
+                message: error.message || "Either user_id or unique_user_id is required",
+            });
+        }
+
+        // Base domain: payslips only for this client
+        const domain = [["client_id", "=", client_id]];
+
+        // Optional filters
+        if (payslip_id) {
+            domain.push(["id", "=", payslip_id]);
+        }
+
+        if (employee_id) {
+            domain.push(["employee_id", "=", employee_id]);
+        }
+
+        if (date_from) {
+            domain.push(["date_from", ">=", date_from]);
+        }
+
+        if (date_to) {
+            domain.push(["date_to", "<=", date_to]);
+        }
+
+        // Fetch payslips
+        const payslips = await odooService.searchRead(
+            "hr.payslip",
+            domain,
+            [
+                "id",
+                "name",
+                "employee_id",
+                "struct_id",
+                "date_from",
+                "date_to",
+                "state",
+                "number",
+                "payslip_run_id",
+            ],
+            limit,
+            offset
+        );
+
+        if (!payslips || payslips.length === 0) {
+            return res.status(404).json({
+                status: "error",
+                message: "No payslips found",
+            });
+        }
+
+        return res.status(200).json({
+            status: "success",
+            count: payslips.length,
+            data: payslips,
+        });
+
+    } catch (error) {
+        console.error("❌ Get Payslip Error:", error);
+
+        return res.status(500).json({
+            status: "error",
+            message: error.message || "Failed to fetch payslips",
+        });
+    }
+}
+
+
     async computePayslip(req, res) {
         try {
             const payslip_id = req.params.id;

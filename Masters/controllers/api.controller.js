@@ -1030,6 +1030,7 @@ class ApiController {
         employeeId = userData[0].employee_ids[0];
         try {
           await odooService.write("hr.employee", [employeeId], {
+            name: `${first_name} ${last_name}`,
             employee_password: password,
             address_id: companyPartnerId,
             work_phone: mobile,
@@ -1144,6 +1145,189 @@ class ApiController {
       });
     }
   }
+  // async loginUser(req, res) {
+  //   try {
+  //     const { email, password } = req.body;
+  //     if (!email || !password) {
+  //       return res.status(400).json({ status: "error", message: "Email and Password are required" });
+  //     }
+
+  //     const userRecord = await odooService.searchRead(
+  //       "res.users",
+  //       [["login", "=", email]],
+  //       ["id", "login", "name", "first_name", "last_name", "partner_id", "unique_user_id", "is_client_employee_user", "is_client_employee_admin"]
+  //     );
+
+  //     if (!userRecord || userRecord.length === 0) {
+  //       return res.status(404).json({ status: "error", message: "User not found. Please signup." });
+  //     }
+
+  //     let user = userRecord[0];
+  //     const userPartnerId = user.partner_id?.[0];
+
+  //     const commonClient = odooService.createClient("/xmlrpc/2/common");
+
+  //     let uid;
+  //     try {
+  //       uid = await new Promise((resolve, reject) => {
+  //         commonClient.methodCall("authenticate", [odooService.db, email, password, {}], (err, authUid) => {
+  //           if (err || !authUid) reject(new Error("Incorrect password"));
+  //           else resolve(authUid);
+  //         });
+  //       });
+  //     } catch (authError) {
+  //       return res.status(400).json({ status: "error", message: "Incorrect password" });
+  //     }
+
+  //     if (!uid) return;
+
+  //     let planCheckPartnerId = userPartnerId;
+  //     let employeeId = null;
+  //     let adminUserIdFromEmployee = null;
+
+  //     if (user.is_client_employee_user) {
+  //       const employeeRecord = await odooService.searchRead(
+  //         "hr.employee",
+  //         [["user_id", "=", user.id]],
+  //         ["id", "address_id"],
+  //         0,
+  //         1
+  //       );
+
+  //       if (employeeRecord && employeeRecord.length > 0) {
+  //         employeeId = employeeRecord[0].id;
+  //         if (employeeRecord[0].address_id && employeeRecord[0].address_id[0]) {
+  //           planCheckPartnerId = employeeRecord[0].address_id[0];
+
+  //           const adminUser = await odooService.searchRead(
+  //             "res.users",
+  //             [["partner_id", "=", planCheckPartnerId], ["is_client_employee_admin", "=", true]],
+  //             ["id"],
+  //             0,
+  //             1
+  //           );
+  //           if (adminUser && adminUser.length > 0) adminUserIdFromEmployee = adminUser[0].id;
+  //         }
+  //       }
+  //     }
+
+  //     // Fetch partner details with state and city
+  //     const partnerDetails = await odooService.searchRead(
+  //       "res.partner",
+  //       [["id", "=", userPartnerId]],
+  //       ["state_id", "city"],
+  //       0,
+  //       1
+  //     );
+
+  //     let state_name = null;
+  //     let city_name = null;
+
+  //     if (partnerDetails && partnerDetails.length > 0) {
+  //       // state_id is a many2one field, returns [id, name]
+  //       state_name = partnerDetails[0].state_id ? partnerDetails[0].state_id[1] : null;
+  //       // city is a char field, returns directly
+  //       city_name = partnerDetails[0].city || null;
+  //     }
+
+  //     // Check if user has ever bought any plan (active or expired)
+  //     const anyPlan = await odooService.searchRead(
+  //       "client.plan.details",
+  //       [["partner_id", "=", planCheckPartnerId]],
+  //       ["id"],
+  //       0,
+  //       1
+  //     );
+
+  //     if (!anyPlan || anyPlan.length === 0) {
+  //       return res.status(403).json({
+  //         status: "error",
+  //         message: "Sorry, you didn't buy any plan. Please purchase a plan to continue.",
+  //         plan_status: "NOT_PURCHASED"
+  //       });
+  //     }
+
+  //     // Check for active plan
+  //     const plan = await odooService.searchRead(
+  //       "client.plan.details",
+  //       [
+  //         ["partner_id", "=", planCheckPartnerId],
+  //         ["is_expier", "=", true]
+  //       ],
+  //       ["id", "product_id", "start_date", "end_date"],
+  //       0,
+  //       1
+  //     );
+
+  //     let planData = (plan && plan.length > 0) ? plan[0] : null;
+
+  //     if (planData && userPartnerId === planCheckPartnerId && !user.is_client_employee_admin) {
+  //       await odooService.write("res.users", [user.id], { is_client_employee_admin: true });
+  //       user.is_client_employee_admin = true;
+  //     }
+
+  //     const isAdminUser = user.is_client_employee_admin === true;
+  //     const isEmployeeUser = user.is_client_employee_user === true;
+  //     const full_name = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+  //     const token = jwt.sign({ userId: uid, email }, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+  //     if (isAdminUser) {
+  //       if (!planData) {
+  //         return res.status(403).json({
+  //           status: "error",
+  //           message: "Your plan has expired. Please renew.",
+  //           plan_status: "EXPIRED"
+  //         });
+  //       }
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Logged in as Admin. Plan is active.",
+  //         unique_user_id: user.unique_user_id,
+  //         user_id: uid,
+  //         email,
+  //         full_name,
+  //         state: state_name,
+  //         city: city_name,
+  //         user_role: "REGISTER_ADMIN",
+  //         plan_status: "ACTIVE",
+  //         plan_id: planData.id,
+  //         product_id: planData.product_id,
+  //         plan_start_date: planData.start_date,
+  //         plan_end_date: planData.end_date,
+  //       });
+  //     }
+  //     else if (isEmployeeUser) {
+  //       if (!planData) {
+  //         return res.status(403).json({
+  //           status: "error",
+  //           message: "Sorry, you can't login because your plan is expired.",
+  //           plan_status: "EXPIRED"
+  //         });
+  //       }
+  //       return res.status(200).json({
+  //         status: "success",
+  //         message: "Logged in as Employee. Plan is Active",
+  //         user_id: uid,
+  //         email,
+  //         full_name,
+  //         state: state_name,
+  //         city: city_name,
+  //         user_role: "EMPLOYEE_RELATED_OWN_USER",
+  //         plan_status: "ACTIVE",
+  //         is_client_employee_user: true,
+  //         employee_id: employeeId,
+  //         admin_user_id: adminUserIdFromEmployee,
+  //       });
+  //     }
+  //     else {
+  //       return res.status(403).json({ status: "error", message: "You are not authorized. Please signup first." });
+  //     }
+
+  //   } catch (error) {
+  //     console.error("Login error:", error);
+  //     return res.status(500).json({ status: "error", message: "Internal Server Error" });
+  //   }
+  // }
   async loginUser(req, res) {
     try {
       const { email, password } = req.body;
@@ -1183,6 +1367,7 @@ class ApiController {
       let planCheckPartnerId = userPartnerId;
       let employeeId = null;
       let adminUserIdFromEmployee = null;
+      let companyName = null;
 
       if (user.is_client_employee_user) {
         const employeeRecord = await odooService.searchRead(
@@ -1197,6 +1382,18 @@ class ApiController {
           employeeId = employeeRecord[0].id;
           if (employeeRecord[0].address_id && employeeRecord[0].address_id[0]) {
             planCheckPartnerId = employeeRecord[0].address_id[0];
+
+            // Fetch company name from address_id (partner)
+            const companyPartner = await odooService.searchRead(
+              "res.partner",
+              [["id", "=", employeeRecord[0].address_id[0]]],
+              ["name"],
+              0,
+              1
+            );
+            if (companyPartner && companyPartner.length > 0) {
+              companyName = companyPartner[0].name;
+            }
 
             const adminUser = await odooService.searchRead(
               "res.users",
@@ -1214,7 +1411,7 @@ class ApiController {
       const partnerDetails = await odooService.searchRead(
         "res.partner",
         [["id", "=", userPartnerId]],
-        ["state_id", "city"],
+        ["state_id", "city", "name"],
         0,
         1
       );
@@ -1227,6 +1424,11 @@ class ApiController {
         state_name = partnerDetails[0].state_id ? partnerDetails[0].state_id[1] : null;
         // city is a char field, returns directly
         city_name = partnerDetails[0].city || null;
+
+        // If admin user, get company name from partner_id
+        if (user.is_client_employee_admin) {
+          companyName = partnerDetails[0].name;
+        }
       }
 
       // Check if user has ever bought any plan (active or expired)
@@ -1287,6 +1489,7 @@ class ApiController {
           full_name,
           state: state_name,
           city: city_name,
+          company_name: companyName,
           user_role: "REGISTER_ADMIN",
           plan_status: "ACTIVE",
           plan_id: planData.id,
@@ -1311,6 +1514,7 @@ class ApiController {
           full_name,
           state: state_name,
           city: city_name,
+          company_name: companyName,
           user_role: "EMPLOYEE_RELATED_OWN_USER",
           plan_status: "ACTIVE",
           is_client_employee_user: true,
@@ -1327,6 +1531,7 @@ class ApiController {
       return res.status(500).json({ status: "error", message: "Internal Server Error" });
     }
   }
+
   async loginMarketingPage(req, res) {
     try {
       console.log("🔥 Login API called");
@@ -3090,6 +3295,7 @@ class ApiController {
       });
     }
   }
+
   // async planActivation(req, res) {
   //   try {
   //     const { email, secret_key } = req.body;
@@ -3135,7 +3341,7 @@ class ApiController {
   //     );
 
   //     if (!planDetails || planDetails.length === 0) {
-  //       return res.status(401).json({
+  //       return res.status(400).json({
   //         status: "error",
   //         message: "Invalid secret key or plan not found",
   //       });
@@ -3759,56 +3965,6 @@ class ApiController {
   //         }
   //       } catch (leaveTypeError) {
   //         console.error(`✗ Error creating leave type ${leaveTypeData.name}:`, leaveTypeError);
-  //       }
-  //     }
-
-  //     // --- AUTO CREATE 4 WORK LOCATIONS ---
-  //     const defaultWorkLocations = [
-  //       { name: "Ahmedabad", location_type: "office" },
-  //       { name: "Gandhinagar", location_type: "office" },
-  //       { name: "Vadodara", location_type: "office" },
-  //       { name: "Surat", location_type: "office" }
-  //     ];
-
-  //     const createdWorkLocations = [];
-
-  //     for (const locationData of defaultWorkLocations) {
-  //       try {
-  //         const existingLocation = await odooService.searchRead(
-  //           "hr.work.location",
-  //           [
-  //             ["name", "=", locationData.name],
-  //             ["client_id", "=", partnerId]
-  //           ],
-  //           ["id"],
-  //           0,
-  //           1
-  //         );
-
-  //         if (existingLocation.length === 0) {
-  //           const workLocationId = await odooService.create("hr.work.location", {
-  //             name: locationData.name,
-  //             location_type: locationData.location_type,
-  //             client_id: partnerId
-  //           });
-
-  //           createdWorkLocations.push({
-  //             id: workLocationId,
-  //             name: locationData.name,
-  //             location_type: locationData.location_type
-  //           });
-
-  //           console.log(`✓ Work Location created: ${locationData.name} (ID: ${workLocationId})`);
-  //         } else {
-  //           console.log(`✓ Work Location already exists: ${locationData.name}`);
-  //           createdWorkLocations.push({
-  //             id: existingLocation[0].id,
-  //             name: locationData.name,
-  //             already_existed: true
-  //           });
-  //         }
-  //       } catch (locationError) {
-  //         console.error(`✗ Error creating work location ${locationData.name}:`, locationError);
   //       }
   //     }
 
@@ -4503,6 +4659,135 @@ class ApiController {
         }
       }
 
+      // --- AUTO CREATE 4 DEFAULT WORKING SCHEDULES ---
+      const defaultWorkingSchedules = [
+        {
+          name: "Standard 40 Hours/Week",
+          flexible_hours: false,
+          is_night_shift: false,
+          full_time_required_hours: 40,
+          tz: "Asia/Kolkata",
+          total_overtime_hours_allowed: 10,
+          attendance_ids: [
+            { name: "Monday Morning", dayofweek: "0", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Monday Afternoon", dayofweek: "0", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 },
+            { name: "Tuesday Morning", dayofweek: "1", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Tuesday Afternoon", dayofweek: "1", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 },
+            { name: "Wednesday Morning", dayofweek: "2", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Wednesday Afternoon", dayofweek: "2", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 },
+            { name: "Thursday Morning", dayofweek: "3", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Thursday Afternoon", dayofweek: "3", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 },
+            { name: "Friday Morning", dayofweek: "4", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Friday Afternoon", dayofweek: "4", day_period: "afternoon", hour_from: 14.0, hour_to: 18.0 }
+          ]
+        },
+        {
+          name: "Flexible Hours (38 Hours/Week)",
+          flexible_hours: true,
+          is_night_shift: false,
+          full_time_required_hours: 38,
+          hours_per_day: 7.6,
+          tz: "Asia/Kolkata",
+          total_overtime_hours_allowed: 12
+        },
+        {
+          name: "Night Shift (40 Hours/Week)",
+          flexible_hours: false,
+          is_night_shift: true,
+          full_time_required_hours: 40,
+          tz: "Asia/Kolkata",
+          total_overtime_hours_allowed: 8,
+          attendance_ids: [
+            { name: "Monday Night", dayofweek: "0", day_period: "morning", hour_from: 22.0, hour_to: 6.0 },
+            { name: "Tuesday Night", dayofweek: "1", day_period: "morning", hour_from: 22.0, hour_to: 6.0 },
+            { name: "Wednesday Night", dayofweek: "2", day_period: "morning", hour_from: 22.0, hour_to: 6.0 },
+            { name: "Thursday Night", dayofweek: "3", day_period: "morning", hour_from: 22.0, hour_to: 6.0 },
+            { name: "Friday Night", dayofweek: "4", day_period: "morning", hour_from: 22.0, hour_to: 6.0 }
+          ]
+        },
+        {
+          name: "Part-Time (20 Hours/Week)",
+          flexible_hours: false,
+          is_night_shift: false,
+          full_time_required_hours: 20,
+          tz: "Asia/Kolkata",
+          total_overtime_hours_allowed: 5,
+          attendance_ids: [
+            { name: "Monday Morning", dayofweek: "0", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Tuesday Morning", dayofweek: "1", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Wednesday Morning", dayofweek: "2", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Thursday Morning", dayofweek: "3", day_period: "morning", hour_from: 9.0, hour_to: 13.0 },
+            { name: "Friday Morning", dayofweek: "4", day_period: "morning", hour_from: 9.0, hour_to: 13.0 }
+          ]
+        }
+      ];
+
+      const createdWorkingSchedules = [];
+
+      for (const scheduleData of defaultWorkingSchedules) {
+        try {
+          const existingSchedule = await odooService.searchRead(
+            "resource.calendar",
+            [
+              ["name", "=", scheduleData.name],
+              ["client_id", "=", partnerId]
+            ],
+            ["id"],
+            0,
+            1
+          );
+
+          if (existingSchedule.length === 0) {
+            const vals = {
+              name: scheduleData.name,
+              client_id: partnerId,
+              flexible_hours: scheduleData.flexible_hours,
+              is_night_shift: scheduleData.is_night_shift,
+              full_time_required_hours: scheduleData.full_time_required_hours,
+              tz: scheduleData.tz || false,
+              total_overtime_hours_allowed: scheduleData.total_overtime_hours_allowed || 0.0
+            };
+
+            // Add hours_per_day only if flexible_hours is true
+            if (scheduleData.flexible_hours && scheduleData.hours_per_day) {
+              vals.hours_per_day = scheduleData.hours_per_day;
+            }
+
+            // Add attendance_ids ONLY if flexible_hours is false
+            if (!scheduleData.flexible_hours && scheduleData.attendance_ids && scheduleData.attendance_ids.length > 0) {
+              vals.attendance_ids = scheduleData.attendance_ids.map(attendance => {
+                return [0, 0, {
+                  name: attendance.name,
+                  dayofweek: attendance.dayofweek,
+                  day_period: attendance.day_period,
+                  hour_from: parseFloat(attendance.hour_from),
+                  hour_to: parseFloat(attendance.hour_to),
+                  work_entry_type_id: attendance.work_entry_type_id || false
+                }];
+              });
+            }
+
+            const scheduleId = await odooService.create("resource.calendar", vals);
+
+            createdWorkingSchedules.push({
+              id: scheduleId,
+              name: scheduleData.name
+            });
+
+            console.log(`✓ Working Schedule created: ${scheduleData.name} (ID: ${scheduleId})`);
+          } else {
+            console.log(`✓ Working Schedule already exists: ${scheduleData.name}`);
+            createdWorkingSchedules.push({
+              id: existingSchedule[0].id,
+              name: scheduleData.name,
+              already_existed: true
+            });
+          }
+        } catch (scheduleError) {
+          console.error(`✗ Error creating working schedule ${scheduleData.name}:`, scheduleError);
+        }
+      }
+
       return res.status(200).json({
         status: "OK",
         message: "Plan verified successfully",
@@ -4522,6 +4807,9 @@ class ApiController {
       });
     }
   }
+
+
+
   async getTimezones(req, res) {
     try {
       const fields = await odooService.execute(
