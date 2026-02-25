@@ -1818,12 +1818,24 @@ module.exports = {
 
         console.log("📅 Step 10.8: Updating next invoice date...");
         try {
-          await odooService.callMethod("sale.order", "update_next_invoice_date_custom", [
-            sale_order_id,
-          ]);
+          await odooService.callMethod(
+            "sale.order",
+            "update_next_invoice_date_custom",
+            [sale_order_id],
+            {} // empty context
+          );
           console.log("✅ Next invoice date updated successfully");
         } catch (dateUpdateError) {
-          console.error("⚠️ Next invoice date update error:", dateUpdateError.message);
+          // ✅ Manually handle None marshal error - non critical step
+          if (
+            dateUpdateError.message?.includes("cannot marshal None") ||
+            dateUpdateError.message?.includes("allow_none")
+          ) {
+            console.log("⚠️ Method returned None - ignoring, subscription already created");
+          } else {
+            console.error("⚠️ Next invoice date update error:", dateUpdateError.message);
+          }
+          // ✅ Don't return error - subscription is already created successfully
         }
       } catch (paymentError) {
         console.error("❌ Payment/Email error:", paymentError);
