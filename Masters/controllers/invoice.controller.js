@@ -555,7 +555,7 @@ module.exports = {
         if (email) {
           const subject =
             "Subscription Activated - Kavach Global Konnects Pvt Ltd";
-          const loginUrl = "https://saas.konverthr.com/KHR-plan-activation";
+          const loginUrl = "https://odoosaas.konverthr.com/KHR-plan-activation";
 
           const htmlContent = `
 <!DOCTYPE html>
