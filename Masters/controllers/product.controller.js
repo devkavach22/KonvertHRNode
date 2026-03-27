@@ -233,7 +233,9 @@ module.exports = {
           "duration_periods_no",
           "duration",
           "is_highlight",
-          "subscription_plan_id", // ✅ ADDED
+          "subscription_plan_id", 
+          "max_no_of_user",
+          "minimum_no_of_user",
         ]
       );
 

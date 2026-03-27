@@ -92,10 +92,10 @@ module.exports = {
         product_id,
         price_unit,
         transection_number,
-        plan_id, // ✅ Frontend se "Monthly" ya "Yearly" name aayega (but variable name plan_id hai)
+        plan_id,
+        no_of_employee,
       } = req.body;
 
-      // Automatically set quantity to 1
       const quantity = 1;
 
       if (!user_id) {
@@ -126,11 +126,18 @@ module.exports = {
         });
       }
 
-      // ✅ Validate plan_id (which contains plan name like "Monthly" or "Yearly")
       if (!plan_id) {
         return res.status(400).json({
           success: false,
           error: "plan_id is required (e.g., 'Monthly', 'Yearly')",
+        });
+      }
+
+    
+      if (!no_of_employee || no_of_employee <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: "no_of_employee is required and must be greater than 0",
         });
       }
 
@@ -249,13 +256,12 @@ module.exports = {
 
       console.log("✅ Product validated:", productVariant[0].name);
 
-      // ✅✅✅ CRITICAL STEP: Find plan ID from plan name
       console.log("🔍 Step 5: Finding subscription plan ID from plan name...");
-      console.log("🔍 Received plan name from frontend:", plan_id); // This is actually the plan name like "Monthly"
+      console.log("🔍 Received plan name from frontend:", plan_id);
 
       const recurringPlan = await odooService.searchRead(
         "sale.subscription.plan",
-        [["name", "=", plan_id]], // ✅ Search by name (plan_id contains "Monthly" or "Yearly")
+        [["name", "=", plan_id]],
         ["id", "name"]
       );
 
@@ -266,7 +272,7 @@ module.exports = {
         });
       }
 
-      const subscription_plan_id = recurringPlan[0].id; // ✅ Now we have the actual numeric ID
+      const subscription_plan_id = recurringPlan[0].id;
       const subscription_plan_name = recurringPlan[0].name;
 
       console.log("✅ Found Plan ID:", subscription_plan_id, "| Name:", subscription_plan_name);
@@ -286,7 +292,7 @@ module.exports = {
       console.log("📝 Step 7: Creating subscription sale order...");
       const saleOrderData = {
         partner_id: partner_id,
-        plan_id: subscription_plan_id, // ✅ Using the numeric ID we found
+        plan_id: subscription_plan_id,
         company_id: adminCompanyId,
         date_order: todayDate,
         pricelist_id: pricelist_id || false,
@@ -399,7 +405,6 @@ module.exports = {
         ]);
         console.log("✅ Invoice confirmed");
 
-        // ========== CRITICAL STEP: Link invoice lines to sale order lines ==========
         console.log("🔗 Step 10.3: Linking invoice lines to sale order lines...");
 
         const invoiceLines = await odooService.execute("account.move.line", "search_read", [
@@ -451,7 +456,6 @@ module.exports = {
         } else {
           console.log("   ⚠️ No invoice lines or sale order lines found to link");
         }
-        // ========== END CRITICAL STEP ==========
 
         const invoiceDetails = await odooService.execute(
           "account.move",
@@ -555,7 +559,7 @@ module.exports = {
         if (email) {
           const subject =
             "Subscription Activated - Kavach Global Konnects Pvt Ltd";
-          const loginUrl = "https://saas.konverthr.com/KHR-plan-activation";
+          const loginUrl = "https://odoosaas.konverthr.com/KHR-plan-activation";
 
           const htmlContent = `
 <!DOCTYPE html>
@@ -581,6 +585,7 @@ module.exports = {
                       <tr><td style="font-size: 15px; color: #666;">Product:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${productVariant[0].name}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Invoice:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${invoice.name}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Transaction Number:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${transection_number}</td></tr>
+                      <tr><td style="font-size: 15px; color: #666;">No. of Employees:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${no_of_employee}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Amount:</td><td style="font-size: 15px; color: #4CAF50; font-weight: 700; text-align: right;">₹${paymentAmount.toFixed(2)}</td></tr>
                       <tr><td style="font-size: 15px; color: #666;">Payment Date:</td><td style="font-size: 15px; color: #1a1a1a; font-weight: 600; text-align: right;">${new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</td></tr>
                     </table>
@@ -634,6 +639,7 @@ module.exports = {
           product_id: product_id,
           secret_key: secretKey,
           start_date: todayDate,
+          no_of_employee: no_of_employee, // ✅ Added here
         };
 
         clientPlanId = await odooService.create(
@@ -648,11 +654,10 @@ module.exports = {
             "sale.order",
             "update_next_invoice_date_custom",
             [sale_order_id],
-            {} // empty context
+            {}
           );
           console.log("✅ Next invoice date updated successfully");
         } catch (dateUpdateError) {
-          // ✅ Manually handle None marshal error - non critical step
           if (
             dateUpdateError.message?.includes("cannot marshal None") ||
             dateUpdateError.message?.includes("allow_none")
@@ -661,7 +666,6 @@ module.exports = {
           } else {
             console.error("⚠️ Next invoice date update error:", dateUpdateError.message);
           }
-          // ✅ Don't return error - subscription is already created successfully
         }
       } catch (paymentError) {
         console.error("❌ Payment/Email error:", paymentError);
@@ -684,8 +688,8 @@ module.exports = {
           subscription_name: subscription.name,
           partner_id: partner_id,
           partner_name: partner.name,
-          plan_id: subscription_plan_id, // ✅ Returning the numeric ID
-          plan_name: subscription_plan_name, // ✅ Returning the name
+          plan_id: subscription_plan_id,
+          plan_name: subscription_plan_name,
           product_id: product_id,
           product_template_id: product_template_id,
           product_name: productVariant[0].name,
@@ -699,6 +703,7 @@ module.exports = {
           secret_key: secretKey,
           client_plan_id: clientPlanId,
           email_sent: emailSent,
+          no_of_employee: no_of_employee, // ✅ Added in response too
           subscription_invoice_ids: finalSubscription[0].invoice_ids,
         },
       });
