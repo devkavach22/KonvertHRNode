@@ -213,7 +213,6 @@ module.exports = {
   async getProducts(req, res) {
     try {
       console.log("Product API called .......");
-
       let products = await odooService.searchRead(
         "product.product",
         [
@@ -233,7 +232,7 @@ module.exports = {
           "duration_periods_no",
           "duration",
           "is_highlight",
-          "subscription_plan_id", 
+          "subscription_plan_id",
           "max_no_of_user",
           "minimum_no_of_user",
         ]
@@ -241,6 +240,8 @@ module.exports = {
 
       products = products.map((p) => ({
         ...p,
+        list_price: parseFloat(p.list_price) || 0,   // ✅ Fix: ensure float value
+        fees: parseFloat(p.fees) || 0,                // ✅ Fix: same for fees if it's also a float
         description: p.description
           ? p.description.replace(/<[^>]*>/g, "")
           : "",
@@ -263,7 +264,6 @@ module.exports = {
         count: products.length,
         data: products,
       });
-
     } catch (error) {
       return res.status(500).json({
         status: "error",
