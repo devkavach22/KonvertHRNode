@@ -1,0 +1,37 @@
+services:
+  konverthr-backend-api:
+    image: konverthr-backend-api
+    container_name: konverthr-backend-api-container
+    build:
+      context: .
+    env_file:
+      - /etc/node-env/server/.env
+      # - C:\Users\B A P S\Downloads\konvertHRNode_env\.env
+    environment:
+      ENV_FILE: /app/.env
+    volumes:
+      - /etc/node-env/server/.env:/app/.env
+      # - C:\Users\B A P S\Downloads\konvertHRNode_env\.env:/app/.env
+    # Windows/Development: Use ports for local access
+    ports:
+      - 4002:4002
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  konverthr-backend-staging:
+    image: konverthr-backend-staging
+    container_name: konverthr-backend-staging-container
+    build:
+      context: .
+    env_file:
+      - /etc/node-env/konverthr/staging.konverthr.com.env
+      # - "C:\\Users\\deepak.p\\Downloads\\KonvertHRNode-staging.env"
+    environment:
+      ENV_FILE: /app/.env
+    volumes:
+      - /etc/node-env/konverthr/staging.konverthr.com.env:/app/.env
+      # - "C:\\Users\\deepak.p\\Downloads\\KonvertHRNode-staging.env:/app/.env"
+    ports:
+      - 4003:4002
+    extra_hosts:
+        - "host.docker.internal:host-gateway"
