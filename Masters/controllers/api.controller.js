@@ -428,39 +428,102 @@ class ApiController {
       });
     }
   }
+  // async checkGstNumber(req, res) {
+  //   try {
+  //     const { gst_number } = req.body;
+
+  //     if (!gst_number) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "gst_number is required",
+  //       });
+  //     }
+
+  //     // --- GST NUMBER FORMAT VALIDATION ---
+  //     if (!/^[A-Z0-9]+$/.test(gst_number)) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "GST number should contain only uppercase letters and numeric characters",
+  //       });
+  //     }
+
+  //     let result = await odooService.execute(
+  //       "res.partner",
+  //       "autocomplete_by_vat",
+  //       [gst_number, 104]
+  //     );
+
+  //     if (!result || result.length === 0) {
+  //       return res.status(400).json({
+  //         status: "error",
+  //         message: "Not Valid Gst Number",
+  //       });
+  //     }
+
+  //     const stateCode = gst_number.slice(0, 2);
+  //     const stateRecords = await odooService.execute(
+  //       "res.country.state",
+  //       "search_read",
+  //       [[["l10n_in_tin", "=", stateCode]]],
+  //       { fields: ["name", "id"], limit: 1 }
+  //     );
+
+  //     if (stateRecords && stateRecords.length > 0) {
+  //       result[0].state = stateRecords[0].name;
+  //       result[0].state_id = stateRecords[0].id;
+  //     }
+
+  //     return res.status(200).json({
+  //       status: "ok",
+  //       message: "Valid GST Number",
+  //       company_details: result,
+  //     });
+  //   } catch (error) {
+  //     console.error("Check GST error:", error);
+  //     return res.status(400).json({
+  //       status: "error",
+  //       message: "Failed to validate GST number",
+  //     });
+  //   }
+  // }
+
   async checkGstNumber(req, res) {
     try {
       const { gst_number } = req.body;
 
+      // 1. Basic Presence Check
       if (!gst_number) {
         return res.status(400).json({
           status: "error",
-          message: "gst_number is required",
+          message: "gst_number is required"
         });
       }
 
-      // --- GST NUMBER FORMAT VALIDATION ---
-      if (!/^[A-Z0-9]+$/.test(gst_number)) {
+     
+      const gstRegex = /^(0[1-9]|[1-2][0-9]|3[0-8])[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
+      if (!gstRegex.test(gst_number)) {
         return res.status(400).json({
           status: "error",
-          message: "GST number should contain only uppercase letters and numeric characters",
+          message: "Invalid GST Number format or state code",
         });
       }
 
+      // --- 3. ODOO DATA FETCHING ---
       let result = await odooService.execute(
         "res.partner",
         "autocomplete_by_vat",
-        [gst_number, 104],
-        { timeout: 15 }
+        [gst_number, 104]
       );
-
-      if (!result || result.length === 0) {
-        return res.status(400).json({
-          status: "error",
-          message: "Not Valid Gst Number",
+      if (!result || (Array.isArray(result) && result.length === 0) || result === true) {
+        return res.status(200).json({
+          status: "ok",
+          message: "GST format is valid, but no details found in registry.",
+          company_details: []
         });
       }
 
+      // --- 5. STATE SEARCH (Ager Odoo ne data diya hai) ---
       const stateCode = gst_number.slice(0, 2);
       const stateRecords = await odooService.execute(
         "res.country.state",
@@ -470,7 +533,7 @@ class ApiController {
       );
 
       if (stateRecords && stateRecords.length > 0) {
-        // Add state info to the first result object
+        // Result array hai, isliye first index [0] use kar rahe hain
         result[0].state = stateRecords[0].name;
         result[0].state_id = stateRecords[0].id;
       }
@@ -480,14 +543,16 @@ class ApiController {
         message: "Valid GST Number",
         company_details: result,
       });
+
     } catch (error) {
       console.error("Check GST error:", error);
-      return res.status(400).json({
+      return res.status(500).json({
         status: "error",
-        message: "Failed to validate GST number",
+        message: "An internal server error occurred while validating GST.",
       });
     }
   }
+
   async createUser(req, res) {
     console.log("Register Called ");
     try {
@@ -526,12 +591,12 @@ class ApiController {
         });
       }
 
-     if (email.length > 100) {
-  return res.status(400).json({
-    status: "error",
-    message: "Email must be under 100 characters",
-  });
-}
+      if (email.length > 100) {
+        return res.status(400).json({
+          status: "error",
+          message: "Email must be under 100 characters",
+        });
+      }
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
@@ -556,7 +621,7 @@ class ApiController {
         });
       }
 
-      if (password.length >28) {
+      if (password.length > 28) {
         return res.status(400).json({
           status: "error",
           message: "Password must be under 128 characters",
@@ -912,7 +977,7 @@ class ApiController {
         return res.status(400).json({ status: "error", message: "Password must be at least 8 characters" });
       }
 
-      if (password.length >28) {
+      if (password.length > 28) {
         return res.status(400).json({ status: "error", message: "Password must be under 28 characters" });
       }
 
@@ -1128,12 +1193,12 @@ class ApiController {
         });
       }
 
-    if (email.length > 100) {
-  return res.status(400).json({
-    status: "error",
-    message: "Email must be under 100 characters",
-  });
-}
+      if (email.length > 100) {
+        return res.status(400).json({
+          status: "error",
+          message: "Email must be under 100 characters",
+        });
+      }
 
       const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!validEmailRegex.test(email)) {
@@ -1150,7 +1215,7 @@ class ApiController {
         });
       }
 
-      if (password.length >28) {
+      if (password.length > 28) {
         return res.status(400).json({
           status: "error",
           message: "Password must be under 128 characters",
